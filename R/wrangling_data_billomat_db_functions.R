@@ -114,7 +114,36 @@ clients_columns <- c("id",
                      "number",
                      "name",
                      "country_code")
-
+#' @export
+invoices_columns <- c(
+  "id",
+  "invoice_number",
+  "created",
+  "updated",
+  "client_id",
+  "status",
+  "address",
+  "title",
+  "intro",
+  "note",
+  "total_net",
+  "total_gross",
+  "reduction",
+  "total_reduction",
+  "total_net_unreduced",
+  "total_gross_unreduced",
+  "open_amount",
+  "paid_amount",
+  "date",
+  "due_date",
+  "discount_rate",
+  "label",
+  "invoice_id",
+  "confirmation_id",
+  "offer_id",
+  "recurring_id",
+  "template_id"
+)
 ##functions----
 #' get_tables_billomat
 #'
