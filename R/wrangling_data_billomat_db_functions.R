@@ -1,0 +1,223 @@
+
+#' @export
+
+
+##functions
+#' get_tables_billomat
+#'
+#' This function loads the table specified from the local Billomat DB.
+#'
+#' @param db_table_name the name of the table you are interested in
+#' @return the data from the DB as dataframe
+get_tables_billomat <- function(db_table_name = "confirmations") {
+  # here I read the whole table with db_name from the billomat db
+  DBI::dbReadTable(billomatDB, db_table_name)
+}
+
+#' get_db_2_wide_df
+#'
+#' this function turns the db entry that is in a long format into a readable rowwise entry
+#'
+#' @param db_table_name the name of the table you are interested in
+#' @param export_csv set to true if you want to export the wide df as a csv, in this case,
+#' you have to provide the path to the project
+#' @param path_for_export the path where you want to store the exported file - default is the working directory
+#' @return the data from the long data frame turned into a wide data frame with all columns of interest
+
+## dictionaries
+## select the relevant key to create columns
+invoice_items_columns <- c(
+  "id",
+  "article_id",
+  "invoice_id",
+  "position",
+  "title",
+  "description",
+  "total_net",
+  "total_gross",
+  "total_net_unreduced",
+  "reduction",
+  "template_id"
+)
+
+articles_columns <- c(
+  "id",
+  "article_number",
+  "title",
+  "description"
+)
+
+offers_columns <- c(
+
+  "id",
+  "created",
+  "updated",
+  "client_id",
+  "offer_number",
+  "title",
+  "date",
+  "validity_date",
+  "status",
+  "label",
+  "intro",
+  "note",
+  "total_net",
+  "total_gross",
+  "reduction",
+  "total_reduction",
+  "total_net_unreduced",
+  "total_gross_unreduced",
+  "template_id"
+)
+
+offer_items_columns <- c(
+  "id",
+  "article_id",
+  "offer_id",
+  "position",
+  "quantity",
+  "title",
+  "description",
+  "total_net",
+  "total_net_unreduced"
+)
+
+templates_columns <- c(
+  "id",
+  "name",
+  "type"
+)
+
+confirmations_columns <- c(
+  "id",
+  "created",
+  "updated",
+  "client_id",
+  "confirmation_number",
+  "number",
+  "date",
+  "status",
+  "label",
+  "intro",
+  "note",
+  "total_net",
+  "total_gross",
+  "reduction",
+  "total_reduction",
+  "total_net_unreduced",
+  "total_gross_unreduced",
+  "offer_id",
+  "template_id"
+)
+
+
+
+confirmation_items_columns <- c(
+  "id",
+  "article_id",
+  "confirmation_id",
+  "position",
+  "quantity",
+  "title",
+  "description",
+  "total_net",
+  "reduction",
+  "total_net_unreduced",
+  "template_id"
+)
+
+
+
+
+clients_columns <- c("id",
+                     "created",
+                     "updated",
+                     "client_number",
+                     "number",
+                     "name",
+                     "country_code")
+
+invoices_columns <- c(
+  "id",
+  "invoice_number",
+  "created",
+  "updated",
+  "client_id",
+  "status",
+  "address",
+  "title",
+  "intro",
+  "note",
+  "total_net",
+  "total_gross",
+  "reduction",
+  "total_reduction",
+  "total_net_unreduced",
+  "total_gross_unreduced",
+  "open_amount",
+  "paid_amount",
+  "date",
+  "due_date",
+  "discount_rate",
+  "label",
+  "invoice_id",
+  "confirmation_id",
+  "offer_id",
+  "recurring_id",
+  "template_id"
+)
+
+
+get_db_2_wide_df <- function (db_table_name, export_csv = FALSE,path_for_export = getwd()){
+
+
+  ## paste the db name and the keyword columns in order to select the correct dictionary for the Key selection
+  column_names <- paste0(db_table_name,"_columns")
+
+  # read the db that is going to be turned into the df
+  df <- get_tables_billomat (db_table_name = db_table_name) %>%
+    # keep only the rows which have a relevant key
+    dplyr::filter (name %in% get(column_names)) %>%
+    tidyr::pivot_wider(
+      id_cols = c("ids", "page"),
+      names_from = "name",
+      values_from = "value"
+    )
+  # here I save the resulting df as csv
+  if (export_csv) {
+  readr::write_csv2(df, paste0(path_for_export,"/export/",db_table_name,".csv"),)
+  }
+  return(df)
+}
+
+#' write_db2csv
+#'
+#' this function exports the data to a csv
+#'
+#' @param table2process the name of the tables you are interested in, this can be one or a vector
+#' @param path_for_export the path where you want to store the exported file - default is the working directory
+#' @return the data will be stored in the local folder
+
+write_db2csv <- function(table2process = "invoices",path_for_export = getwd()){
+tables <-
+  c(
+    "invoices",
+    "invoice_items",
+    "confirmations",
+    "confirmation_items",
+    "clients",
+    "offers",
+    "offer_items",
+    "articles",
+    "offer_tags",
+    "templates"
+  )
+# i create the range for the for loop based on the entered tables of interest
+#table2process <- c("invoices","templates")
+#which(tables %in% table2process)
+
+for(table in tables[which(tables %in% table2process)]){
+  #print(paste0("test",table))
+  get_db_2_wide_df(table,path_for_export = path_for_export,export_csv = TRUE)
+}
+}
