@@ -4,7 +4,11 @@
 \alias{write_db2csv}
 \title{write_db2csv}
 \usage{
-write_db2csv(table2process = "invoices", path_for_export = getwd())
+write_db2csv(
+  table2process = "invoices",
+  billomatDB = billomatDB,
+  path_for_export = getwd()
+)
 }
 \arguments{
 \item{table2process}{the name of the tables you are interested in, this can be one or a vector}

@@ -4,7 +4,12 @@
 \alias{get_db_2_wide_df}
 \title{get_db_2_wide_df}
 \usage{
-get_db_2_wide_df(db_table_name, export_csv = FALSE, path_for_export = getwd())
+get_db_2_wide_df(
+  db_table_name,
+  billomatDB = billomatDB,
+  export_csv = FALSE,
+  path_for_export = getwd()
+)
 }
 \arguments{
 \item{db_table_name}{the name of the table you are interested in}

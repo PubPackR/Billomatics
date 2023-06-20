@@ -4,10 +4,12 @@
 \alias{get_tables_billomat}
 \title{get_tables_billomat}
 \usage{
-get_tables_billomat(db_table_name = "confirmations")
+get_tables_billomat(db_table_name = "confirmations", billomatDB = billomatDB)
 }
 \arguments{
 \item{db_table_name}{the name of the table you are interested in}
+
+\item{billomatDB}{the path to the billomat db}
 }
 \value{
 the data from the DB as dataframe
