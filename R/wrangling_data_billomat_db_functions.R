@@ -6,10 +6,11 @@
 #' get_tables_billomat
 #'
 #' This function loads the table specified from the local Billomat DB.
-#'
+
+#' @param billomatDB the path to the billomat db
 #' @param db_table_name the name of the table you are interested in
 #' @return the data from the DB as dataframe
-get_tables_billomat <- function(db_table_name = "confirmations") {
+get_tables_billomat <- function(db_table_name = "confirmations",billomatDB = billomatDB) {
   # here I read the whole table with db_name from the billomat db
   DBI::dbReadTable(billomatDB, db_table_name)
 }
@@ -168,14 +169,17 @@ invoices_columns <- c(
 )
 
 
-get_db_2_wide_df <- function (db_table_name, export_csv = FALSE,path_for_export = getwd()){
+get_db_2_wide_df <- function (db_table_name,
+                              billomatDB = NULL,
+                              export_csv = FALSE,
+                              path_for_export = getwd()){
 
 
   ## paste the db name and the keyword columns in order to select the correct dictionary for the Key selection
   column_names <- paste0(db_table_name,"_columns")
 
   # read the db that is going to be turned into the df
-  df <- get_tables_billomat (db_table_name = db_table_name) %>%
+  df <- get_tables_billomat (db_table_name = db_table_name, billomat_db) %>%
     # keep only the rows which have a relevant key
     dplyr::filter (name %in% get(column_names)) %>%
     tidyr::pivot_wider(
@@ -198,7 +202,10 @@ get_db_2_wide_df <- function (db_table_name, export_csv = FALSE,path_for_export 
 #' @param path_for_export the path where you want to store the exported file - default is the working directory
 #' @return the data will be stored in the local folder
 
-write_db2csv <- function(table2process = "invoices",path_for_export = getwd()){
+write_db2csv <- function(table2process = "invoices",
+                         billomatDB = NULL,
+                         path_for_export = getwd()
+                         ){
 tables <-
   c(
     "invoices",
@@ -218,6 +225,9 @@ tables <-
 
 for(table in tables[which(tables %in% table2process)]){
   #print(paste0("test",table))
-  get_db_2_wide_df(table,path_for_export = path_for_export,export_csv = TRUE)
+  get_db_2_wide_df(table,
+                   billomatDB = billomatDB,
+                   path_for_export = path_for_export,
+                   export_csv = TRUE)
 }
 }
