@@ -6,7 +6,7 @@
 create the final dataframe from the provided data -- important, names must match
 the data provided is split with a separate symbol}
 \usage{
-read_KeysFromDescription(df, sep = ":")
+read_KeysFromDescription(df, sep = sep, EntryFormatCheck = EntryFormatCheck)
 }
 \arguments{
 \item{df}{the df which holds the data from which information is extracted}
