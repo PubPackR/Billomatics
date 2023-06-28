@@ -46,6 +46,17 @@ curl_fetch_header <- function(content=c("articles",
   return(list(headers=httr::headers(response)))
 }
 
+#' curl_fetch_billomat
+#' this function carries out the call to get the header
+#'
+#' @param content the name of the tables you are interested in, this is one string
+#' @param page which page to get
+#' @param page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @return the call returns a list with the header information
+
+#' @export
 curl_fetch_billomat <- function(content=c("articles",
                                           "clients",
                                           "offers",
@@ -53,7 +64,8 @@ curl_fetch_billomat <- function(content=c("articles",
                                           "confirmations"),
                                 page = 1,
                                 per_page=per_page,
-                                billomatApiKey =billomatApiKey){
+                                billomatApiKey = billomatApiKey,
+                                billomatID = billomatID){
   call = paste0("https://",
                 billomatID, ## this is the url of the site, but it contains all information necessary
                 ".billomat.net/api/",
@@ -66,7 +78,7 @@ curl_fetch_billomat <- function(content=c("articles",
                 page) # my page number
   # so for this to work, i have to cycle through all pages, as the number increases
   # i need to stop when reaching the last page -> how do I know how many pages there are?
-  response <- GET(call) # here I use the method a GET, this means I retrieve data
+  response <- httr::GET(call) # here I use the method a GET, this means I retrieve data
   # the response contains the header, the method and content as well as additional information
   remaining_limit = as.numeric(headers(response)$`x-rate-limit-remaining`)
   # this tells me how many more calls are possible -- not important at this point
