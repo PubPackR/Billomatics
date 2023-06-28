@@ -7,6 +7,8 @@
 #' @param content the name of the tables you are interested in, this is one string
 #' @param page which page to get
 #' @param page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
 #' @return the call returns a list with the header information
 
 #' @export
@@ -16,7 +18,9 @@ curl_fetch_header <- function(content=c("articles",
                                         "invoices",
                                         "confirmations"),
                               page = 1,
-                              per_page=1){
+                              per_page=1,
+                              billomatApiKey = billomatApiKey,
+                              billomatID = billomatID){
   call = paste0("https://",
                 billomatID, ## this is the url of the site, but it contains all information necessary
                 ".billomat.net/api/",
@@ -48,7 +52,8 @@ curl_fetch_billomat <- function(content=c("articles",
                                           "invoices",
                                           "confirmations"),
                                 page = 1,
-                                per_page=per_page){
+                                per_page=per_page,
+                                billomatApiKey =billomatApiKey){
   call = paste0("https://",
                 billomatID, ## this is the url of the site, but it contains all information necessary
                 ".billomat.net/api/",
