@@ -82,9 +82,9 @@ curl_fetch_billomat <- function(content=c("articles",
   # the response contains the header, the method and content as well as additional information
   remaining_limit = as.numeric(headers(response)$`x-rate-limit-remaining`)
   # this tells me how many more calls are possible -- not important at this point
-  body <- read_xml(response$content)
+  body <- xml2::read_xml(response$content)
   # this is the content of this call for the results of page 1
-  num_results <- xml_length(body)
+  num_results <-  xml2::xml_length(body)
   # this tells me how many results are on each page, i can keep calling pages forever,
   # but they will have 0 length, which means I should stop at this point
   cat("\n",content,"page:",page,"\n")
@@ -96,7 +96,18 @@ curl_fetch_billomat <- function(content=c("articles",
 # I just call all the information of the header and then use the number of pages and amount of information to determine the last page
 
 # I now need to use this function and retrieve multiple pages and keep the results
-content <- "clients"
+
+#' this function carries out the call to get the header
+#' retrieveData
+#' this function
+#' @param content the name of the tables you are interested in, this is one string
+#' @param page which page to get
+#' @param page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @return the call returns a list with the header information
+
+#' @export
 retrieveData <- function(content,per_page) {
   page_result1 <- curl_fetch_header(page = 1,content = content)
   how_many_entries <-page_result1$headers$`x-total-count` %>% as.numeric()
