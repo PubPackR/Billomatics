@@ -80,7 +80,7 @@ curl_fetch_billomat <- function(content=c("articles",
   # i need to stop when reaching the last page -> how do I know how many pages there are?
   response <- httr::GET(call) # here I use the method a GET, this means I retrieve data
   # the response contains the header, the method and content as well as additional information
-  remaining_limit = as.numeric(headers(response)$`x-rate-limit-remaining`)
+  remaining_limit = as.numeric(httr::headers(response)$`x-rate-limit-remaining`)
   # this tells me how many more calls are possible -- not important at this point
   body <- xml2::read_xml(response$content)
   # this is the content of this call for the results of page 1
