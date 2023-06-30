@@ -90,12 +90,7 @@ curl_fetch_billomat <- function(content=c("articles",
   cat("\n",content,"page:",page,"\n")
   return(list(body=body))
 }
-# so now i have a function that can retrieve the content of a page
 
-# now i have all information in the resulting list, but how do i know how many pages to call? and when do I stop?
-# I just call all the information of the header and then use the number of pages and amount of information to determine the last page
-
-# I now need to use this function and retrieve multiple pages and keep the results
 
 #' this function carries out the call to get all the content of the call
 #' retrieveData
@@ -132,4 +127,19 @@ retrieveData <- function(content,
                  billomatApiKey = billomatApiKey,
                  billomatID = billomatID
                ))
+}
+
+
+#' this function extracts a single entry from an xml
+#' extract_single_entry
+#' this function
+#' @param entry_as_xml the name of the entry in an xml you are interested in
+#' @return the call returns a dataframe which contains the id of the entry and all information in one long df
+#' @export
+extract_single_entry <- function(entry_as_xml) {
+  entry_as_df <- unlist(entry_as_xml) %>% enframe()
+  ids <- filter(entry_as_df, name == "id") %>% pull(value)
+  entry_as_df$ids <- as.character(ifelse(is.null(ids),as.integer(runif(1,0,100000)),ids))
+  entry_as_df$name <- as.character(entry_as_df$name)
+  entry_as_df
 }
