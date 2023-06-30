@@ -97,22 +97,39 @@ curl_fetch_billomat <- function(content=c("articles",
 
 # I now need to use this function and retrieve multiple pages and keep the results
 
-#' this function carries out the call to get the header
+#' this function carries out the call to get all the content of the call
 #' retrieveData
 #' this function
 #' @param content the name of the tables you are interested in, this is one string
-#' @param page which page to get
-#' @param page how many entries per page to get
+#' @param per_page how many entries per page to get
 #' @param billomatApiKey please provide your billomat Api key here
 #' @param billomatID please provide your billomat ID here
 #' @return the call returns a list with the header information
-
+### ergänzen der fehlenden params
 #' @export
-retrieveData <- function(content,per_page) {
-  page_result1 <- curl_fetch_header(page = 1,content = content)
+retrieveData <- function(content,
+                         per_page,
+                         billomatApiKey = billomatApiKey,
+                         billomatID = billomatID) {
+  page_result1 <-
+    curl_fetch_header(
+      page = 1,
+      content = content,
+      per_page = per_page,
+      billomatApiKey = billomatApiKey,
+      billomatID = billomatID
+    )
   how_many_entries <-page_result1$headers$`x-total-count` %>% as.numeric()
   max_pages <- ceiling(how_many_entries/per_page) # to know at what page to stop
 
   # this allows me to retrieve the data for all pages that are in .x
-  all_pages <- purrr::map(.x = 1:max_pages, ~ curl_fetch_billomat(page = .,content = content,per_page = per_page))
+  all_pages <-
+    purrr::map(.x = 1:max_pages,
+               ~ curl_fetch_billomat(
+                 page = .,
+                 content = content,
+                 per_page = per_page,
+                 billomatApiKey = billomatApiKey,
+                 billomatID = billomatID
+               ))
 }
