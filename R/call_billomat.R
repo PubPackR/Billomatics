@@ -48,7 +48,6 @@ curl_fetch_header <- function(content=c("articles",
 
 #' curl_fetch_billomat
 #' this function carries out the call to get the header
-#'
 #' @param content the name of the tables you are interested in, this is one string
 #' @param page which page to get
 #' @param page how many entries per page to get
@@ -91,10 +90,8 @@ curl_fetch_billomat <- function(content=c("articles",
   return(list(body=body))
 }
 
-
-#' this function carries out the call to get all the content of the call
 #' retrieveData
-#' this function
+#' this function carries out the call to get all the content of the call
 #' @param content the name of the tables you are interested in, this is one string
 #' @param per_page how many entries per page to get
 #' @param billomatApiKey please provide your billomat Api key here
@@ -129,10 +126,8 @@ retrieveData <- function(content,
                ))
 }
 
-
-#' this function extracts a single entry from an xml
 #' extract_single_entry
-#' this function
+#' this function extracts a single entry from an xml
 #' @param entry_as_xml the name of the entry in an xml you are interested in
 #' @return the call returns a dataframe which contains the id of the entry and all information in one long df
 #' @export
@@ -143,3 +138,17 @@ extract_single_entry <- function(entry_as_xml) {
   entry_as_df$name <- as.character(entry_as_df$name)
   entry_as_df
 }
+
+
+#' extract_xml
+#' this function extracts a all entries from an xml
+#' @param data the name of the entry in an xml you are interested in
+#' @param list_num the index ot the list which contains the data
+#' @return the call returns a dataframe which contains the id of the entry and all information in one long df
+#' @export
+extract_xml <-
+  function(data,list_num) {
+
+    purrr::map_dfr(as_list(data[[list_num]]$body)[[1]], ~extract_single_entry(.))
+
+  }

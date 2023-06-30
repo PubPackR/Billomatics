@@ -2,9 +2,8 @@
 % Please edit documentation in R/call_billomat.R
 \name{retrieveData}
 \alias{retrieveData}
-\title{this function carries out the call to get all the content of the call
-retrieveData
-this function}
+\title{retrieveData
+this function carries out the call to get all the content of the call}
 \usage{
 retrieveData(
   content,
@@ -26,7 +25,6 @@ retrieveData(
 the call returns a list with the header information
 }
 \description{
-this function carries out the call to get all the content of the call
 retrieveData
-this function
+this function carries out the call to get all the content of the call
 }
