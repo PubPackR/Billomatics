@@ -2,16 +2,21 @@
 % Please edit documentation in R/call_billomat.R
 \name{retrieveData}
 \alias{retrieveData}
-\title{this function carries out the call to get the header
+\title{this function carries out the call to get all the content of the call
 retrieveData
 this function}
 \usage{
-retrieveData(content, per_page)
+retrieveData(
+  content,
+  per_page,
+  billomatApiKey = billomatApiKey,
+  billomatID = billomatID
+)
 }
 \arguments{
 \item{content}{the name of the tables you are interested in, this is one string}
 
-\item{page}{how many entries per page to get}
+\item{per_page}{how many entries per page to get}
 
 \item{billomatApiKey}{please provide your billomat Api key here}
 
@@ -21,7 +26,7 @@ retrieveData(content, per_page)
 the call returns a list with the header information
 }
 \description{
-this function carries out the call to get the header
+this function carries out the call to get all the content of the call
 retrieveData
 this function
 }
