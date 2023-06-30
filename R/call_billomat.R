@@ -152,3 +152,25 @@ extract_xml <-
     purrr::map_dfr(as_list(data[[list_num]]$body)[[1]], ~extract_single_entry(.))
 
   }
+
+#' extract_xml
+#' this function extracts a all entries from an xml
+#' @param data the name of the entry in an xml you are interested in
+#' @param list_num the index ot the list which contains the data
+#' @return the call returns a dataframe which contains the id of the entry and all information in one long df
+#' @export
+# function to store the data in the DB. Data is encrypted entry wise with symmetric encryption
+retrieve_and_store_db <- function (content, encryption_key){
+  data <-retrieveData(content,per_page = 50)
+  # now I have the whole result from the get call in one big list of lists
+  # i now need to turn this list into a tibble but keep the
+  # first I extract the xml body as a list
+  data_db<-purrr::map_df(1:length(data),~extract_xml(data, list_num = .), progress = TRUE, .id = "page")
+  data_db$downloaded <- as.character(as_datetime((lubridate::now())))
+  text <- paste0("DROP TABLE IF EXISTS ", content)
+  # create a function to save the respective content
+  dbExecute(billomatDB, text)
+  content <- str_replace_all(pattern = c("-" ="_",
+                                         "`" = "" ),string = content)
+  dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
+}
