@@ -174,3 +174,32 @@ retrieve_and_store_db <- function (content, encryption_key){
                                          "`" = "" ),string = content)
   dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
 }
+
+#' download_all_tables
+#' this function download pulls the selected tables from the Billomat API
+#' @param content the name of the entry in an xml you are interested in
+#' @return the call returns a dataframe which contains the id of the entry and all information in one long df
+#' @export
+download_all_tables <- function(content){
+  tables <-
+    c(
+      "invoices",
+      "`invoice-items`",
+      "confirmations",
+      "`confirmation-items`",
+      "clients",
+      "offers",
+      "`offer-items`",
+      "articles",
+      "`offer-tags`",
+      "templates"
+    )
+  #per_page = 10
+  # here I get the index of each table
+  index_table<-which(tables %in% content)
+
+  for(table in index_table){
+    retrieve_and_store_db(tables[table], encryption_key=key)
+  }
+}
+
