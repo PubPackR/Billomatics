@@ -169,10 +169,10 @@ retrieve_and_store_db <- function (content, encryption_key){
   data_db$downloaded <- as.character(as_datetime((lubridate::now())))
   text <- paste0("DROP TABLE IF EXISTS ", content)
   # create a function to save the respective content
-  dbExecute(billomatDB, text)
+  DBI::dbExecute(billomatDB, text)
   content <- str_replace_all(pattern = c("-" ="_",
                                          "`" = "" ),string = content)
-  dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
+  DBI::dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
 }
 
 #' download_all_tables
