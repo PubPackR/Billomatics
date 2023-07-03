@@ -149,7 +149,7 @@ extract_single_entry <- function(entry_as_xml) {
 extract_xml <-
   function(data,list_num) {
 
-    purrr::map_dfr(as_list(data[[list_num]]$body)[[1]], ~extract_single_entry(.))
+    purrr::map_dfr(xml2::as_list(data[[list_num]]$body)[[1]], ~extract_single_entry(.))
 
   }
 
