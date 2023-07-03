@@ -172,11 +172,11 @@ retrieve_and_store_db <- function (content,
   # i now need to turn this list into a tibble but keep the
   # first I extract the xml body as a list
   data_db<-purrr::map_df(1:length(data),~extract_xml(data, list_num = .), progress = TRUE, .id = "page")
-  data_db$downloaded <- as.character(as_datetime((lubridate::now())))
+  data_db$downloaded <- as.character(lubridate::as_datetime((lubridate::now())))
   text <- paste0("DROP TABLE IF EXISTS ", content)
   # create a function to save the respective content
   DBI::dbExecute(billomatDB, text)
-  content <- str_replace_all(pattern = c("-" ="_",
+  content <- stingr::str_replace_all(pattern = c("-" ="_",
                                          "`" = "" ),string = content)
   DBI::dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
 }
