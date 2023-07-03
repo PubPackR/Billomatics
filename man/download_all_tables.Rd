@@ -5,7 +5,12 @@
 \title{download_all_tables
 this function download pulls the selected tables from the Billomat API}
 \usage{
-download_all_tables(content)
+download_all_tables(
+  content,
+  billomatApiKey = billomatApiKey,
+  billomatID = billomatID,
+  billomatDB = billomatDB
+)
 }
 \arguments{
 \item{content}{the name of the entry in an xml you are interested in}

@@ -160,8 +160,14 @@ extract_xml <-
 #' @return the call returns a dataframe which contains the id of the entry and all information in one long df
 #' @export
 # function to store the data in the DB. Data is encrypted entry wise with symmetric encryption
-retrieve_and_store_db <- function (content, encryption_key){
-  data <-retrieveData(content,per_page = 50)
+retrieve_and_store_db <- function (content,
+                                   billomatApiKey = billomatApiKey,
+                                   billomatID = billomatID,
+                                   billomatDB = billomatDB){
+  data <-retrieveData(content,
+                      per_page = 50,
+                      billomatApiKey = billomatApiKey,
+                      billomatID = billomatID)
   # now I have the whole result from the get call in one big list of lists
   # i now need to turn this list into a tibble but keep the
   # first I extract the xml body as a list
@@ -180,7 +186,10 @@ retrieve_and_store_db <- function (content, encryption_key){
 #' @param content the name of the entry in an xml you are interested in
 #' @return the call returns a dataframe which contains the id of the entry and all information in one long df
 #' @export
-download_all_tables <- function(content){
+download_all_tables <- function(content,
+                                billomatApiKey = billomatApiKey,
+                                billomatID = billomatID,
+                                billomatDB = billomatDB){
   tables <-
     c(
       "invoices",
@@ -199,7 +208,10 @@ download_all_tables <- function(content){
   index_table<-which(tables %in% content)
 
   for(table in index_table){
-    retrieve_and_store_db(tables[table], encryption_key=key)
+    retrieve_and_store_db(tables[table],
+                          billomatApiKey = billomatApiKey,
+                          billomatID = billomatID,
+                          billomatDB = billomatDB)
   }
 }
 

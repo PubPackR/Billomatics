@@ -5,7 +5,12 @@
 \title{extract_xml
 this function extracts a all entries from an xml}
 \usage{
-retrieve_and_store_db(content, encryption_key)
+retrieve_and_store_db(
+  content,
+  billomatApiKey = billomatApiKey,
+  billomatID = billomatID,
+  billomatDB = billomatDB
+)
 }
 \arguments{
 \item{data}{the name of the entry in an xml you are interested in}
