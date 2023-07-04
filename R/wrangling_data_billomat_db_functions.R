@@ -113,7 +113,10 @@ clients_columns <- c("id",
                      "client_number",
                      "number",
                      "name",
-                     "country_code")
+                     "country_code",
+                     "debitor_account_number",
+                     "vat_number",
+                     "facturx_identifier")
 
 #' @export
 invoices_columns <- c(
