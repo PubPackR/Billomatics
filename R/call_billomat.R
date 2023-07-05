@@ -176,10 +176,11 @@ retrieve_and_store_db <- function (content,
   text <- paste0("DROP TABLE IF EXISTS ", content)
   # create a function to save the respective content
   DBI::dbExecute(billomatDB, text)
-  content <- stingr::str_replace_all(pattern = c("-" ="_",
+  content <- stringr::str_replace_all(pattern = c("-" ="_",
                                          "`" = "" ),string = content)
   DBI::dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
 }
+
 
 #' download_all_tables
 #' this function download pulls the selected tables from the Billomat API
