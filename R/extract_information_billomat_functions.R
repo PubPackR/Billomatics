@@ -222,3 +222,68 @@ create_laufzeiten_confirmations <- function(df,
       )
     )
 }
+
+#' extract the information from each note and put it in a long table
+#' create the final dataframe from the provided data -- important, names must match
+#' the data provided is split with a separate symbol
+
+#' @param df the df which holds the data from which information is extracted
+#' @param keep_keys the keys from where laufzeit information is extracted
+#' @param is_invoice  logical, setting whether the df contains information on invoices or not
+#' @return the data as df with the id and the extracted laufzeit
+
+#' @export
+get_laufzeiten_information <- function(df, keep_keys, is_invoice = TRUE) {
+  # only keep leistungszeitraum keys
+
+  if(is_invoice){
+    df <- df %>%
+      filter((grepl(x = key, pattern = keep_keys))) %>%
+      # turn all keys to one name
+      mutate(key = "Leistungszeitraum")
+  } else {
+    df <- df %>%
+      filter((grepl(x = key, pattern = keep_keys)))
+  }
+  df <- df %>%
+    # cleaning text
+    mutate(
+      text = str_trim(text),
+      text = str_remove_all(text, pattern = c(" \\(nach erneuter Absprache\\)|&nbsp|-28.02.2023und01.03.2023|-30.06.2023und01.08.2023|- 02.07.2022\\/\\/01.09.2022|-24.06.2022\\(2\\)01.11.2022|-02.07.2022//01.09.2022|nachAbsprache|geplant|EmployerBranding|Stellenanzeigen|1\\.Kampagne|28.02.2023und01.03.2023-|-01.05.2023\\(\\),01.11.2022|14.11.2023\\(\\),01.11.2022-|\\(\\)|;")),
+      text = na_if(text, "")) %>%
+    drop_na(text) %>%
+    group_by(id,key) %>%
+    mutate(Laufzeitnummer = row_number()) %>%
+    ungroup() %>%
+    pivot_wider(
+      id_cols = c("id","Laufzeitnummer"),
+      names_from = "key",
+      values_from = "text"
+    ) %>%
+    # take out breaks in laufzeit
+    mutate(
+      Leistungszeitraum = str_remove_all(Leistungszeitraum, pattern = "(?<=-).+(?=-)"),
+      Leistungszeitraum = str_replace_all(Leistungszeitraum, pattern = c("--" = "-")),
+      Leistungszeitraum = str_remove_all(Leistungszeitraum,pattern = c("\\(1\\)|\\(2. Kampagne\\)|dauerhaft ab dem"))
+    )
+
+  if (is_invoice){
+    df <- df %>%
+      separate(Leistungszeitraum,
+               into = c("Start", "Ende"),
+               sep = "-")
+    #mutate(Ende = case_when(invoice_number %in% direct_mailing_invoice_number ~ Start,
+    #                        TRUE ~ Ende)) %>%
+  } else {
+    df <- df %>%
+      mutate(Start = Leistungsbeginn,
+             Ende = Leistungsende)
+  }
+  df %>%
+    mutate(Start_date = dmy(Start),
+           Ende_date = dmy(Ende)) %>%
+    group_by(id) %>%
+    summarise(Laufzeit_Start = ymd(min(Start_date,na.rm = TRUE)),
+              Laufzeit_Ende = ymd(max(Ende_date,na.rm = TRUE)))
+}
+
