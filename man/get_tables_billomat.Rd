@@ -4,7 +4,11 @@
 \alias{get_tables_billomat}
 \title{get_tables_billomat}
 \usage{
-get_tables_billomat(db_table_name = "confirmations", billomatDB = billomatDB)
+get_tables_billomat(
+  db_table_name = "confirmations",
+  billomatDB = billomatDB,
+  encryption_key_db = encryption_key_db
+)
 }
 \arguments{
 \item{db_table_name}{the name of the table you are interested in}

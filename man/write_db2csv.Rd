@@ -7,6 +7,7 @@
 write_db2csv(
   table2process = "invoices",
   billomatDB = billomatDB,
+  encryption_key_db = encryption_key_db,
   path_for_export = getwd()
 )
 }

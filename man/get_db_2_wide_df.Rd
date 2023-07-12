@@ -8,6 +8,7 @@ get_db_2_wide_df(
   db_table_name,
   billomatDB = billomatDB,
   export_csv = FALSE,
+  encryption_key_db = encryption_key_db,
   path_for_export = getwd()
 )
 }

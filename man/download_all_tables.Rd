@@ -9,7 +9,8 @@ download_all_tables(
   content,
   billomatApiKey = billomatApiKey,
   billomatID = billomatID,
-  billomatDB = billomatDB
+  billomatDB = billomatDB,
+  encryption_key_db = encryption_key_db
 )
 }
 \arguments{

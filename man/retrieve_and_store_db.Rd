@@ -9,7 +9,8 @@ retrieve_and_store_db(
   content,
   billomatApiKey = billomatApiKey,
   billomatID = billomatID,
-  billomatDB = billomatDB
+  billomatDB = billomatDB,
+  encryption_key_db = encryption_key_db
 )
 }
 \arguments{
