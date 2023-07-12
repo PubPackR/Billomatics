@@ -163,9 +163,10 @@ invoices_columns <- c(
 #' @export
 get_tables_billomat <-
   function(db_table_name = "confirmations",
-           billomatDB = billomatDB) {
+           billomatDB = billomatDB,
+           encryption_key_db = encryption_key_db) {
     # here I read the whole table with db_name from the billomat db
-    DBI::dbReadTable(billomatDB, db_table_name)
+   shinymanager::read_db_decrypt(billomatDB, db_table_name,encryption_key_db)
   }
 
 #' get_db_2_wide_df
@@ -182,13 +183,14 @@ get_tables_billomat <-
 get_db_2_wide_df <- function (db_table_name,
                               billomatDB = billomatDB,
                               export_csv = FALSE,
+                              encryption_key_db = encryption_key_db,
                               path_for_export = getwd()) {
   ## paste the db name and the keyword columns in order to select the correct dictionary for the Key selection
   column_names <- paste0(db_table_name, "_columns")
 
   # read the db that is going to be turned into the df
   df <-
-    get_tables_billomat (db_table_name = db_table_name, billomatDB = billomatDB) %>%
+    get_tables_billomat (db_table_name = db_table_name, billomatDB = billomatDB,encryption_key_db =encryption_key_db) %>%
     # keep only the rows which have a relevant key
     dplyr::filter (name %in% get(column_names)) %>%
     tidyr::pivot_wider(
@@ -216,6 +218,7 @@ get_db_2_wide_df <- function (db_table_name,
 #' @export
 write_db2csv <- function(table2process = "invoices",
                          billomatDB = billomatDB,
+                         encryption_key_db=encryption_key_db,
                          path_for_export = getwd()) {
   tables <-
     c(
@@ -239,6 +242,7 @@ write_db2csv <- function(table2process = "invoices",
     get_db_2_wide_df(
       table,
       billomatDB = billomatDB,
+      encryption_key_db = encryption_key_db,
       path_for_export = path_for_export,
       export_csv = TRUE
     )
