@@ -163,7 +163,8 @@ extract_xml <-
 retrieve_and_store_db <- function (content,
                                    billomatApiKey = billomatApiKey,
                                    billomatID = billomatID,
-                                   billomatDB = billomatDB){
+                                   billomatDB = billomatDB,
+                                   encryption_key_db = encryption_key_db){
   data <-retrieveData(content,
                       per_page = 50,
                       billomatApiKey = billomatApiKey,
@@ -173,12 +174,11 @@ retrieve_and_store_db <- function (content,
   # first I extract the xml body as a list
   data_db<-purrr::map_df(1:length(data),~extract_xml(data, list_num = .), progress = TRUE, .id = "page")
   data_db$downloaded <- as.character(lubridate::as_datetime((lubridate::now())))
-  text <- paste0("DROP TABLE IF EXISTS ", content)
   # create a function to save the respective content
-  DBI::dbExecute(billomatDB, text)
+  DBI::dbExecute(billomatDB)
   content <- stringr::str_replace_all(pattern = c("-" ="_",
                                          "`" = "" ),string = content)
-  DBI::dbWriteTable(billomatDB, content, data_db,overwrite = TRUE)
+  shinymanager::write_db_encrypt(conn = billomatDB,name =  content,value =  data_db,passphrase = encryption_key_db)
 }
 
 
@@ -190,7 +190,8 @@ retrieve_and_store_db <- function (content,
 download_all_tables <- function(content,
                                 billomatApiKey = billomatApiKey,
                                 billomatID = billomatID,
-                                billomatDB = billomatDB){
+                                billomatDB = billomatDB,
+                                encryption_key_db = encryption_key_db){
   tables <-
     c(
       "invoices",
@@ -212,7 +213,8 @@ download_all_tables <- function(content,
     retrieve_and_store_db(tables[table],
                           billomatApiKey = billomatApiKey,
                           billomatID = billomatID,
-                          billomatDB = billomatDB)
+                          billomatDB = billomatDB,
+                          encryption_key_db = encryption_key_db)
   }
 }
 
