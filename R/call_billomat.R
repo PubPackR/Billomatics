@@ -175,7 +175,6 @@ retrieve_and_store_db <- function (content,
   data_db<-purrr::map_df(1:length(data),~extract_xml(data, list_num = .), progress = TRUE, .id = "page")
   data_db$downloaded <- as.character(lubridate::as_datetime((lubridate::now())))
   # create a function to save the respective content
-  DBI::dbExecute(billomatDB)
   content <- stringr::str_replace_all(pattern = c("-" ="_",
                                          "`" = "" ),string = content)
   shinymanager::write_db_encrypt(conn = billomatDB,name =  content,value =  data_db,passphrase = encryption_key_db)
