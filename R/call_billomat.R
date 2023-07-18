@@ -133,7 +133,7 @@ retrieveData <- function(content,
 #' @export
 extract_single_entry <- function(entry_as_xml) {
   entry_as_df <- unlist(entry_as_xml) %>% tibble::enframe()
-  ids <- dplyr::filter(entry_as_df, name == "id") %>% pull(value)
+  ids <- dplyr::filter(entry_as_df, name == "id") %>% dplyr::pull(value)
   entry_as_df$ids <- as.character(ifelse(is.null(ids),as.integer(runif(1,0,100000)),ids))
   entry_as_df$name <- as.character(entry_as_df$name)
   entry_as_df
