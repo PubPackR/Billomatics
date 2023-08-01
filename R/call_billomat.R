@@ -177,6 +177,9 @@ retrieve_and_store_db <- function (content,
   # create a function to save the respective content
   content <- stringr::str_replace_all(pattern = c("-" ="_",
                                          "`" = "" ),string = content)
+  # delete the table if it exists
+  DBI::dbRemoveTable(billomatDB,name = content)
+  # write the new tables
   shinymanager::write_db_encrypt(conn = billomatDB,name =  content,value =  data_db,passphrase = encryption_key_db)
 }
 
@@ -215,5 +218,6 @@ download_all_tables <- function(content,
                           billomatDB = billomatDB,
                           encryption_key_db = encryption_key_db)
   }
+  dbDisconnect(billomatDB)
 }
 
