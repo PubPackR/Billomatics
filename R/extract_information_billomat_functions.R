@@ -154,7 +154,7 @@ read_KeysFromDescription <- function(df, sep = sep,EntryFormatCheck = EntryForma
                                )
                        ),
              text = str_replace_all(text, replace_string),
-             text = str_remove_all(text, pattern = c("\\(|\\)|nach erneuter Absprache|&nbsp|-28.02.2023und01.03.2023|-30.06.2023und01.08.2023|- 02.07.2022\\/\\/01.09.2022|-24.06.2022\\(2\\)01.11.2022|-02.07.2022//01.09.2022|nachAbsprache|geplant|EmployerBranding|Stellenanzeigen|1\\.Kampagne|28.02.2023und01.03.2023-|-01.05.2023,01.11.2022|14.11.2023,01.11.2022-"))
+             text = str_remove_all(text, pattern = c("\\(|\\)|nach erneuter Absprache|&nbsp|-28.02.2023und01.03.2023|;|-30.06.2023und01.08.2023|- 02.07.2022\\/\\/01.09.2022|-24.06.2022\\(2\\)01.11.2022|-02.07.2022//01.09.2022|nachAbsprache|geplant|EmployerBranding|Stellenanzeigen|1\\.Kampagne|28.02.2023und01.03.2023-|-01.05.2023,01.11.2022|14.11.2023,01.11.2022-"))
 
       )
   }
@@ -235,7 +235,7 @@ create_laufzeiten_confirmations <- function(df,
 #' @export
 get_laufzeiten_information <- function(df, keep_keys, is_invoice = TRUE) {
   # only keep leistungszeitraum keys
-
+# here I need to include the Leistungsbeginn / Ende format
   if(is_invoice){
     df <- df %>%
       filter((grepl(x = key, pattern = keep_keys))) %>%
@@ -266,7 +266,7 @@ get_laufzeiten_information <- function(df, keep_keys, is_invoice = TRUE) {
       Leistungszeitraum = str_replace_all(Leistungszeitraum, pattern = c("--" = "-")),
       Leistungszeitraum = str_remove_all(Leistungszeitraum,pattern = c("\\(1\\)|\\(2. Kampagne\\)|dauerhaft ab dem"))
     )
-
+# here I need then to use the mutate to coalsece the values so that I have one column
   if (is_invoice){
     df <- df %>%
       separate(Leistungszeitraum,
