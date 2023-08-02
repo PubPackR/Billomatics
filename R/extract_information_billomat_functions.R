@@ -240,7 +240,10 @@ get_laufzeiten_information <- function(df, keep_keys, is_invoice = TRUE) {
     df <- df %>%
       filter((grepl(x = key, pattern = keep_keys))) %>%
       # turn all keys to one name
-      mutate(key = "Leistungszeitraum")
+      mutate(key = case_when(str_detect(text,"-|bis") ~ "Leistungszeitraum",
+                             TRUE ~ key
+                             )
+             )
   } else {
     df <- df %>%
       filter((grepl(x = key, pattern = keep_keys)))
@@ -272,7 +275,8 @@ get_laufzeiten_information <- function(df, keep_keys, is_invoice = TRUE) {
       separate(Leistungszeitraum,
                into = c("Start", "Ende"),
                sep = "-") %>%
-      mutate()
+      mutate(Start = coalesce(Start, Leistungsbeginn),
+             Ende = coalesce(Ende,Leistungsende))
     #mutate(Ende = case_when(invoice_number %in% direct_mailing_invoice_number ~ Start,
     #                        TRUE ~ Ende)) %>%
   } else {
