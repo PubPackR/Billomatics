@@ -218,6 +218,6 @@ download_all_tables <- function(content,
                           billomatDB = billomatDB,
                           encryption_key_db = encryption_key_db)
   }
-  dbDisconnect(billomatDB)
+  DBI::dbDisconnect(billomatDB)
 }
 
