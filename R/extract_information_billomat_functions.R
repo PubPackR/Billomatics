@@ -275,8 +275,8 @@ get_laufzeiten_information <- function(df, keep_keys, is_invoice = TRUE) {
       separate(Leistungszeitraum,
                into = c("Start", "Ende"),
                sep = "-") %>%
-      mutate(Start = coalesce(Start, Leistungsbeginn),
-             Ende = coalesce(Ende,Leistungsende))
+      mutate(Start = coalesce(dmy(Start), dmy(Leistungsbeginn)),
+             Ende = coalesce(dmy(Ende),dmy(Leistungsende)))
     #mutate(Ende = case_when(invoice_number %in% direct_mailing_invoice_number ~ Start,
     #                        TRUE ~ Ende)) %>%
   } else {
