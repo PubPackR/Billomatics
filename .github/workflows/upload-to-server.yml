@@ -1,0 +1,17 @@
+name: "Execute script"
+
+on: workflow_dispatch
+
+permissions: read-all
+
+jobs:
+  update_app:
+    name: "Execute R script"
+    uses: "studyflix/studiflix-infrastructure/.github/workflows/run-r-script.yml@main"
+    with:
+      shiny_host: "shiny-nexturl.biberger.me"
+      shiny_port: 22
+      shiny_username: application-user
+      script_name: "R/script.R"
+      needs_billomat: true
+    secrets: inherit
