@@ -13,5 +13,4 @@ jobs:
       shiny_port: 22
       shiny_username: application-user
       script_path: "R/script.R"
-      needs_billomat: true
     secrets: inherit
