@@ -12,6 +12,6 @@ jobs:
       shiny_host: "shiny-nexturl.biberger.me"
       shiny_port: 22
       shiny_username: application-user
-      script_name: "R/script.R"
+      script_path: "R/script.R"
       needs_billomat: true
     secrets: inherit
