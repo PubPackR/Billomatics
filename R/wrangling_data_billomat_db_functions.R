@@ -309,3 +309,35 @@ read_most_recent_data <- function(location, filetype = "RDS") {
 
   return(df)
 }
+
+#' clear_confirmations
+#'
+#' this function sets the status of confirmations to cleared
+#'
+#' @param ab_numbers an array containing AB numbers
+
+#' @export
+clear_confirmations <- function(ab_numbers, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+
+  for (ab_num in ab_numbers) {
+
+    # get the confirmation id for the current AB number
+    response <- httr::GET(paste0("https://",
+                                 billomatID,
+                                 ".billomat.net/api/confirmations?confirmation_number=",
+                                 ab_num,
+                                 "&api_key=",
+                                 billomatApiKey))
+    xml <- read_xml(response)
+    conf_id <- xml_text(xml_find_first(xml, "//confirmation/id"))
+
+    # set confirmation status to cleared
+    httr::PUT(paste0("https://",
+                     billomatID,
+                     ".billomat.net/api/confirmations/",
+                     conf_id,
+                     "/clear",
+                     "?api_key=",
+                     billomatApiKey))
+  }
+}
