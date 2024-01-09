@@ -1,0 +1,87 @@
+name: 'Update App'
+
+on:
+  workflow_call:
+    secrets:
+      USER_SSH_PRIVATE_KEY:
+        required: true
+    inputs:
+      shiny_host:
+        description: 'The host of the machine the shiny app shall be installed to'
+        default: 'shiny.studyflix.info'
+        required: true
+        type: string
+      shiny_username:
+        description: 'Username for the host the app is installed to'
+        default: 'application-user'
+        required: false
+        type: string
+      shiny_port:
+        description: 'The SSH Port of the host the app is installed to'
+        default: 22
+        required: false
+        type: number
+
+permissions: read-all
+
+jobs:
+  terraform:
+    name: 'Deploy app'
+    runs-on: ubuntu-latest
+
+    # Use the Bash shell regardless of whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # Checkout the repository to the GitHub Actions runner
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Check repository name
+      run: |
+        REPO_NAME=$(echo "${GITHUB_REPOSITORY##*/}" | cut -d'-' -f1)
+        if [ "${REPO_NAME}" != 'shiny' ] && [ "${REPO_NAME}" != 'base' ]; then
+          echo "Error: Repository named wrong, name must begin with 'base-' or 'shiny-'"
+        exit 1
+        fi
+
+    - name: Combine directory existence status
+      run: |
+        directories=""
+        if [ -f "app.R" ]; then
+          directories+=" app.R "
+        fi
+        if [ -d "func/" ]; then
+          directories+=" func "
+        fi
+        if [ -d "do/" ]; then
+          directories+=" do "
+        fi
+        echo "source=$directories" >> $GITHUB_ENV
+        echo $directories
+
+    - name: set target directory
+      run: |
+        target_directory="~/$(echo ${GITHUB_REPOSITORY##*/} | cut -d'-' -f1)-apps/${GITHUB_REPOSITORY##*/}/"
+        echo "target=$target_directory" >> $GITHUB_ENV
+        echo $target_directory
+    
+    # Transfers data from repo to SERVER/shiny_apps/${repo-name} or SERVER/base_apps/${repo-name}
+    - name: Copy app.R, func and do via ssh key
+      uses: up9cloud/action-rsync@master
+      env:
+        HOST: ${{ inputs.shiny_host }}
+        KEY: ${{secrets.USER_SSH_PRIVATE_KEY}}
+        TARGET: "${{ env.target }}"
+        VERBOSE: true
+        USER: ${{ inputs.shiny_username }}
+        ARGS: -az --exclude=/.git/
+        SSH_ARGS: '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+        SOURCE: "${{ env.source }}"
+        PRE_SCRIPT: |
+          echo start at:
+          date -u
+        POST_SCRIPT: "echo done at: && date -u"
+

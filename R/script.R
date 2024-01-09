@@ -1,0 +1,5 @@
+dir.create("output")
+file_conn <- file("output/billomat.sqlite")
+pw <- Sys.getenv("ENCRYPTION_PAYLOAD")
+writeLines(c("Hello", "World", pw), file_conn)
+close(file_conn)

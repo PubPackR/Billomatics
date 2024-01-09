@@ -1,0 +1,15 @@
+name: "Install app"
+
+on: workflow_dispatch
+
+permissions: read-all
+
+jobs:
+  update_app:
+    name: "Update app"
+    uses: "Yo-Hannes/shiny-01-Billomatics/.github/workflows/deploy-app.yml@main"
+    with:
+      shiny_host: "shiny.studyflix.info"
+      shiny_port: 22
+      shiny_username: application-user
+    secrets: inherit
