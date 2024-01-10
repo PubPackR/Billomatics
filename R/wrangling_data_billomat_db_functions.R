@@ -317,29 +317,31 @@ read_most_recent_data <- function(location, filetype = "RDS") {
 #' @param ab_numbers an array containing AB numbers
 
 #' @export
-clear_confirmations <- function(ab_numbers, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+clear_confirmations <- function(confirmation_id, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+  i <- 1
+  for (confirmation_id in confirmation_ids) {
 
-  for (ab_num in ab_numbers) {
-
-    # get the confirmation id for the current AB number
-    response <- httr::GET(paste0("https://",
-                                 billomatID,
-                                 ".billomat.net/api/confirmations?confirmation_number=",
-                                 ab_num,
-                                 "&api_key=",
-                                 billomatApiKey))
-    xml <- xml2::read_xml(response)
-    conf_id <- xml2::xml_text(xml_find_first(xml, "//confirmation/id"))
+    # # get the confirmation id for the current AB number
+    # response <- httr::GET(paste0("https://",
+    #                              billomatID,
+    #                              ".billomat.net/api/confirmations?confirmation_number=",
+    #                              ab_num,
+    #                              "&api_key=",
+    #                              billomatApiKey))
+    # xml <- xml2::read_xml(response)
+    # conf_id <- xml2::xml_text(xml_find_first(xml, "//confirmation/id"))
 
     # set confirmation status to cleared
     httr::PUT(paste0("https://",
                      billomatID,
                      ".billomat.net/api/confirmations/",
-                     conf_id,
+                     confirmation_id,
                      "/clear",
                      "?api_key=",
                      billomatApiKey))
-    total <- length(ab_numbers)
-    print(paste0("Putting:",ab_num," of ",total))
+
+    total <- length(confirmation_ids)
+    i <- i + 1
+    print(paste0("Putting:",i," of ",total))
   }
 }
