@@ -319,6 +319,7 @@ read_most_recent_data <- function(location, filetype = "RDS") {
 #' @export
 clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKey, billomatID = billomatID) {
   i <- 1
+
   for (confirmation_id in confirmation_ids) {
 
     # # get the confirmation id for the current AB number
@@ -332,7 +333,7 @@ clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKe
     # conf_id <- xml2::xml_text(xml_find_first(xml, "//confirmation/id"))
 
     # set confirmation status to cleared
-    httr::PUT(paste0("https://",
+    response <- httr::PUT(paste0("https://",
                      billomatID,
                      ".billomat.net/api/confirmations/",
                      confirmation_id,
@@ -340,8 +341,13 @@ clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKe
                      "?api_key=",
                      billomatApiKey))
 
+
+    if (response$status_code != 200) {
+      print(paste0("failed to put", confirmation_id))
+    }
+
     total <- length(confirmation_ids)
-    i <- i + 1
     print(paste0("Putting:",i," of ",total))
+    i <- i + 1
   }
 }

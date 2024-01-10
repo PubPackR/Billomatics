@@ -5,7 +5,7 @@
 \title{clear_confirmations}
 \usage{
 clear_confirmations(
-  confirmation_id,
+  confirmation_ids,
   billomatApiKey = billomatApiKey,
   billomatID = billomatID
 )
