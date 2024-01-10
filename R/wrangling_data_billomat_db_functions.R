@@ -328,8 +328,8 @@ clear_confirmations <- function(ab_numbers, billomatApiKey = billomatApiKey, bil
                                  ab_num,
                                  "&api_key=",
                                  billomatApiKey))
-    xml <- read_xml(response)
-    conf_id <- xml_text(xml_find_first(xml, "//confirmation/id"))
+    xml <- xml2::read_xml(response)
+    conf_id <- xml2::xml_text(xml_find_first(xml, "//confirmation/id"))
 
     # set confirmation status to cleared
     httr::PUT(paste0("https://",
