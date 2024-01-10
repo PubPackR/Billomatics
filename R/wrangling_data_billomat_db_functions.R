@@ -339,5 +339,7 @@ clear_confirmations <- function(ab_numbers, billomatApiKey = billomatApiKey, bil
                      "/clear",
                      "?api_key=",
                      billomatApiKey))
+    total <- length(ab_numbers)
+    print(paste0("Putting:",ab_num," of ",total))
   }
 }
