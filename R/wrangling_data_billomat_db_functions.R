@@ -317,7 +317,7 @@ read_most_recent_data <- function(location, filetype = "RDS") {
 #' @param ab_numbers an array containing AB numbers
 
 #' @export
-clear_confirmations <- function(confirmation_id, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKey, billomatID = billomatID) {
   i <- 1
   for (confirmation_id in confirmation_ids) {
 
