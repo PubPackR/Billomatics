@@ -2,6 +2,7 @@
 
 export("%>%")
 export(articles_columns)
+export(clear_confirmations)
 export(clients_columns)
 export(compress_column)
 export(compute_revenue_month)
