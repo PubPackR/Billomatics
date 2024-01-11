@@ -166,7 +166,7 @@ retrieve_and_store_db <- function (content,
                                    billomatDB = billomatDB,
                                    encryption_key_db = encryption_key_db){
   data <-retrieveData(content,
-                      per_page = 50,
+                      per_page = 250,
                       billomatApiKey = billomatApiKey,
                       billomatID = billomatID)
   # now I have the whole result from the get call in one big list of lists
