@@ -255,7 +255,8 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
           # set url with "page=" so you can add endpoints
           paste0(
             "https://api.centralstationcrm.net/api/protocols?perpage=250&page=",
-            i
+            i,
+            "&includes=comments"
           ),
           httr::add_headers(headers)
         )
@@ -284,25 +285,36 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
       }
     }
   } else {
-    for (i in filter_vector) {
+    for (i in 1:length(filter_vector)) {
       # create an response with httr and the GET function. In the function you paste
       # url and your endpoint and you also need the headers
-      response <-
-        httr::GET(
-          # set url with "page=" so you can add endpoints and defined filter
-          paste0(
-            "https://api.centralstationcrm.net/api/protocols?perpage=250&page=1",
-            filter_option,
-            i
-          ),
-          httr::add_headers(headers)
-        )
-  
-      # make response answer readable with jsonlite::fromJSON
-      data <- jsonlite::fromJSON(httr::content(response, "text"))
-      protocols <- dplyr::bind_rows(protocols, data)
+      tryCatch({
+        response <-
+          httr::GET(
+            # set url with "page=" so you can add endpoints and defined filter
+            paste0(
+              "https://api.centralstationcrm.net/api/protocols?perpage=250&page=1",
+              filter_option,
+              filter_vector[i],
+              "&includes=comments"
+            ),
+            httr::add_headers(headers)
+          )
+        
+        data <-
+          jsonlite::fromJSON(httr::content(response, "text"))
+        protocols <- dplyr::bind_rows(protocols, data)
+      },
+      error = function(cond) {
+        message("Person does not exist")
+        # Choose a return value in case of error
+        NA
+      })
+      if (i %% 100 == 0) {
+        print(i)
       }
     }
+  }
 
   protocols %>% tidyr::unnest(protocol_object_note)
 }
