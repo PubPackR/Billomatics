@@ -225,3 +225,107 @@ download_all_tables <- function(content,
   DBI::dbDisconnect(billomatDB)
 }
 
+
+#' clear_confirmations
+#'
+#' this function sets the status of confirmations to cleared
+#'
+#' @param confirmation_ids an array containing AB numbers
+
+#' @export
+clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+  i <- 1
+
+  for (confirmation_id in confirmation_ids) {
+
+    # # get the confirmation id for the current AB number
+    # response <- httr::GET(paste0("https://",
+    #                              billomatID,
+    #                              ".billomat.net/api/confirmations?confirmation_number=",
+    #                              ab_num,
+    #                              "&api_key=",
+    #                              billomatApiKey))
+    # xml <- xml2::read_xml(response)
+    # conf_id <- xml2::xml_text(xml_find_first(xml, "//confirmation/id"))
+
+    # set confirmation status to cleared
+    response <- httr::PUT(paste0("https://",
+                                 billomatID,
+                                 ".billomat.net/api/confirmations/",
+                                 confirmation_id,
+                                 "/clear",
+                                 "?api_key=",
+                                 billomatApiKey))
+
+
+    if (response$status_code != 200) {
+      print(paste0("failed to put", confirmation_id))
+    }
+
+    total <- length(confirmation_ids)
+    print(paste0("Putting:",i," of ",total))
+    i <- i + 1
+  }
+}
+
+#' get_comments
+#'
+#' this function pulls all the comments for a list of given ids
+#'
+#' @param confirmation_ids a vector of ids numbers
+
+#' @export
+get_comments <- function(confirmation_ids,
+                         billomatApiKey = billomatApiKey,
+                         billomatID = billomatID) {
+  i <- 1
+  comments <- dplyr::tibble()
+  for (confirmation_id in confirmation_ids) {
+    response <- httr::GET(
+      paste0(
+        "https://",
+        billomatID,
+        ".billomat.net/api/confirmation-comments",
+        ## ich gebe mit ? die Parameter mit und dann mit & wird der Api key übermittelt
+        "?confirmation_id=",
+        confirmation_id,
+        "&api_key=",
+        billomatApiKey
+      )
+    )
+    if (response$status_code != 200) {
+      print(paste0("failed to get comment", confirmation_id))
+    }
+
+    total <- length(confirmation_ids)
+
+    # get the body of the response which contains all the information and turn it to a list
+    data_xml <- xml2::as_list(xml2::read_xml(response$content))
+
+    print(paste0("Getting comment:",i," of ",total))
+    i <- i + 1
+    # create a tibble from the list that contains the field names
+    comment <- tibble::as_tibble(data_xml) %>%
+
+      # I unnest so that it keeps the node name as id
+      tidyr::unnest_longer(col = `confirmation-comments`) %>%
+      # I unnest only the values of the confirmation-comments column
+      tidyr::unnest(cols = c(`confirmation-comments`)) %>%
+      # only keep relevant information
+      dplyr::filter(`confirmation-comments_id`%in% c("id","confirmation_id","created","comment")) %>%
+
+      # turn the table wider so each comment has the all information in one row
+      tidyr::pivot_wider(names_from = `confirmation-comments_id`,
+                         values_from = `confirmation-comments`,
+                         values_fn = list) %>%
+
+      # because all cols are a list I have to unnest everything
+      tidyr::unnest(cols = everything())
+
+    # append the new comment to the existing comments
+    comments <- dplyr::bind_rows(comments,
+                                 comment)
+  }
+  # return all comments
+  return(comments)
+}

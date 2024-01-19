@@ -16,7 +16,7 @@ get_central_station_protocols(
 
 \item{filter_by}{setting to prefilter export by a list of "company_id" or "person_id", if all protocols are needed use FALSE}
 
-\item{filter_vector}{vector to filter by "company_id" or "person_id" (decided by filter_by), not needed if all protocolls should get downloaded}
+\item{filter_vector}{vector to filter by "company_id" or "person_id" (decided by filter_by), not needed if all protocols should get downloaded}
 
 \item{pages}{the setting to set a maximum number of pages to download, with 2000 pages as default (one page includes 250 entries)}
 }
