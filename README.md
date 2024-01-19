@@ -77,6 +77,12 @@ Billomatics::get_tables_billomat(db_table_name = "clients", billomatDB = billoma
 
 This will then give you the tags. IF there are multiple tags, then you need to group them and give them each an index, as values and names are always grouped but do not have a unique unififying id.
 
+## get comments function
+Use this function to retrieve all confirmation comments for a given id.
+
+## clear confirmations function 
+Use this function to set statut to cleared a set of given confirmation ids.
+
 ### Pre processing functions to create a monthly dataset
 
 
