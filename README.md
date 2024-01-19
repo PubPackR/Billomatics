@@ -13,7 +13,7 @@ devtools::install_github("PubPackR/Billomatics",
 
 ## get billomat data:
 
-Billomatics allows to download and extract the data from the Billomat software. 
+Billomatics allows to download, post, and extract data from/ to the Billomat software. 
 
 ### download the billomat data
 
