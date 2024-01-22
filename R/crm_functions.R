@@ -316,7 +316,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
     }
   }
 
-  protocols %>% tidyr::unnest(protocol_object_note)
+ return(protocols)
 }
 
 #' get_central_station_protocols
