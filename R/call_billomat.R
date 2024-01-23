@@ -209,7 +209,8 @@ download_all_tables <- function(content,
       "`offer-items`",
       "articles",
       "`offer-tags`",
-      "templates"
+      "templates",
+      "`client-property-values`"
     )
   #per_page = 10
   # here I get the index of each table
