@@ -215,6 +215,8 @@ download_all_tables <- function(content,
   # here I get the index of each table
   index_table<-which(tables %in% content)
 
+  billomatDB <- DBI::dbConnect(RSQLite::SQLite(), billomatDB_path)
+
   for(table in index_table){
     retrieve_and_store_db(tables[table],
                           billomatApiKey = billomatApiKey,
@@ -268,6 +270,7 @@ clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKe
   }
 }
 
+##### comments ------
 #' get_comments
 #'
 #' this function pulls all the comments for a list of given ids
@@ -329,3 +332,96 @@ get_comments <- function(confirmation_ids,
   # return all comments
   return(comments)
 }
+
+
+#### client properties ------
+
+
+#' extract_single_entry_client_properties
+#'
+#' this function extracts the properties of a single entry
+#'
+#' @param entry_as_xml is the data of one entry as an xml
+
+#' @export
+extract_single_entry_client_properties <- function(entry_as_xml) {
+  # this function takes a single entry and turns it into a dataframe, it is a helper function to create entries for page
+  entry_as_df <- tidyr::unlist(entry_as_xml) %>% tibble::enframe()
+  ids <- dplyr::filter(entry_as_df, name == "client-property-value.client_id") %>% dplyr::pull(value)
+  id_property <- dplyr::filter(entry_as_df, name == "client-property-value.client_property_id") %>% dplyr::pull(value)
+
+  entry_as_df$ids <- as.character(ifelse(is.null(ids),as.integer(runif(1,0,100000)),ids))
+  entry_as_df$id_property <- as.character(ifelse(is.null(id_property),as.integer(runif(1,0,100000)),id_property))
+  entry_as_df$property_name <- dplyr::filter(entry_as_df, name == "client-property-value.name") %>% dplyr::pull(value)
+  entry_as_df
+}
+
+#' create_entries_for_page
+#'
+#' this function uses
+#'
+#' @param entry_as_xml is the data of one entry as extract_single_entry_client_properties
+
+#' @export
+create_entries_for_page <- function(entry_as_xml) {
+  # this function takes all entries on a page and creates one large table binding individual entries
+  all_entries_this_page <-
+    purrr::map_dfr(
+      1:length(entry_as_xml),
+      ~ extract_single_entry_client_properties(entry_as_xml[.])
+    )
+  return(all_entries_this_page)
+}
+
+#' create_entries_for_all_pages
+#'
+#' this function uses the create_entries_for_page an purrrs over all pages
+#'
+#' @param data are all pages that are retrieved as xml
+
+#' @export
+create_entries_for_all_pages <- function(data) {
+
+  purrr::map_dfr(1:length(data), ~ create_entries_for_page(as_list(data[[.]]$body)[[1]]))
+}
+
+
+#' get_all_client_properties
+#'
+#' this function downloads all client properties and saves them in the billomat db
+#'
+#' @param content the name of the tables you are interested in, this is one string
+#' @param per_page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @export
+get_all_client_properties <-function(content = "`client-property-values`",
+                                     billomatApiKey = billomatApiKey,
+                                     billomatID = billomatID,
+                                     billomatDB = billomatDB,
+                                     encryption_key_db = encryption_db){
+
+
+  data <- Billomatics::retrieveData(content = content,
+                                    per_page = 250,
+                                    billomatApiKey = billomatApiKey,
+                                    billomatID = billomatID)
+  data_db <- create_entries_for_all_pages(data)
+
+  data_db$downloaded <- as.character(lubridate::as_datetime((lubridate::now())))
+  # create a function to save the respective content
+  content <- stringr::str_replace_all(pattern = c("-" ="_",
+                                                  "`" = "" ),string = content)
+  ## connect to the db
+  billomatDB <- DBI::dbConnect(RSQLite::SQLite(), billomatDB_path)
+
+  # delete the table if it exists
+  if (DBI::dbExistsTable(billomatDB,name = content)){
+    DBI::dbRemoveTable(billomatDB,name = content)
+  }
+
+  # write the new tables
+  shinymanager::write_db_encrypt(conn = billomatDB,name =  content,value =  data_db,passphrase = encryption_key_db)
+  DBI::dbDisconnect(billomatDB)
+}
+
