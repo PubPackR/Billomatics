@@ -346,7 +346,7 @@ get_comments <- function(confirmation_ids,
 #' @export
 extract_single_entry_client_properties <- function(entry_as_xml) {
   # this function takes a single entry and turns it into a dataframe, it is a helper function to create entries for page
-  entry_as_df <- tidyr::unlist(entry_as_xml) %>% tibble::enframe()
+  entry_as_df <- unlist(entry_as_xml) %>% tibble::enframe()
   ids <- dplyr::filter(entry_as_df, name == "client-property-value.client_id") %>% dplyr::pull(value)
   id_property <- dplyr::filter(entry_as_df, name == "client-property-value.client_property_id") %>% dplyr::pull(value)
 
@@ -382,7 +382,7 @@ create_entries_for_page <- function(entry_as_xml) {
 #' @export
 create_entries_for_all_pages <- function(data) {
 
-  purrr::map_dfr(1:length(data), ~ create_entries_for_page(as_list(data[[.]]$body)[[1]]))
+  purrr::map_dfr(1:length(data), ~ create_entries_for_page(xml2::as_list(data[[.]]$body)[[1]]))
 }
 
 
