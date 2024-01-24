@@ -425,3 +425,64 @@ get_all_client_properties <-function(content = "`client-property-values`",
   DBI::dbDisconnect(billomatDB)
 }
 
+##### Post Values ------
+#' post_client_value
+#'
+#' this function posts values to a client and the respective table
+#'
+#' @param property_id the id for the property id that is to be changed
+#' @param client_db this is the table with the client db that contains a client id and the value to be posted
+#' @param client_ids a list of all client_ids that we want to put
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @param value2post the string with the name of column name that contains the value
+#' @param endpoint the string with the name of the endpont where you want to post the value
+
+#' @export
+post_client_value <- function(property_id = 18444,
+                              client_db = df,
+                              client_ids = list_of_ids,
+                              billomatApiKey = billomatApiKey,
+                              billomatID = billomatID,
+                              value2post = "debitor_jp5",
+                              endpoint = "client-property-values") {
+  for (id in client_ids) {
+    # get the respective client_id from the loop and pass it to the table with client ID and debitornumber
+    post_value <- client_db %>%
+      dplyr::filter(id == .$client_id) %>%
+      dplyr::pull(get(value2post))
+
+    # create the xml file for the individual body
+    body <- list(
+      client_property_value = list(
+        client_id = structure(list(id)),
+        client_property_id = structure(list(property_id)),
+        value = structure(list(post_value))
+      )
+    ) %>%
+      # turn the list into an xml
+      xml2::as_xml_document(.) %>%
+      # create a string from the xml
+      paste0(.)
+
+
+    # pass the url
+    URI <-paste0("https://",billomatID,".billomat.net/api/",endpoint)
+
+    # pass the header
+    headers <- c("X-BillomatApiKey" = billomatApiKey,
+                 "Content-Type" = "application/xml")
+
+    # make the call and post
+    response <- httr::POST(URI,
+                           config = httr::add_headers(headers),
+                           body = body)
+
+    # handle status code not 201
+    if (response$status_code != 201) {
+      print
+      print(paste0("could not post:", httr::content(response)))
+    }
+  }
+}
+
