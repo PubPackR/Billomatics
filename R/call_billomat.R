@@ -452,6 +452,8 @@ post_client_value <- function(property_id = 18444,
       dplyr::filter(id == .$client_id) %>%
       dplyr::pull(get(value2post))
 
+
+
     # create the xml file for the individual body
     body <- list(
       client_property_value = list(
@@ -481,7 +483,7 @@ post_client_value <- function(property_id = 18444,
     # handle status code not 201
     if (response$status_code != 201) {
       print
-      print(paste0("could not post:", httr::content(response)))
+      print(paste0("could not post:", id))
     }
   }
 }
