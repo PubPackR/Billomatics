@@ -57,7 +57,7 @@ get_central_station_contacts <- function (api_key, pages = "all") {
         paste0(
           url,
           i,
-          "&includes=companies%20tags%20comments%20emails%20tels%20positions%20tasks%20tasks_pending&methods=all"
+          "&includes=companies%20tags%20comments%20emails%20tels%20positions%20tasks%20tasks_pending%20custom_fields&methods=all"
         ),
         httr::add_headers(headers)
       )
