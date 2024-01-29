@@ -187,7 +187,7 @@ add_crm_custom_fields <- function(headers, df) {
     body_string <- paste0(
         '{
           "custom_field": {
-              "attachable_type": "', df$attachable_type_string[r],'",
+              "attachable_type": "', df$attachable_type_string[a],'",
               "attachable_id": ', df$attachable_id[a], ',
               "custom_fields_type_id": ', df$field_name[a], ',
               "name": "', df$value[a], '",
