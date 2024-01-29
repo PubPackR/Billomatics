@@ -198,7 +198,7 @@ add_crm_custom_fields <- function(headers, df) {
 
     # execute post request with predefined header and body
     httr::POST(
-      paste0("https://api.centralstationcrm.net/api/", df$attachable_type[r], "/", df$attachable_id[a],"/custom_fields"),
+      paste0("https://api.centralstationcrm.net/api/", df$attachable_type[a], "/", df$attachable_id[a],"/custom_fields"),
       httr::add_headers(headers),
       body = body_string,
       encode = "raw"
