@@ -275,7 +275,11 @@ write_db2csv <- function(table2process = "invoices",
 #' @return the most recent data table
 
 #' @export
-read_most_recent_data <- function(location, filetype = "RDS") {
+read_most_recent_data <- function(location, filetype = "RDS", name_starts_with = "") {
+
+  # filter on files that starts with the parameter name_starts_with and
+  # ends with the filetype
+  file_pattern <- paste0("^", name_starts_with, ".*.", filetype, "$")
 
   #read all the rds, csv and xlsx files
   filename <-
@@ -287,14 +291,22 @@ read_most_recent_data <- function(location, filetype = "RDS") {
     file.info() %>%
     dplyr::mutate(name = rownames(.)) %>%
 
+    dplyr::filter(grepl(pattern = file_pattern, basename(name))) %>%
+
     #only keep the most recent filename
     dplyr::slice_max(mtime) %>%
     dplyr::pull(name)
 
 
   filetype <- tail(unlist(strsplit(filename, "\\.")), 1)
-  print(filetype)
+  print(paste0("The filetype: ", filetype))
+  print(paste0("Last modified file: ", filename))
 
+  if(length(filename)==0){
+    print(paste0("No file found that matches your pattern: ", file_pattern))
+    print("These are all files in your specified location:")
+    print(list.files(path = location), full.names = TRUE)
+  }
 
   if (filetype == "xlsx") {
     df <-
