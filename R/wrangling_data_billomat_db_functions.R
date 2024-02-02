@@ -268,10 +268,11 @@ write_db2csv <- function(table2process = "invoices",
 
 #' read_most_recent_data
 #'
-#' this function reads the latest rds, csv or xlsx file in a certain directory
+#' this function reads the latest RDS, csv or xlsx file in a certain directory
 #'
 #' @param location the directors you want to read the most recent file from
-#' @param filetype optional the file type you want to read
+#' @param filetype the file type you want to read (xlsx,RDS,csv)
+#' @param name_starts_with filter files by beginning of name
 #' @return the most recent data table
 
 #' @export
