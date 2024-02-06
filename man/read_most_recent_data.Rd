@@ -4,16 +4,18 @@
 \alias{read_most_recent_data}
 \title{read_most_recent_data}
 \usage{
-read_most_recent_data(location, filetype = "RDS")
+read_most_recent_data(location, filetype = "RDS", name_starts_with = "")
 }
 \arguments{
 \item{location}{the directors you want to read the most recent file from}
 
-\item{filetype}{optional the file type you want to read}
+\item{filetype}{the file type you want to read (xlsx,RDS,csv)}
+
+\item{name_starts_with}{filter files by beginning of name}
 }
 \value{
 the most recent data table
 }
 \description{
-this function reads the latest rds, csv or xlsx file in a certain directory
+this function reads the latest RDS, csv or xlsx file in a certain directory
 }

@@ -7,8 +7,9 @@
 
 #' @export
 compress_column <- function(column) {
+  column <- gsub("\u00A0", " ", column, fixed = TRUE)
   column <- tolower(column)
-  column <- str_remove_all(column, " ag| se| gmbh| co. kg|kg")
+  column <- str_remove_all(column, " ag| se| gmbh| co\\. kg|kg")
   column <-  gsub("[^[:alnum:]]", "", column)
   column %>%
     stringr::str_replace_all("[äÄ]", "ae") %>%
