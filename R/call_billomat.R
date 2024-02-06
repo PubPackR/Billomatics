@@ -488,3 +488,143 @@ post_client_value <- function(property_id = 18444,
   }
 }
 
+##### Post resource  ------
+#' Post a resource to Billomat API
+#'
+#' This function posts a resource to the Billomat API with specified values.
+#'
+#' @param billomat_id The Billomat account ID.
+#' @param billomat_api_key The Billomat API key.
+#' @param resource The resource you want to post (e.g., "invoice", "client", etc.). Always resource in singular!
+#' @param ... Additional values corresponding to the resource (see Billomat API documentation).
+#' @return A list containing the response from the API.
+
+#' @export
+post_resource <- function(billomat_id, billomat_api_key, resource, ...){
+  #set the api endpoint
+  api_endpoint <- paste0("https://", billomat_id, ".billomat.net/api/", resource, "s")
+
+  # set header
+  header <- c("X-BillomatApiKey" = billomat_api_key,
+              "Content-Type" = "application/json")
+
+  # set body
+  body_values <- list()
+  body_values[[resource]] <- list(...)
+
+  # make the POST call
+  response <- POST(url = api_endpoint,
+                   add_headers(header),
+                   body = toJSON(body_values),
+                   accept("application/json")
+  )
+
+  # print the status code of the request
+  print(paste("Der Statuscode:", response[["status_code"]]))
+
+  if(response[["status_code"]] != 201){
+    print(content[["errors"]])
+  }
+
+  return(response)
+
+}
+
+##### Put resource values  ------
+#' Put values to a resource via Billomat API
+#'
+#' This function puts values to a selected resource via Billomat API with specified values.
+#'
+#' @param billomat_id The Billomat account ID.
+#' @param billomat_api_key The Billomat API key.
+#' @param resource The resource you want to put (e.g., "invoice", "client", etc.). Always resource in singular!
+#' @param entity_id The entity id of your object. Findable in the URL.
+#' @param ... Additional values corresponding to the resource (see Billomat API documentation).
+#' @return A list containing the response from the API.
+
+#' @export
+put_resource_values <- function(billomat_id, billomat_api_key, resource, entity_id, ...){
+  #set the api endpoint
+  api_endpoint <- paste0("https://", billomat_id, ".billomat.net/api/", resource, "s/", entity_id)
+
+  # set header
+  header <- c("X-BillomatApiKey" = billomat_api_key,
+              "Content-Type" = "application/json")
+
+  # set body
+  body_values <- list()
+  body_values[[resource]] <- list(...)
+
+  # make the PUT call
+  response <- PUT(url = api_endpoint,
+                  add_headers(header),
+                  body = toJSON(body_values),
+                  accept("application/json")
+  )
+
+  content <- content(response)
+
+  # print the status code of the request
+  print(paste("Der Statuscode:", response[["status_code"]]))
+
+  if(response[["status_code"]] != 200){
+    print(content[["errors"]])
+  }
+
+  return(response)
+
+}
+
+##### Write comments   ------
+#' Posts comments to a resource via Billomat API
+#'
+#' This function posts comments to a selected resource via Billomat API with the desired comment.
+#'
+#' @param billomat_id The Billomat account ID.
+#' @param billomat_api_key The Billomat API key.
+#' @param comment The comment you want to post.
+#' @param resource The resource you want to put (e.g., "invoice", "client", etc.). Always resource in singular!
+#' @param entity_id The entity id of your object. Findable in the URL.
+#' @return A list containing the response from the API.
+
+#' @export
+post_comment <- function(billomat_id, billomat_api_key, comment, resource, entity_id){
+
+  # set the api endpoint for the desired resource
+  api_endpoint <- paste0("https://", billomat_id, ".billomat.net/api/", resource, "-comments")
+
+  # set the header with format to json
+  header <- c("X-BillomatApiKey" = billomat_api_key,
+              "Content-Type" = "application/json")
+
+  # set the body
+  resource_comment <- paste0(resource, "-comment")
+  resource_id <- paste0(resource, "_id")
+
+  comment_data <- list()
+  comment_data[[resource_comment]] <- list()
+  comment_data[[resource_comment]][[resource_id]] <- entity_id
+  comment_data[[resource_comment]][["comment"]] <- comment
+
+
+  # send the POST request
+  response <- POST(url = api_endpoint,
+                   add_headers(header),
+                   body = toJSON(comment_data),
+                   accept("application/json")
+  )
+
+  content <- content(response, "parsed")
+
+  # print the status code of the request
+  print(paste("Der Statuscode:", response[["status_code"]]))
+
+  if(response[["status_code"]] != 201){
+    print(content[["errors"]])
+  }
+
+  return(response)
+
+}
+
+
