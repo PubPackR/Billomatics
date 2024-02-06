@@ -148,13 +148,7 @@ revenue_month <-
                         ## conditions are either the order was not first OR the order is different
                         # first condition that qualifies as recurring customer is
                         # the current order is a second order that started in the previous period
-                        (Kunde %in% potential_recurrent_customers$Kunde[potential_recurrent_customers$orderNumber >
-                                                                          1]) |
-                          # second possible case the order is a new order AND customer was in the past period - this also applies to all cases given the Auftragdatum
-                          (
-                            Kunde %in% potential_recurrent_customers$Kunde &
-                              !(orderID %in% potential_recurrent_customers$orderID)
-                          )
+                        Kunde %in% potential_recurrent_customers$Kunde
 
                         ~ "recurrent",
                         TRUE ~ "new"
