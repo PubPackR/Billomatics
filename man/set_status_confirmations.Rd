@@ -7,8 +7,8 @@
 set_status_confirmations(
   confirmation_ids,
   status_to_set,
-  billomatApiKey = billomatApiKey,
-  billomatID = billomatID
+  billomat_api_key = billomatApiKey,
+  billomat_id = billomatID
 )
 }
 \arguments{
