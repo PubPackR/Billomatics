@@ -236,7 +236,7 @@ download_all_tables <- function(content,
 #' @param status_to_set a vector to set to either "clear"|"unclear"|"cancel"|"uncancel" depending on what state the confirmation should have
 
 #' @export
-set_status_confirmations <- function(confirmation_ids,status_to_set, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+set_status_confirmations <- function(confirmation_ids,status_to_set, billomat_api_key = billomatApiKey, billomat_id = billomatID) {
   i <- 1
 
   status2set <- paste0("/",status_to_set)
