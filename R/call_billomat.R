@@ -233,31 +233,30 @@ download_all_tables <- function(content,
 #' this function sets the status of confirmations to cleared
 #'
 #' @param confirmation_ids an array containing AB numbers
+#' @param status_to_set a vector to set to either "clear"|"unclear"|"cancel"|"uncancel" depending on what state the confirmation should have
 
 #' @export
-clear_confirmations <- function(confirmation_ids, billomatApiKey = billomatApiKey, billomatID = billomatID) {
+set_status_confirmations <- function(confirmation_ids,status_to_set, billomatApiKey = billomatApiKey, billomatID = billomatID) {
   i <- 1
 
+  status2set <- paste0("/",status_to_set)
   for (confirmation_id in confirmation_ids) {
 
-    # # get the confirmation id for the current AB number
-    # response <- httr::GET(paste0("https://",
-    #                              billomatID,
-    #                              ".billomat.net/api/confirmations?confirmation_number=",
-    #                              ab_num,
-    #                              "&api_key=",
-    #                              billomatApiKey))
-    # xml <- xml2::read_xml(response)
-    # conf_id <- xml2::xml_text(xml_find_first(xml, "//confirmation/id"))
+    api_endpoint <- paste0("https://",
+                           billomat_id,
+                           ".billomat.net/api/confirmations/",
+                           confirmation_id,
+                           status2set)
 
-    # set confirmation status to cleared
-    response <- httr::PUT(paste0("https://",
-                                 billomatID,
-                                 ".billomat.net/api/confirmations/",
-                                 confirmation_id,
-                                 "/clear",
-                                 "?api_key=",
-                                 billomatApiKey))
+    # set the header
+    header <- c("X-BillomatApiKey" = billomat_api_key,
+                "Content-Type" = "application/xml")
+
+    # get the response
+    response <- httr::PUT(url = api_endpoint,
+                    httr::add_headers(header),
+                    httr::accept("application/xml")
+    )
 
 
     if (response$status_code != 200) {
