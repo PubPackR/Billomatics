@@ -12,6 +12,7 @@ invoice_items_columns <- c(
   "invoice_id",
   "position",
   "title",
+  "quantity",
   "description",
   "total_net",
   "total_gross",
