@@ -9,13 +9,7 @@ remove_crm_custom_fields(headers, df)
 \arguments{
 \item{headers}{the header informations you have to send with your request}
 
-\item{df}{the dataframe which should include the following fields:
-attachable_id - id of the person / company
-custom_fields_id - id of the current custom_field
-action - optional, has to be value "remove"
-attachable_type - "people" or "companies"
-field_name - id of the custom_field
-field_type - optional, has to be value "custom_field"}
+\item{df}{the dataframe which should include the following fields:}
 }
 \value{
 no return values
@@ -23,4 +17,10 @@ no return values
 \description{
 This function calls the CRM API and starts an empty request for
 custom_fields, attached to companies or persons.
+attachable_id - id of the person / company
+custom_fields_id - id of the current custom_field
+action - optional, has to be value "remove"
+attachable_type - "people" or "companies"
+field_name - id of the custom_field
+field_type - optional, has to be value "custom_field"
 }
