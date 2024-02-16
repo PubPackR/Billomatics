@@ -8,22 +8,22 @@ library(tidyverse)
 #'
 #' This function calls the CRM API and starts a delete request for tags,
 #' attached to companies or persons.
-
-#' @param headers the header informations you have to send with your request
-#' @param df the dataframe which should include the following fields:
 #'  attachable_id - id of the person / company
 #'  custom_fields_id - id of the current tag
 #'  action - optional, has to be value "remove"
 #'  attachable_type - "people" or "companies"
 #'  field_name - name of the tag
 #'  field_type - optional, has to be value "tag"
+
+#' @param headers the header informations you have to send with your request
+#' @param df the dataframe which should include the following fields:
 #' @return no return values
 
 #' @export
 remove_crm_tag <- function(headers, df) {
-  #' the df can include add and remove requests for tags and custom fields
-  #' through the optional fields "action" and "field_type" the df gets filtered
-  #' before the request excecution
+  # the df can include add and remove requests for tags and custom fields
+  # through the optional fields "action" and "field_type" the df gets filtered
+  # before the request excecution
 
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "tag") %>%
@@ -55,22 +55,22 @@ remove_crm_tag <- function(headers, df) {
 #'
 #' This function calls the CRM API and starts a post request for new tags,
 #' attached to companies or persons.
-
-#' @param headers the header informations you have to send with your request
-#' @param df the dataframe which should include the following fields:
 #'  attachable_id - id of the person / company
 #'  custom_fields_id - optional, id of the current tag
 #'  action - optional, has to be value "add"
 #'  attachable_type - "people" or "companies"
 #'  field_name - name of the tag
 #'  field_type - optional, has to be value "tag"
+
+#' @param headers the header informations you have to send with your request
+#' @param df the dataframe which should include the following fields:
 #' @return no return values
 
 #' @export
 add_crm_tag <- function(headers, df) {
-  #' the df can include add and remove requests for tags and custom fields
-  #' through the optional fields "action" and "field_type" the df gets filtered
-  #' before the request excecution
+  # the df can include add and remove requests for tags and custom fields
+  # through the optional fields "action" and "field_type" the df gets filtered
+  # before the request excecution
 
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "tag") %>%
@@ -111,22 +111,22 @@ add_crm_tag <- function(headers, df) {
 #'
 #' This function calls the CRM API and starts an empty request for
 #' custom_fields, attached to companies or persons.
-
-#' @param headers the header informations you have to send with your request
-#' @param df the dataframe which should include the following fields:
 #'  attachable_id - id of the person / company
 #'  custom_fields_id - id of the current custom_field
 #'  action - optional, has to be value "remove"
 #'  attachable_type - "people" or "companies"
 #'  field_name - id of the custom_field
 #'  field_type - optional, has to be value "custom_field"
+
+#' @param headers the header informations you have to send with your request
+#' @param df the dataframe which should include the following fields:
 #' @return no return values
 
 #' @export
 remove_crm_custom_fields <- function(headers, df) {
-  #' the df can include add and remove requests for tags and custom fields
-  #' through the optional fields "action" and "field_type" the df gets filtered
-  #' before the request excecution
+  # the df can include add and remove requests for tags and custom fields
+  # through the optional fields "action" and "field_type" the df gets filtered
+  # before the request excecution
 
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "custom_field") %>%
@@ -156,22 +156,22 @@ remove_crm_custom_fields <- function(headers, df) {
 #'
 #' This function calls the CRM API and starts an post request for
 #' custom_fields, attached to companies or persons.
-
-#' @param headers the header informations you have to send with your request
-#' @param df the dataframe which should include the following fields:
 #'  attachable_id - id of the person / company
 #'  custom_fields_id - optional, id of the current custom_field
 #'  action - optional, has to be value "add"
 #'  attachable_type - "people" or "companies"
 #'  field_name - id of the custom_field
 #'  field_type - optional, has to be value "custom_field"
+
+#' @param headers the header informations you have to send with your request
+#' @param df the dataframe which should include the following fields:
 #' @return no return values
 
 #' @export
 add_crm_custom_fields <- function(headers, df) {
-  #' the df can include add and remove requests for tags and custom fields
-  #' through the optional fields "action" and "field_type" the df gets filtered
-  #' before the request excecution
+  # the df can include add and remove requests for tags and custom fields
+  # through the optional fields "action" and "field_type" the df gets filtered
+  # before the request excecution
 
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "custom_field") %>%
