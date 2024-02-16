@@ -32,11 +32,16 @@ compress_column <- function(column) {
 
 #' @export
 extract_note <- function(df, field) {
+
+  pattern_break_1 <- "\\b(Leistu\\w*)\\b"
+  pattern_break_2 <- "\\b(Laufzeit\\w*)\\b"
+
   df <- df %>%
     mutate(
       note = str_replace_all(
         get(field),
         pattern = c(
+          `:[\n]` = ":",
           `: [\n]` = ":",
           `in [\n]` = "",
           `–` = "-",
@@ -47,9 +52,12 @@ extract_note <- function(df, field) {
 
       note = str_remove_all(note, "geplant.*?\\s"),
       note = str_remove(note, ": \n"),
+      note = str_trim(note),
 
       # to avoid the problem of having multiple : in one line the \n is added after : when it occurs more than1
-      note = str_replace_all(note, ":(?=.*?:)", ":\n ")
+      # i want the break in Laufzeit Leistungsbeginn: 15.01.2024 Leistungsende: 15.05.2024\n2
+      note =str_replace_all(note, pattern_break_1, "\n\\1"),
+      note =str_replace_all(note, pattern_break_2, "\n\\1"),
     )
   df <- tibble(id = df$id,
                note = str_split(df$note, "\n"))
