@@ -287,6 +287,30 @@ get_laufzeiten_information <- function (df)
   return(df)
 }
 
+#' extract the laufzeit duration information and put it into a table with id, entrynumber and laufzeit
+#' @param df_position the df which holds the data from which information is extracted
+#' @param field the field name as string from which the data is extracted
+#' @return the data as df with the id, entry number per position and the extracted laufzeit
+#' only the first entry should be used, multiple entries indicate that multiple products are in the position
+
+#' @export
+extract_laufzeit_dauer <- function(df_position,
+                                   field = "description") {
+
+
+  df_position %>%
+    Billomatics::get_extracted_information(df = .,
+                                           field = field) %>%
+    Billomatics::read_KeysFromDescription(., sep = ":") %>%
+    dplyr::filter(key == "Laufzeit") %>%
+    dplyr::group_by(id,key) %>%
+    dplyr::mutate(entry_no = row_number()) %>%
+    tidyr::pivot_wider(id_cols = c(id,entry_no),
+                       names_from = key,
+                       values_from = text)
+
+}
+
 #' get the number of impressions ordered
 #' this function allows to get the impressions from the orders
 #' @param df the df which holds the data that was extracted from the field
