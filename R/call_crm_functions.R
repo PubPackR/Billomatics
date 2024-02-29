@@ -428,6 +428,7 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
 
   companies_crm <- companies %>%
     tidyr::unnest(company) %>%
+    mutate(custom_fields = map(custom_fields, as.data.frame)) %>%
     tidyr::unnest(custom_fields, names_sep = "_", keep_empty = TRUE)
 
   if(positions){
