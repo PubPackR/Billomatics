@@ -64,7 +64,6 @@ authentication_billomat <-  function(args, return_keys = c()) {
         getPass::getPass("Enter the password for Billomat-DB: ")
 
     } else {
-      args <- commandArgs(trailingOnly = TRUE)
       encryption_db <- args
     }
 
@@ -90,7 +89,6 @@ authentication_crm <-  function(args, path_api_key, return_keys = c()) {
       decrypt_key <-
         getPass::getPass("Bitte Decryption_Key für CRM eingeben: ")
     } else{
-      args <- commandArgs(trailingOnly = TRUE)
       decrypt_key <- args
     }
 
@@ -112,7 +110,6 @@ authentication_GSheet <-  function(args) {
         getPass::getPass("Enter the password for Google Sheets: ")
 
     } else {
-      args <- commandArgs(trailingOnly = TRUE)
       decrypt_google_sheets_key <- args
     }
 
