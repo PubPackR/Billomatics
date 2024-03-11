@@ -6,7 +6,7 @@ To install the package in your local R run:
 
 ```
 devtools::install_github("PubPackR/Billomatics",
-                          ref = "main"
+                          ref = "main",
                           force = TRUE)
 ```
 # Package Description

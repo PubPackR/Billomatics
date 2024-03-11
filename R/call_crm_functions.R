@@ -239,10 +239,10 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
     "X-apikey" = api_key,
     "Accept" = "*/*"
   )
-  
-  # define filter for request 
+
+  # define filter for request
   filter_option <- paste0("&", filter_by, "=")
-  
+
   # create an data.frame for protocols
   protocols <- tidyr::tibble()
 
@@ -260,10 +260,10 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
           ),
           httr::add_headers(headers)
         )
-  
+
       # make response answer readable with jsonlite::fromJSON
       data <- jsonlite::fromJSON(httr::content(response, "text"))
-  
+
       # check if data could be loaded for requested page
       if (length(data) == 0) {
         # stop export if no data could be loaded or everything is already loaded
@@ -277,7 +277,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
           protocols <- dplyr::bind_rows(protocols, data)
         }
       }
-  
+
       if (i == pages) {
         # stop export after maximum number of pages was loaded
         print("Only part of the available data was exported")
@@ -300,7 +300,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
             ),
             httr::add_headers(headers)
           )
-        
+
         data <-
           jsonlite::fromJSON(httr::content(response, "text"))
         protocols <- dplyr::bind_rows(protocols, data)
@@ -321,7 +321,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
 
 #' get_central_station_protocols
 #'
-#' this function calls the crm api and downloads the data of attachments for a 
+#' this function calls the crm api and downloads the data of attachments for a
 #' given vector of protocol-ids
 
 #' @param api_key the api key you have to provide
@@ -334,10 +334,10 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
   # define header
   headers <- c(
     "content-type" = "application/json",
-    "X-apikey" = crm_api_key,
+    "X-apikey" = api_key,
     "Accept" = "*/*"
   )
-  
+
   # create an data.frame for attachments
   attachments <- tidyr::tibble()
 
@@ -355,7 +355,7 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
           ),
           httr::add_headers(headers)
         )
-      
+
       data <- jsonlite::fromJSON(httr::content(response, "text")) %>%
         select(-data)
       attachments <- dplyr::bind_rows(attachments, data)
@@ -369,7 +369,7 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
       print(i)
     }
   }
-  
+
   return(attachments)
 }
 
@@ -399,7 +399,7 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
   response <- httr::GET("https://api.centralstationcrm.net/api/companies/count", httr::add_headers(headers))
   data <- jsonlite::fromJSON(httr::content(response, "text"))
   pages <- ceiling(data$total_entries/250)
-  
+
   companies <- tidyr::tibble()
 
   if(positions){
@@ -407,7 +407,7 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
   } else {
     pos <- ""
   }
-  
+
   #request every page of companies from CRM and load them to companies table
   for (i in 1:pages) {
     response <-
@@ -426,16 +426,17 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
     }
   }
 
-  companies_crm <- companies %>% 
-    tidyr::unnest(company) %>% 
-    tidyr::unnest(custom_fields, names_sep = "_", keep_empty = TRUE) 
-  
+  companies_crm <- companies %>%
+    tidyr::unnest(company) %>%
+    mutate(custom_fields = map(custom_fields, as.data.frame)) %>%
+    tidyr::unnest(custom_fields, names_sep = "_", keep_empty = TRUE)
+
   if(positions){
     companies_crm <- tidyr::unnest(companies_crm, positions, names_sep = "_", keep_empty = TRUE)
   }
-  
+
   return(companies_crm)
-    
+
 }
 
 
