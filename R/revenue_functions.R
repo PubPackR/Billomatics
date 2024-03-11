@@ -462,7 +462,7 @@ yearly_nrr_for_month <-
         DBNER = (current_revenue_recurrent / previous_revenue_recurrent) *
           100,
         DBNER_alternative = (
-          current_revenue_recurrent / (
+          (current_revenue_recurrent + current_revenue_recurrent_new) / (
             previous_revenue_recurrent + previous_revenue_recurrent_new
           )
         ) * 100
