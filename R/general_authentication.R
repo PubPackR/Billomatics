@@ -15,36 +15,41 @@ library(googlesheets4)
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("Billomat", "CRM", "Google Sheet"), args, path_api_key = "") {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet"), args, path_api_key = "") {
 
   return_keys <- c()
 
   # 1 Authentication Billomat ----
 
-  pos_Billomat <- match(1, str_detect("Billomat", needed_services))
+  pos_Billomat <- match(1, str_detect("billomat", needed_services))
 
   if(!is.na(pos_Billomat)) {
-    return_keys <- authentication_billomat(args[pos_Billomat], return_keys)
+    billomat_key <- authentication_billomat(args[pos_Billomat], return_keys)
+  } else {
+    billomat_key <- NA
   }
 
   # 2 Authentication CRM ----
 
-  pos_CRM <- match(1, str_detect("CRM", needed_services))
+  pos_CRM <- match(1, str_detect("crm", needed_services))
 
   if(!is.na(pos_CRM)) {
-    return_keys <- authentication_crm(args[pos_CRM], path_api_key, return_keys)
+    crm_key <- authentication_crm(args[pos_CRM], path_api_key, return_keys)
+  } else {
+    crm_key <- NA
   }
 
   # 3 Authentication Google Sheet ----
 
-  pos_GSheet <- match(1, str_detect("Google Sheet", needed_services))
+  pos_GSheet <- match(1, str_detect("google sheet", needed_services))
 
   if(!is.na(pos_GSheet)) {
     authentication_GSheet(args[pos_GSheet])
   }
 
-  return(return_keys)
+  keys  <- list("billomat" = billomat_key, "crm" = crm_key)
 
+  return(keys)
 }
 
 #' authentication_billomat
@@ -139,3 +144,4 @@ authentication_GSheet <-  function(args) {
       print("google_sheets_auth.json deleted.")
     })
 }
+
