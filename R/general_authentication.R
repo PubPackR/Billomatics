@@ -16,14 +16,12 @@ library(googlesheets4)
 #' @export
 authentication_process <- function(needed_services = c("billomat", "crm", "google sheet"), args) {
 
-  return_keys <- c()
-
   # 1 Authentication Billomat ----
 
   pos_Billomat <- match(1, stringr::str_detect("billomat", needed_services))
 
   if(!is.na(pos_Billomat)) {
-    billomat_key <- authentication_billomat(args[pos_Billomat], return_keys)
+    billomat_key <- authentication_billomat(args[pos_Billomat])
   } else {
     billomat_key <- NA
   }
@@ -33,7 +31,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
   pos_CRM <- match(1, stringr::str_detect("crm", needed_services))
 
   if(!is.na(pos_CRM)) {
-    crm_key <- authentication_crm(args[pos_CRM], return_keys)
+    crm_key <- authentication_crm(args[pos_CRM])
   } else {
     crm_key <- NA
   }
@@ -61,7 +59,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 #' @return authentication key in vector
 
 #' @export
-authentication_billomat <-  function(args, return_keys = c()) {
+authentication_billomat <-  function(args) {
 
     if (interactive()) {
 
@@ -77,7 +75,7 @@ authentication_billomat <-  function(args, return_keys = c()) {
         safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
     }
 
-    return_keys <- c(return_keys, encryption_db, billomatApiKey)
+    c(encryption_db, billomatApiKey)
 }
 
 #' authentication_crm
@@ -90,7 +88,7 @@ authentication_billomat <-  function(args, return_keys = c()) {
 #' @return authentication key in vector
 
 #' @export
-authentication_crm <-  function(args, return_keys = c()) {
+authentication_crm <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/CRM.txt")
 
@@ -101,7 +99,7 @@ authentication_crm <-  function(args, return_keys = c()) {
       decrypt_key <- args
     }
 
-    return_keys <- c(return_keys, decrypt_string(encrypted_api_key, key = decrypt_key))
+    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
 
 #' authentication_GSheet
