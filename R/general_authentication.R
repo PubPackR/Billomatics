@@ -68,14 +68,14 @@ authentication_billomat <-  function(args, return_keys = c()) {
 
       encryption_db <-
         getPass::getPass("Enter the password for Billomat-DB: ")
-
-      billomatApiKey <- Billomatics::get_billomatApiKey("../../keys")
+      billomatApiKey <-
+        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
 
     } else {
 
       encryption_db <- args
       billomatApiKey <-
-        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = args)
+        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
     }
 
     return_keys <- c(return_keys, encryption_db, billomatApiKey)
