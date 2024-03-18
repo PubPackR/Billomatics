@@ -65,14 +65,20 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 authentication_billomat <-  function(args, return_keys = c()) {
 
     if (interactive()) {
+
       encryption_db <-
         getPass::getPass("Enter the password for Billomat-DB: ")
 
+      billomatApiKey <- Billomatics::get_billomatApiKey("../../keys")
+
     } else {
+
       encryption_db <- args
+      billomatApiKey <-
+        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = args)
     }
 
-    return_keys <- c(return_keys, encryption_db)
+    return_keys <- c(return_keys, encryption_db, billomatApiKey)
 }
 
 #' authentication_crm
