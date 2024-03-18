@@ -21,7 +21,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 
   # 1 Authentication Billomat ----
 
-  pos_Billomat <- match(1, str_detect("billomat", needed_services))
+  pos_Billomat <- match(1, stringr::str_detect("billomat", needed_services))
 
   if(!is.na(pos_Billomat)) {
     billomat_key <- authentication_billomat(args[pos_Billomat], return_keys)
@@ -31,7 +31,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 
   # 2 Authentication CRM ----
 
-  pos_CRM <- match(1, str_detect("crm", needed_services))
+  pos_CRM <- match(1, stringr::str_detect("crm", needed_services))
 
   if(!is.na(pos_CRM)) {
     crm_key <- authentication_crm(args[pos_CRM], path_api_key, return_keys)
@@ -41,7 +41,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 
   # 3 Authentication Google Sheet ----
 
-  pos_GSheet <- match(1, str_detect("google sheet", needed_services))
+  pos_GSheet <- match(1, stringr::str_detect("google sheet", needed_services))
 
   if(!is.na(pos_GSheet)) {
     authentication_GSheet(args[pos_GSheet])

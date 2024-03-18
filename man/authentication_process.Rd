@@ -5,7 +5,7 @@
 \title{authentication_process}
 \usage{
 authentication_process(
-  needed_services = c("Billomat", "CRM", "Google Sheet"),
+  needed_services = c("billomat", "crm", "google sheet"),
   args,
   path_api_key = ""
 )
