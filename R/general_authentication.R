@@ -11,11 +11,10 @@ library(googlesheets4)
 
 #' @param needed_services the authentication services you need as vector. Currently available: "Billomat", "CRM" & "Google Sheet"
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param path_api_key path to api_key decription key
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet"), args, path_api_key = "") {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet"), args) {
 
   return_keys <- c()
 
@@ -34,7 +33,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
   pos_CRM <- match(1, stringr::str_detect("crm", needed_services))
 
   if(!is.na(pos_CRM)) {
-    crm_key <- authentication_crm(args[pos_CRM], path_api_key, return_keys)
+    crm_key <- authentication_crm(args[pos_CRM], return_keys)
   } else {
     crm_key <- NA
   }
@@ -87,14 +86,13 @@ authentication_billomat <-  function(args, return_keys = c()) {
 #' It can handle manual password inputs as well as Flow Force args Inputs.
 
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param path_api_key path to api_key decription key
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
 
 #' @export
-authentication_crm <-  function(args, path_api_key, return_keys = c()) {
+authentication_crm <-  function(args, return_keys = c()) {
 
-    encrypted_api_key <- readLines(path_api_key)
+    encrypted_api_key <- readLines("../../keys/CRM.txt")
 
     if (interactive()) {
       decrypt_key <-
