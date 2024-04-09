@@ -9,12 +9,12 @@ library(googlesheets4)
 #' This function executes the requested authentication processes.
 #' It can handle manual password inputs as well as Flow Force args Inputs.
 
-#' @param needed_services the authentication services you need as vector. Currently available: "Billomat", "CRM" & "Google Sheet"
+#' @param needed_services the authentication services you need as vector. Currently available: "Billomat", "CRM", "Google Sheet" & "Asana"
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana"), args) {
 
   # 1 Authentication Billomat ----
 
@@ -44,7 +44,17 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     authentication_GSheet(args[pos_GSheet])
   }
 
-  keys  <- list("billomat" = billomat_key, "crm" = crm_key)
+  # 4 Authentication Asana ---
+
+  pos_Asana <- match(1, stringr::str_detect("asana", needed_services))
+
+  if(!is.na(pos_Asana)) {
+    asana_key <- authentication_asana(args[pos_Asana])
+  } else {
+    asana_key <- NA
+  }
+
+  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key)
 
   return(keys)
 }
@@ -147,3 +157,32 @@ authentication_GSheet <-  function(args) {
     })
 }
 
+
+#' authentication_billomat
+#'
+#' This function executes the billomat authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @param return_keys optional, vector with already acquired keys
+#' @return authentication key in vector
+
+#' @export
+authentication_asana <-  function(args) {
+
+  if (interactive()) {
+
+    asana_key <-
+      getPass::getPass("Enter the password for Asana: ")
+    asana_access_token <-
+      safer::decrypt_string(readLines("../../keys/asana.txt"), key = asana_key)
+
+  } else {
+
+    asana_key <- args
+    asana_access_token <-
+      safer::decrypt_string(readLines("../../keys/asana.txt"), key = asana_key)
+  }
+
+  c(asana_key, asana_access_token)
+}

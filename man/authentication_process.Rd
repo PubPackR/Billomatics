@@ -5,17 +5,14 @@
 \title{authentication_process}
 \usage{
 authentication_process(
-  needed_services = c("billomat", "crm", "google sheet"),
-  args,
-  path_api_key = ""
+  needed_services = c("billomat", "crm", "google sheet", "asana"),
+  args
 )
 }
 \arguments{
-\item{needed_services}{the authentication services you need as vector. Currently available: "Billomat", "CRM" & "Google Sheet"}
+\item{needed_services}{the authentication services you need as vector. Currently available: "Billomat", "CRM", "Google Sheet" & "Asana"}
 
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
-
-\item{path_api_key}{path to api_key decription key}
 }
 \value{
 authentication keys as vector

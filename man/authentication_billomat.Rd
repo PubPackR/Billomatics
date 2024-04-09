@@ -4,7 +4,7 @@
 \alias{authentication_billomat}
 \title{authentication_billomat}
 \usage{
-authentication_billomat(args, return_keys = c())
+authentication_billomat(args)
 }
 \arguments{
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
