@@ -228,43 +228,67 @@ download_all_tables <- function(content,
 }
 
 
-#' clear_confirmations
+#' set_status_endpoint
 #'
-#' this function sets the status of confirmations to cleared
+#' this function sets the status of endpoints to the respective state. Important: for the confirmation / invoice to be completed
+#' you must have a template id -- an invoice / confirmation without any items cannot be completed.
 #'
-#' @param confirmation_ids an array containing AB numbers
-#' @param status_to_set a vector to set to either "clear"|"unclear"|"cancel"|"uncancel" depending on what state the confirmation should have
-
+#' @param ids an df with the ids for the document (invoice_id,confirmation_id)
+#' @param status_to_set a vector to set to either for confirmations: "clear"|"unclear"|"cancel"|"uncancel"
+#' for the invoice: "complete"
 #' @export
-set_status_confirmations <- function(confirmation_ids,status_to_set, billomat_api_key = billomatApiKey, billomat_id = billomatID) {
+set_status_endpoint <- function(df,
+                                endpoint = "confirmations",
+                                status_to_set,
+                                billomat_api_key = billomatApiKey,
+                                billomat_id = billomatID) {
   i <- 1
+  ids <- unique(df$id)
 
-  status2set <- paste0("/",status_to_set)
-  for (confirmation_id in confirmation_ids) {
-
+  status2set <- paste0("/", status_to_set)
+  for (id in ids) {
     api_endpoint <- paste0("https://",
                            billomat_id,
-                           ".billomat.net/api/confirmations/",
-                           confirmation_id,
+                           ".billomat.net/api/",
+                           endpoint,
+                           "/",
+                           id,
                            status2set)
 
     # set the header
     header <- c("X-BillomatApiKey" = billomat_api_key,
                 "Content-Type" = "application/xml")
 
-    # get the response
-    response <- httr::PUT(url = api_endpoint,
-                    httr::add_headers(header),
-                    httr::accept("application/xml")
-    )
+    if(status_to_set == "complete") {
+      body <- list(
+        complete = list(
+          template_id = structure(list(df$template_id[i]))
+        )
+      ) %>% xml2::as_xml_document(.) %>%
+        # create a string from the xml
+        paste0(.)
+      # turn the list into an xml
+
+      # get the response
+      response <- httr::PUT(url = api_endpoint,
+                            config = httr::add_headers(header),
+                            encode = httr::accept("application/xml"),
+                            body = body)
+    } else {
+      # get the response
+      response <- httr::PUT(url = api_endpoint,
+                            httr::add_headers(header),
+                            httr::accept("application/xml"))
+    }
+
 
 
     if (response$status_code != 200) {
-      print(paste0("failed to put", confirmation_id))
+      print(paste0("failed to put", id))
     }
 
-    total <- length(confirmation_ids)
-    print(paste0("Putting:",i," of ",total))
+    total <- length(ids)
+    print(paste0("Putting:", i, " of ", total))
     i <- i + 1
   }
 }
