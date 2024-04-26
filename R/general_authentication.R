@@ -54,7 +54,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     asana_key <- NA
   }
 
-  # 4 Authentication MSGraph ---
+  # 5 Authentication MSGraph ---
 
   pos_MSGraph <- match(1, stringr::str_detect("msgraph", needed_services))
 
