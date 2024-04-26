@@ -14,7 +14,7 @@ library(googlesheets4)
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph"), args) {
 
   # 1 Authentication Billomat ----
 
@@ -54,7 +54,17 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     asana_key <- NA
   }
 
-  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key)
+  # 4 Authentication MSGraph ---
+
+  pos_MSGraph <- match(1, stringr::str_detect("msgraph", needed_services))
+
+  if(!is.na(pos_MSGraph)) {
+    msgraph_key <- authentication_msgraph(args[pos_MSGraph])
+  } else {
+    msgraph_key <- NA
+  }
+
+  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key)
 
   return(keys)
 }
@@ -185,4 +195,29 @@ authentication_asana <-  function(args) {
   }
 
   c(asana_key, asana_access_token)
+}
+
+
+#' authentication_msgraph
+#'
+#' This function executes the MSGraph authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @param return_keys optional, vector with already acquired keys
+#' @return authentication key in vector
+
+#' @export
+authentication_msgraph <-  function(args) {
+
+  encrypted_api_key <- readLines("../../keys/Date/06-06-01.txt")
+
+  if (interactive()) {
+    decrypt_key <-
+      getPass::getPass("Bitte Decryption_Key für MSGraph eingeben: ")
+  } else{
+    decrypt_key <- args
+  }
+
+  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
