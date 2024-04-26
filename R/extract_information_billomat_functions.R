@@ -73,6 +73,9 @@ extract_note <- function(df, field) {
 
 #' @export
 get_extracted_information <- function(df, field) {
+  df <- df %>%
+    mutate(description = str_replace_all(description, pattern = c(`Beginn des Leistungszeitraums` = "Laufzeitbeginn",
+                                                                  `Ende des Leistungszeitraums` = "Laufzeitende")))
   purrr::map_dfr(1:nrow(df), ~ extract_note(df[., ], field = field), .progress = TRUE) %>%
     unnest(cols = note)
 }
@@ -117,7 +120,8 @@ to_Leistungsbeginn <- paste0(
     ".osting.*",
     "Laufzeitbeginn",
     "Leistungsbeginn.*",
-    "Leistungsstart"
+    "Leistungsstart",
+    "Startdatum"
   ),
   collapse = "|"
 )
@@ -185,7 +189,7 @@ get_laufzeiten_information <- function (df)
       "Leistungsbeginn",
       "Leistungsende",
       "Date of performance",
-      "Leistungszeitraum"
+      "Kampagnenstart"
     ) %>%
     paste(.,collapse = "|")
 
