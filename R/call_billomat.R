@@ -346,7 +346,7 @@ get_comments <- function(ids,
       # only keep relevant information
       dplyr::filter(!!sym(
         paste0(endpoint_comment,"_id")
-      )%in% c("id","*._id","created","comment")) %>%
+      )%in% c("id",paste0(endpoint,"_id"),"created","comment")) %>%
 
       # turn the table wider so each comment has the all information in one row
       tidyr::pivot_wider(names_from = !!sym(paste0(endpoint_comment,"_id")),
