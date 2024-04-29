@@ -296,53 +296,61 @@ set_status_endpoint <- function(df,
 ##### comments ------
 #' get_comments
 #'
-#' this function pulls all the comments for a list of given ids
+#' this function pulls all the comments for a list of given ids and endpoint
 #'
-#' @param confirmation_ids a vector of ids numbers
+#' @param ids a vector of ids numbers
+#' @param endpoint is the name of the endpoint
+
 
 #' @export
-get_comments <- function(confirmation_ids,
+get_comments <- function(ids,
+                         endpoint = "confirmation",
                          billomatApiKey = billomatApiKey,
                          billomatID = billomatID) {
   i <- 1
   comments <- dplyr::tibble()
-  for (confirmation_id in confirmation_ids) {
+  for (id in ids) {
     response <- httr::GET(
       paste0(
         "https://",
         billomatID,
-        ".billomat.net/api/confirmation-comments",
+        ".billomat.net/api/",
+        endpoint,"-comments",
         ## ich gebe mit ? die Parameter mit und dann mit & wird der Api key übermittelt
-        "?confirmation_id=",
-        confirmation_id,
+        "?",endpoint,"_id=",
+        id,
         "&api_key=",
         billomatApiKey
       )
     )
     if (response$status_code != 200) {
-      print(paste0("failed to get comment", confirmation_id))
+      print(paste0("failed to get comment for ", id))
     }
 
-    total <- length(confirmation_ids)
+    total <- length(ids)
 
     # get the body of the response which contains all the information and turn it to a list
     data_xml <- xml2::as_list(xml2::read_xml(response$content))
 
     print(paste0("Getting comment:",i," of ",total))
     i <- i + 1
+
+    endpoint_comment <- paste0(endpoint,"-comments")
     # create a tibble from the list that contains the field names
     comment <- tibble::as_tibble(data_xml) %>%
 
       # I unnest so that it keeps the node name as id
-      tidyr::unnest_longer(col = `confirmation-comments`) %>%
+      tidyr::unnest_longer(col = !!sym(endpoint_comment)) %>%
       # I unnest only the values of the confirmation-comments column
-      tidyr::unnest(cols = c(`confirmation-comments`)) %>%
+      tidyr::unnest(cols = !!sym(endpoint_comment)) %>%
       # only keep relevant information
-      dplyr::filter(`confirmation-comments_id`%in% c("id","confirmation_id","created","comment")) %>%
+      dplyr::filter(!!sym(
+        paste0(endpoint_comment,"_id")
+      )%in% c("id","*._id","created","comment")) %>%
 
       # turn the table wider so each comment has the all information in one row
-      tidyr::pivot_wider(names_from = `confirmation-comments_id`,
-                         values_from = `confirmation-comments`,
+      tidyr::pivot_wider(names_from = !!sym(paste0(endpoint_comment,"_id")),
+                         values_from = !!sym(endpoint_comment),
                          values_fn = list) %>%
 
       # because all cols are a list I have to unnest everything
@@ -355,7 +363,6 @@ get_comments <- function(confirmation_ids,
   # return all comments
   return(comments)
 }
-
 
 #### client properties ------
 

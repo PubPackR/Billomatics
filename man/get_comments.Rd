@@ -5,14 +5,17 @@
 \title{get_comments}
 \usage{
 get_comments(
-  confirmation_ids,
+  ids,
+  endpoint = "confirmation",
   billomatApiKey = billomatApiKey,
   billomatID = billomatID
 )
 }
 \arguments{
-\item{confirmation_ids}{a vector of ids numbers}
+\item{ids}{a vector of ids numbers}
+
+\item{endpoint}{is the name of the endpoint}
 }
 \description{
-this function pulls all the comments for a list of given ids
+this function pulls all the comments for a list of given ids and endpoint
 }
