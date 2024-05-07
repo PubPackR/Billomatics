@@ -657,4 +657,274 @@ post_comment <- function(billomat_id, billomat_api_key, comment, resource, entit
 
 }
 
+#### Post invoices to billomat ----
+
+#' post_single_invoice
+#' post a single invoice to the billomat. Information for the xml has to be passed via xml dict.
+
+#' @param billomatID the billomat ID#'
+#' @param billomat_api_key The Billomat API key.
+#' @param endpoint The endpoint you want to post (e.g., "invoices", "clients", etc.). Always resource in plural!
+#' @param entity_id The entity id of your object. Findable in the URL.
+#' @param ... Additional values corresponding to the resource (see Billomat API documentation).
+#' @return returns a list containing the invoice_id, confirmation_id and invoice_date
+
+#' @export
+post_single_invoice <-
+  function(billomatID,
+           billomatApiKey,
+           endpoint = "invoices",
+           client_id,
+           confirmation_id,
+           invoice_intro,
+           reduction,
+           invoice_date,
+           note = "") {
+    # This function posts a single invoice main document
+
+    #### create the invoice body to be posted -
+    body <- list(
+      invoice = list(
+        client_id = structure(list(client_id)),
+        confirmation_id = structure(list(confirmation_id)),
+        date = structure(list(invoice_date)),
+        intro = structure(list(invoice_intro)),
+        reduction = structure(list(reduction)),
+        note = structure(list(note))
+      )
+    ) %>% xml2::as_xml_document(.) %>%
+      # create a string from the xml
+      paste0(.)
+    # turn the list into an xml
+
+
+    # pass the url
+    URI <-
+      paste0("https://", billomatID, ".billomat.net/api/", endpoint)
+
+    # pass the header
+    headers <- c("X-BillomatApiKey" = billomatApiKey,
+                 "Content-Type" = "application/xml")
+
+    # make the call and post
+    response <- httr::POST(URI,
+                           config = httr::add_headers(headers),
+                           body = body)
+
+    # handle status code not 201
+    if (response$status_code != 201) {
+      print(paste0(
+        "could not create invoice for confirmation:",
+        confirmation_id
+      ))
+    }
+
+    invoice_id <- httr::content(response, as = "parsed") %>%
+      # turn the response into a list
+      xml2::as_list(.) %>%
+      # keep only the invoice entries
+      .$invoice %>%
+      # looking at the id
+      .$id %>%
+      # keeping the id
+      unlist(.)
+
+    # return the invoice_id, confirmation_id and invoice_date
+    list(invoice_id = invoice_id,
+         confirmation_id = confirmation_id,
+         invoice_date = invoice_date)
+  }
+
+#' post_all_invoices
+#' This function uses the post single invoice function and purrrs over a list of confirmations
+#' to turn them into invoices. The function returns a tibble with the confirmation_id and invoice_id
+#'
+#' @param confirmations2post a df with all the confirmations that will be posted
+#' @param billomatID the billomat ID#'
+#' @param billomat_api_key The Billomat API key.
+#'
+#' @export
+post_all_invoices <- function(confirmations2post,
+                              billomatID,
+                              billomatApiKey){
+  purrr::map_dfr(
+    1:nrow(confirmations2post),
+    ~ post_single_invoice(
+      billomatID = billomatID,
+      billomatApiKey = billomatApiKey,
+      client_id = confirmations2post$client_id[.],
+      confirmation_id = confirmations2post$id[.],
+      invoice_date = confirmations2post$invoice_date[.],
+      invoice_intro = confirmations2post$invoice_intro[.],
+      reduction = confirmations2post$reduction[.],
+      note = confirmations2post$note[.]
+    ),.progress = TRUE
+  )
+}
+
+#' post_single_invoice_item
+#'
+#' this function needs to move through the rows in of the invoice table and create the single invoice
+#'
+#' @param df_items the df containing the items that should be part of the respective invoice already posted.
+#' The df must contain the invoice_id
+#' @param billomatID the billomat ID
+#' @param billomat_api_key The Billomat API key.
+#' @param endpoint The endpoint you want to post (e.g., "invoice-items", "confirmation-items"). Always resource in plural!
+#' @param entity_id The entity id of your object. Findable in the URL.
+#' @param ... Additional values corresponding to the resource (see Billomat API documentation).
+#' @return returns a list containing posted_invoice_id
+#'
+#' @export
+post_single_invoice_item <- function(df_items,
+                                     billomatApiKey,
+                                     billomatID,
+                                     endpoint = "invoice-items") {
+  #df <- invoice_confirmation_items[1,]
+  body <- list(
+
+    `invoice-item` = list(
+      invoice_id = structure(list(df_items$invoice_id)),
+
+      title = structure(list(
+        df_items$title
+      )),
+
+      unit_price = structure(list(
+        df_items$unit_price
+      )),
+
+      quantity = structure(list(
+        df_items$quantity
+      )),
+
+      description = structure(list(
+        df_items$description
+      )),
+
+      reduction = structure(list(
+        df_items$reduction
+      ))
+    )
+  ) %>% xml2::as_xml_document(.) %>%
+    # create a string from the xml
+    paste0(.)
+  # turn the list into an xml
+
+  # pass the url
+  URI <-
+    paste0("https://", billomatID, ".billomat.net/api/", endpoint)
+
+  # pass the header
+  httr::headers <- c("X-BillomatApiKey" = billomatApiKey,
+               "Content-Type" = "application/xml")
+
+  # make the call and post
+  response <- httr::POST(URI,
+                         config = httr::add_headers(headers),
+                         body = body)
+
+  # handle status code not 201
+  if (response$status_code != 201) {
+    print(paste0("could not create invoice item for invoice:", df_items$invoice_id))
+  }
+
+  posted_invoice_id <- httr::content(response, as = "parsed") %>%
+    # turn the response into a list
+    xml2::as_list(.) %>%
+    # keep only the invoice entries
+    .$invoice %>%
+    # looking at the id
+    .$id %>%
+    # keeping the id
+    unlist(.)
+
+  # push the invoice id into the global environment
+  print(list(posted_invoice_id = df_items$invoice_id))
+  posted_invoice_id
+}
+
+#' post_all_invoice_items
+#' This function uses the single invoice item fun and  uses it on a
+
+#' @param df_items the df containing the items that should be part of the respective invoice already posted.
+#' The df must contain the invoice_id
+#' @param billomatID the billomat ID
+#' @param billomat_api_key The Billomat API key.
+#'
+#' @return  The function returns a tibble with the posted confirmation_id and invoice_id
+#'
+#' @export
+post_all_invoice_items <- function(df_items,
+                                   billomatApiKey,
+                                   billomatID
+) {
+  df_items <- df_items %>%
+    tidyr::drop_na(invoice_id)
+  # loop over all invoice ids in the posted_invoice_id table and create the invoice items of one invoice
+  for (invoice_ids in unique(df_items$invoice_id)) {
+    #invoice_ids = 18234948
+    # only keep the confirmation items which are part of the confirmation id being billed
+    invoice_items <- df_items %>%
+      dplyr::filter(invoice_id == invoice_ids) %>%
+      dplyr::select(
+        position,
+        confirmation_id,
+        invoice_id,
+        id,
+        title,
+        article_id,
+        quantity,
+        unit_price,
+        description,
+        reduction
+      )
+
+    # iterate over all positions to create each individual invoice item
+    for (item in length(invoice_items$position)) {
+      # item = 1
+      post_single_invoice_item(df = invoice_items[item, ],
+                               billomatApiKey,
+                               billomatID)
+
+    }
+  }
+}
+
+
+## Tables required are the confirmations and confirmation items that should be posted
+## The functions returns a tibble with all posted ids
+post_complete_invoices <- function(billomatID,
+                                   billomatApiKey,
+                                   confirmations2post,
+                                   confirmations2post_items) {
+
+  # get content of the response to find the newly created id of the invoice
+  posted_invoice_ids <- post_all_invoices(confirmations2post,
+                                          billomatID = billomatID,
+                                          billomatApiKey = billomatApiKey)
+
+
+
+  # create the invoice-item table
+  # This has to consider the month of the bill - so I have to return the month
+  invoice_confirmation_items <- confirmation_items %>% #confirmations2post_items %>%
+    left_join(posted_invoice_ids,
+              by = c("confirmation_id","invoice_date"),
+              relationship = "many-to-many")%>%
+    mutate(
+      description = description,
+      unit_price = as.numeric(total_net) / as.numeric(quantity),
+      reduction = replace_na(reduction, "0%")
+    )
+
+
+  post_all_invoice_items(df_items = invoice_confirmation_items,
+                         billomatID = billomatID,
+                         billomatApiKey = keys$billomat[2])
+
+  posted_invoice_ids
+}
+
+
 
