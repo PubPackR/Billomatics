@@ -398,18 +398,38 @@ get_impressions_and_bonus <- function(df, field2extract = "description") {
 #' get_invoice_information_from_document
 #' This function takes a data frame with comments and turns them into a table containing the reported performance
 #' @param df_document The data frame with all the documents intro
-#'
+#' @param field For the confirmation the information is contained in the "intro". For invoices in "note". #'
 #' @return The function returns a df key - value with all the fields that are found in the intro
 #'
 #' @export
-get_invoice_information_from_document <- function(df_document, field = "intro") {
-  df_document %>%
+get_invoice_information_from_document <- function(df_document,
+                                                  field = "intro") {
+   #%>%
+  if(field == "intro") {
+
+   extracted_field <- df_document %>%
+    mutate(intro = intro) %>%
     #filter(id == 405476) %>%
     mutate(intro = str_remove_all(intro, "&nbsp;|amp;"),
            intro = str_replace_all(intro, ";", ";\n")) %>%
-    Billomatics::get_extracted_information(., field) %>%
+    Billomatics::get_extracted_information(.,field)}
 
-    separate(note, into = c("key", "value"), sep = ":") %>%
+  else if (field == "note") {
+    extracted_field <- df_document %>%
+      mutate(note = note) %>%
+      #filter(id == 405476) %>%
+      mutate(note = str_remove_all(note, "&nbsp;|amp;"),
+             note = str_replace_all(note, ";", ";\n")) %>%
+      Billomatics::get_extracted_information(.,field)
+  } else {
+
+    return("no known field")
+  }
+
+  ## only if there was a field to extract we can continue
+  if(exists("extracted_field")){
+  extracted_field %>%
+    separate(note, into = c("key", "value"), sep = ":",extra = "drop", fill = "right") %>%
     mutate(value = na_if(str_squish(value), "")) %>%
     drop_na(value) %>%
     filter(
@@ -426,6 +446,7 @@ get_invoice_information_from_document <- function(df_document, field = "intro") 
         key, pattern = c("nummer" = "nr", "gruppe" = "gr")
       ))
     )
+  }
 }
 
 #'get_information_from_comments

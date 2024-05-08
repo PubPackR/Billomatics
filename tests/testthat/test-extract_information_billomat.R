@@ -32,7 +32,7 @@ test_that("get_information_from_comments_rechnungsinformation", {
 })
 
 
-test_that("get_information_from_confirmation", {
+testthat::test_that("get_information_from_confirmation", {
 
   ## get the datasets
   df_test<- readRDS(testthat::test_path("intro_test.RDS"))
@@ -43,4 +43,29 @@ test_that("get_information_from_confirmation", {
 
   ## testing if the CPC campaign information is retrieved
   testthat::expect_equal(fun_out, df_test_out)
+})
+
+testthat::test_that("get_information_from_invoice", {
+
+  ## get the datasets
+  df_test<- readRDS(testthat::test_path("note_test.RDS"))
+  df_test_out<- readRDS(testthat::test_path("note_test_out.RDS"))
+
+  ## run the function
+  fun_out <- get_invoice_information_from_document(df_test,field = "note")
+
+  ## testing if the CPC campaign information is retrieved
+  testthat::expect_equal(fun_out, df_test_out)
+})
+
+testthat::test_that("get_information_from_wrong_field", {
+
+  ## get the datasets
+  df_test<- readRDS(testthat::test_path("intro_test.RDS"))
+
+  ## run the function
+  fun_out <- get_invoice_information_from_document(df_test,field = "test")
+
+  ## testing if the CPC campaign information is retrieved
+  testthat::expect_equal(fun_out, "no known field")
 })
