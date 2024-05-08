@@ -30,3 +30,17 @@ test_that("get_information_from_comments_rechnungsinformation", {
 
 
 })
+
+
+test_that("get_information_from_confirmation", {
+
+  ## get the datasets
+  df_test<- readRDS(testthat::test_path("intro_test.RDS"))
+  df_test_out<- readRDS(testthat::test_path("intro_test_out.RDS"))
+
+  ## run the function
+  fun_out <- get_invoice_information_from_document(df_test,field = "intro")
+
+  ## testing if the CPC campaign information is retrieved
+  testthat::expect_equal(fun_out, df_test_out)
+})

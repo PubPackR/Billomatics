@@ -6,10 +6,10 @@
 \usage{
 get_confirmations_2_bill(
   df_reale_starts,
-  confirmations,
-  invoices,
-  confirmation_items,
-  confirmation_number_bill_date,
+  df_confirmations,
+  df_invoices,
+  df_confirmation_items,
+  df_confirmation_number_bill_date,
   billomatDB,
   encryption_key_db = keys$billomat[1],
   create_delayed_7_days = FALSE
@@ -18,13 +18,13 @@ get_confirmations_2_bill(
 \arguments{
 \item{df_reale_starts}{The df which contains the real running times, given the campaigns started}
 
-\item{confirmations}{The df with the confirmations}
+\item{df_confirmations}{The df with the confirmations}
 
-\item{invoices}{The df with the invoices}
+\item{df_invoices}{The df with the invoices}
 
-\item{confirmation_items}{The df with confirmation items}
+\item{df_confirmation_items}{The df with confirmation items}
 
-\item{confirmation_number_bill_date}{The df from asana that contains the number of bills per confirmation}
+\item{df_confirmation_number_bill_date}{The df from asana that contains the number of bills per confirmation}
 
 \item{billomatDB}{The billomat DB location}
 

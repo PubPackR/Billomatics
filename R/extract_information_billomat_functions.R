@@ -397,9 +397,9 @@ get_impressions_and_bonus <- function(df, field2extract = "description") {
 
 #' get_invoice_information_from_document
 #' This function takes a data frame with comments and turns them into a table containing the reported performance
-#' @param df_comments The data frame with all the comments downloaded
+#' @param df_document The data frame with all the documents intro
 #'
-#' @return The function returns a df with all the reported clicks in the comment
+#' @return The function returns a df key - value with all the fields that are found in the intro
 #'
 #' @export
 get_invoice_information_from_document <- function(df_document, field = "intro") {
@@ -414,7 +414,7 @@ get_invoice_information_from_document <- function(df_document, field = "intro") 
     drop_na(value) %>%
     filter(
       !str_detect(key, c(
-        "Bezugnahme|Laufzeit|Rechnungsstellung erfolgt"
+        "Laufzeit|Rechnungsstellung erfolgt|Zielsetzung|Zielgr"
       )),
       !str_detect(value, pattern = "AN....SF...."),
       !str_detect(value, pattern = "AB....SF....")
