@@ -39,10 +39,10 @@ check_contract_starts <- function (df_current_contracts,
 
 #' get_confirmations_2_bill
 #' @param df_reale_starts The df which contains the real running times, given the campaigns started
-#' @param confirmations The df with the confirmations
-#' @param invoices The df with the invoices
-#' @param confirmation_items The df with confirmation items
-#' @param confirmation_number_bill_date The df from asana that contains the number of bills per confirmation
+#' @param df_confirmations The df with the confirmations
+#' @param df_invoices The df with the invoices
+#' @param df_confirmation_items The df with confirmation items
+#' @param df_confirmation_number_bill_date The df from asana that contains the number of bills per confirmation
 #' @param billomatDB The billomat DB location
 #' @param encryption_key_db The key to decrypt the billomat db
 #' @param create_delayed_7_days True when a confirmation should get an invoice when at least 7 days old.
@@ -53,10 +53,10 @@ check_contract_starts <- function (df_current_contracts,
 #'
 #' @export
 get_confirmations_2_bill <- function(df_reale_starts,
-                                     confirmations,
-                                     invoices,
-                                     confirmation_items,
-                                     confirmation_number_bill_date,
+                                     df_confirmations,
+                                     df_invoices,
+                                     df_confirmation_items,
+                                     df_confirmation_number_bill_date,
                                      billomatDB,
                                      encryption_key_db = keys$billomat[1],
                                      create_delayed_7_days = FALSE) {
@@ -71,37 +71,37 @@ get_confirmations_2_bill <- function(df_reale_starts,
            Laufzeit_Start <= lubridate::ceiling_date(lubridate::today(), unit = "months") - lubridate::days(1))
 
   # find all split bills
-  split_bills <- confirmation_number_bill_date %>%
+  split_bills <- df_confirmation_number_bill_date %>%
     dplyr::filter(Anzahl_Rechnungen > 1)
 
   # find all cpc campaigns that have to be billed manually
-  cpc_confirmations <- confirmation_items %>%
+  cpc_confirmations <- df_confirmation_items %>%
     dplyr::filter(article_id == "1248678" | stringr::str_detect(description,"CPC|Cost per")) %>%
     dplyr::distinct(confirmation_id,.keep_all = TRUE)
 
   if (create_delayed_7_days) {
-    confirmations <- confirmations %>%
+    df_confirmations <- df_confirmations %>%
       dplyr::filter(date >= today() - days(7),
              status == "COMPLETED")
   } else {
 
-    confirmations <- confirmations %>%
+    df_confirmations <- df_confirmations %>%
       dplyr::filter(confirmation_number %in% df_reale_starts$confirmation_number,
              status == "COMPLETED")
 
   }
   # find all invoices that are part of a confirmation
-  invoices <- invoices %>%
+  df_invoices <- df_invoices %>%
     dplyr::filter(status == "DRAFT|COMPLETED|PAID") %>%
-    dplyr::filter(confirmation_id %in% confirmations$id)
+    dplyr::filter(df_confirmation_id %in% df_confirmations$id)
 
   # remove all confirmations that already have >= 1 invoice
 
-  confirmations %>%
-    dplyr::filter(!id %in% invoices$confirmation_id) %>%
+  df_confirmations %>%
+    dplyr::filter(!id %in% df_invoices$confirmation_id) %>%
 
     # remove all confirmations that include CPC positions
-    dplyr::filter(!id %in% cpc_confirmations$id) %>%
+    dplyr::filter(!id %in% df_cpc_confirmations$id) %>%
 
     # remove all confirmations that are split
     dplyr::filter(!confirmation_number %in% split_bills$confirmation_number)
@@ -122,7 +122,7 @@ get_cpc_document <- function(df_items,
                           field = "description") {
 
   df_items <- df_items %>%
-    dplyr::mutate(document_id = paste0(document_type,"_id"))
+    dplyr::mutate(document_id = get(paste0(document_type,"_id")))
 
   df_items %>%
     dplyr::filter(article_id == "1248678" |
