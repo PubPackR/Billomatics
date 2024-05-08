@@ -3,6 +3,7 @@
 library(safer)
 library(tidyverse)
 library(googlesheets4)
+library(googleAuthR)
 
 #' authentication_process
 #'
@@ -14,7 +15,7 @@ library(googlesheets4)
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "google analytics"), args) {
 
   # 1 Authentication Billomat ----
 
@@ -64,10 +65,21 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     msgraph_key <- NA
   }
 
+  # 6 Authentication Google Analytics ---
+
+  pos_Google_Analytics <- match(1, stringr::str_detect("google analytics", needed_services))
+
+  if(!is.na(pos_Google_Analytics)) {
+    authentication_Google_Analytics(args[pos_Google_Analytics])
+  }
+
   keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key)
 
   return(keys)
 }
+
+
+
 
 #' authentication_billomat
 #'
@@ -221,3 +233,54 @@ authentication_msgraph <-  function(args) {
 
   safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
+
+
+#' authentication_Google_Analytics
+#'
+#' This function executes the Google Analytics authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return no return values
+
+#' @export
+authentication_Google_Analytics <-  function(args) {
+  if (interactive()) {
+    decrypt_google_analytics_key <-
+      getPass::getPass("Enter the password for Google Analytics: ")
+
+  } else {
+    decrypt_google_analytics_key <- args
+  }
+
+  encrypted_file <-
+    "../../keys/GoogleAnalytics/encrypted_google_analytics.bin"
+  decrypted_file <-
+    "../../keys/GoogleAnalytics/google_analytics_auth.json"
+
+  tryCatch({
+    decrypted_data <-
+      safer::decrypt_file(infile = encrypted_file,
+                          key = decrypt_google_analytics_key,
+                          outfile = decrypted_file)
+    print("Decryption successful. Data saved to google_analytics_auth.json")
+
+    # Authentifizieren bei Google Analytics
+    google_analytics_auth <- googleAuthR::gar_auth_service(
+      json_file = decrypted_file
+    )
+
+  },
+  error = function(e) {
+    # Error handling
+    cat("An error occurred: ", e$message, "\n")
+  },
+  finally = {
+    # Cleanup of private key afterwards
+    unlink(decrypted_file)
+    print("google_analytics_auth.json deleted.")
+  })
+}
+
+
+
