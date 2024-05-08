@@ -331,3 +331,40 @@ read_most_recent_data <- function(location, filetype = "RDS", name_starts_with =
 
   return(df)
 }
+
+
+
+#' match_invoices_confirmations
+#'
+#' this function matches all invoices and confirmations passed via params and returns
+#' their ids and confirmation_number. The function is used to match corrected bills to
+#' its original confirmation
+#'
+#' @param invoices_df the df containing all invoices
+#' @param confirmations_df the df containing all confirmations
+#'
+#' @return A df with the confirmation_id, invoice_id and confirmation_number.
+
+#' @export
+match_invoices_confirmations <- function(invoices_df,
+                                         confirmations_df){
+
+
+  ## this function finds all invoices with their corrections and joins them with their confirmations
+  ## the function returns table with all invoice ids and confirmation ids
+
+  invoice_confirmation_df <- invoices_df %>%
+    dplyr::left_join(invoices_df %>%
+                       dplyr::select(id,confirmation_id), by = c("invoice_id" = "id")) %>%
+    dplyr::mutate(confirmation_id = dplyr::coalesce(confirmation_id.x,confirmation_id.y)) %>%
+    dplyr::select(id,confirmation_id,invoice_number)
+
+  confirmations_df %>%
+    dplyr::left_join(invoice_confirmation_df, by = c("id"="confirmation_id"),
+              suffix = c("","_invoice")) %>%
+    dplyr::rename(id_confirmation = id) %>%
+    dplyr::select(id_confirmation,id_invoice,confirmation_number) %>%
+    tidyr::drop_na(id_invoice)
+
+}
+
