@@ -491,3 +491,5 @@ get_information_from_comments <- function(df_comments,
     group_by(key, document_id) %>%
     slice_max(created)
 }
+
+consolidate_invoice_information <- function(){}
