@@ -5,7 +5,8 @@
 \title{authentication_process}
 \usage{
 authentication_process(
-  needed_services = c("billomat", "crm", "google sheet", "asana", "msgraph"),
+  needed_services = c("billomat", "crm", "google sheet", "asana", "msgraph",
+    "google analytics"),
   args
 )
 }

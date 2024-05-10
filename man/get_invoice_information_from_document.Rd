@@ -8,10 +8,12 @@ This function takes a data frame with comments and turns them into a table conta
 get_invoice_information_from_document(df_document, field = "intro")
 }
 \arguments{
-\item{df_comments}{The data frame with all the comments downloaded}
+\item{df_document}{The data frame with all the documents intro}
+
+\item{field}{For the confirmation the information is contained in the "intro". For invoices in "note". #'}
 }
 \value{
-The function returns a df with all the reported clicks in the comment
+The function returns a df key - value with all the fields that are found in the intro
 }
 \description{
 get_invoice_information_from_document
