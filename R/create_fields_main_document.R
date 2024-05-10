@@ -1,3 +1,5 @@
+### this script contains all functions that are used to format the data according to the template
+
 #' create_document_level_fields
 #' This function takes a dataframe with the positions and creates the fields for the template
 #' @param df_positions The dataframe with all the positions

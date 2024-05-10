@@ -492,4 +492,27 @@ get_information_from_comments <- function(df_comments,
     slice_max(created)
 }
 
-consolidate_invoice_information <- function(){}
+
+#' consolidate_invoice_information
+#' This function is used to create one dataframe from the billing information in the comments
+#' and the billing information from the document. The information from the comments supersede the information
+#' in the document.
+#' @param df_Billing_information_comment the dataframe containing the extracted information of comments
+#' @param df_Billing_information_document the dataframe containing the extracted information of the document
+#' @return The function returns one dataframe with the document_id, key col containing the name of the information and value its value.
+#'
+#' @export
+consolidate_invoice_information <- function(df_Billing_information_comment,
+                                            df_Billing_information_document
+                                            ) {
+
+
+  df_Billing_information_comment %>%
+    select(document_id, key, value) %>%
+
+    bind_rows(df_Billing_information_document %>%
+                mutate(document_id = id)) %>%
+    distinct(document_id, value, .keep_all = TRUE) %>%
+    select(document_id, key, value)
+}
+
