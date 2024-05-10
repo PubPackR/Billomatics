@@ -80,19 +80,19 @@ testthat::test_that("consolidate_information from comments and document", {
 
   ## output
 
-  df_consilidate_intro_test<- readRDS(testthat::test_path("consolidateInfo_intro_out.RDS"))
-  df_consilidate_note_test<- readRDS(testthat::test_path("consolidateInfo_note_out.RDS"))
+  df_consolidate_intro_test<- readRDS(testthat::test_path("consolidateInfo_intro_out.RDS"))
+  df_consolidate_note_test<- readRDS(testthat::test_path("consolidateInfo_note_out.RDS"))
 
   ## run the function
   fun_out <- consolidate_invoice_information(df_Billing_information_comment = df_comment_test,
                                              df_Billing_information_document = df_doc_intro_test)
 
   ## testing if the CPC campaign information is retrieved
-  testthat::expect_equal(fun_out, df_consilidate_intro_test)
+  testthat::expect_equal(fun_out, df_consolidate_intro_test)
 
   fun_out <- consolidate_invoice_information(df_Billing_information_comment = df_comment_test,
                                              df_Billing_information_document = df_doc_note_test)
 
-  testthat::expect_equal(fun_out, df_consilidate_note_test)
+  testthat::expect_equal(fun_out, df_consolidate_note_test)
 
 })

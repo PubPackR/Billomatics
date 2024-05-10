@@ -37,3 +37,55 @@ create_document_level_fields <- function(df_positions,
   }
 
 }
+
+#' create_header_billing_info_text
+#'
+#' this function uses are table with all fields for billing information and creates a wide table to show it on the billing doc
+#' @param df_positions the positions that need to get the billing information attached to
+#' @param df_information_bill The df containing the billing information after comments and intro/ note were consolidated
+#' @return The function returns the information added to the fields and shortened to 50 characters
+#'
+#' @export
+create_header_billing_info_text <- function(df_positions,
+                                            df_information_bill) {
+
+  #### truncating the fields length
+  fields_with_billing_information <-  df_information_bill %>%
+    filter(!str_detect(key, "Versand|ddresse|Zahlungsziel")) %>%
+    mutate(key = str_replace_all(
+      key,
+      pattern = c(
+        "Ansprechpartner" = "ASP",
+        "Auftrags" = "Auftr.",
+        "Kostenstelle" = "Kstst.",
+        "Leistungsempfänger" = "Lstgsempf.",
+        "Marketing für" = "Marketing f."
+      )
+    ))
+
+    fields_with_billing_information <-
+      fields_with_billing_information %>%
+      group_by(document_id) %>%
+      arrange(-desc(key)) %>%
+      mutate(
+        field_content = paste0(key, ":", value),
+        field_content = str_trunc(field_content, 49, "right", ellipsis = "."),
+        field_length = nchar(field_content),
+        field_name = paste0(
+          "Kopftext_",
+          row_number() + 4,
+          "_50__header_text_",
+          row_number() + 4
+        )
+      ) %>%
+      pivot_wider(id_cols = "document_id",
+                  names_from = field_name,
+                  values_from = field_content)
+
+
+    df_positions %>%
+      left_join(fields_with_billing_information,
+                by = c("document_id"))
+}
+
+
