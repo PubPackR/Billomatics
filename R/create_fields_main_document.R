@@ -1,5 +1,70 @@
 ### this script contains all functions that are used to format the data according to the template
 
+#' get_alternative_debitor
+#' This function takes the billing information provided and extracts the Debitor or deviating recipient
+#' @param df_positions The dataframe with all the positions
+#' @param Information_bill_df The dataframe containing the information about billing details from comments and document
+#' @return The function returns a df with all Debitors and their document id
+#' @export
+get_alternative_debitor <- function(Information_bill_df) {
+  # If a new debitor alternative main debitor is passed via the comments
+  if("Debitor"  %in% unique(Information_bill_df$key)) {
+    Information_bill_df %>%
+      filter(key == "Debitor") %>%
+      pivot_wider(id_cols = document_id,
+                  values_from = value,
+                  values_fn = function(x) unique(x),
+                  names_from = key) %>%
+      mutate(Debitor = as.numeric(Debitor)) } else {
+        tibble(Debitor = NA,
+               document_id = NA)
+      }
+}
+
+
+#' get_deviating_invoice_recipient
+#' This function takes the billing information provided and extracts the Debitor or deviating recipient
+#' @param df_positions The dataframe with all the positions
+#' @param Information_bill_df The dataframe containing the information about billing details from comments and document
+#' @return The function returns a df with all deviating Debitors and their document id
+#' @export
+get_deviating_invoice_recipient <- function(Information_bill_df) {
+  if("abweichender Rechnungsempfänger" %in% unique(Information_bill_df$key)  ) {
+    # If a deviating invoice recipient besided the main debitor is passed via the comments
+    Information_bill_df %>%
+      filter(key == "abweichender Rechnungsempfänger") %>%
+      pivot_wider(id_cols = document_id,
+                  values_from = value,
+                  names_from = key) %>%
+      mutate(`abweichender Rechnungsempfänger` = as.numeric(`abweichender Rechnungsempfänger`))
+  } else {
+    tibble(`abweichender Rechnungsempfänger` = NA,
+           document_id = NA)
+  }
+}
+
+
+#' create_invoice_recipient
+#' This function takes the billing information provided and extracts the Debitor or deviating recipient
+#' @param df_positions The dataframe with all the positions
+#' @param Information_bill_df The dataframe containing the information about billing details from comments and document
+#' @return The function returns a df with all deviating Debitors and their document id
+#' @export
+create_invoice_recipient <- function(df_positions,Information_bill_df) {
+
+  alternative_debitor <- get_alternative_debitor(Information_bill_df)
+  deviating_invoice_recipient <- get_deviating_invoice_recipient(Information_bill_df)
+
+  df_positions %>%
+    left_join(alternative_debitor, by = "document_id",
+              suffix = c("",".abweichend")) %>%
+    left_join(deviating_invoice_recipient, by = "document_id") %>%
+    mutate(Auftraggeber_customer = coalesce(Debitor.abweichend,Debitor),
+           Rechnungs_empfänger_billto_party = coalesce(`abweichender Rechnungsempfänger`,Auftraggeber_customer))
+}
+
+
+
 #' create_document_level_fields
 #' This function takes a dataframe with the positions and creates the fields for the template
 #' @param df_positions The dataframe with all the positions

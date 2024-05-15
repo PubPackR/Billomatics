@@ -1,5 +1,5 @@
 
-test_that("create_header_billing_info_text", {
+testthat::test_that("create_header_billing_info_text", {
 
   #### read the test data----
   df_positions_test<- readRDS(testthat::test_path("df_positions_test.RDS"))
@@ -12,5 +12,9 @@ test_that("create_header_billing_info_text", {
 
   testthat::expect_equal(fun_out,df_create_header_billing_info_out)
 
+
+})
+
+testthat::test_that("create_invoice_recipient",{
 
 })
