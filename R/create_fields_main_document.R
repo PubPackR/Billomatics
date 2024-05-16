@@ -16,8 +16,8 @@ get_alternative_debitor <- function(Information_bill_df) {
                   values_fn = function(x) unique(x),
                   names_from = key) %>%
       mutate(Debitor = as.numeric(Debitor)) } else {
-        tibble(Debitor = NA,
-               document_id = NA)
+        tibble(Debitor = as.numeric(NA),
+               document_id = as.numeric(NA))
       }
 }
 
@@ -29,6 +29,10 @@ get_alternative_debitor <- function(Information_bill_df) {
 #' @return The function returns a df with all deviating Debitors and their document id
 #' @export
 get_deviating_invoice_recipient <- function(Information_bill_df) {
+
+  Information_bill_df <- Information_bill_df %>%
+    mutate(key = str_replace_all(key,"Abweichender","abweichender"))
+
   if("abweichender Rechnungsempfänger" %in% unique(Information_bill_df$key)  ) {
     # If a deviating invoice recipient besided the main debitor is passed via the comments
     Information_bill_df %>%
@@ -38,8 +42,8 @@ get_deviating_invoice_recipient <- function(Information_bill_df) {
                   names_from = key) %>%
       mutate(`abweichender Rechnungsempfänger` = as.numeric(`abweichender Rechnungsempfänger`))
   } else {
-    tibble(`abweichender Rechnungsempfänger` = NA,
-           document_id = NA)
+    tibble(`abweichender Rechnungsempfänger` = as.numeric(NA),
+           document_id = as.numeric(NA))
   }
 }
 
@@ -56,11 +60,16 @@ create_invoice_recipient <- function(df_positions,Information_bill_df) {
   deviating_invoice_recipient <- get_deviating_invoice_recipient(Information_bill_df)
 
   df_positions %>%
+    mutate(document_id = as.numeric(document_id)) %>%
     left_join(alternative_debitor, by = "document_id",
               suffix = c("",".abweichend")) %>%
-    left_join(deviating_invoice_recipient, by = "document_id") %>%
-    mutate(Auftraggeber_customer = coalesce(Debitor.abweichend,Debitor),
-           Rechnungs_empfänger_billto_party = coalesce(`abweichender Rechnungsempfänger`,Auftraggeber_customer))
+    left_join(deviating_invoice_recipient %>%
+                mutate(document_id = as.numeric(document_id)) , by = "document_id") %>%
+    mutate(Auftraggeber_customer = coalesce(as.numeric(Debitor.abweichend),
+                                            as.numeric(Debitor)),
+           Rechnungs_empfänger_billto_party = coalesce(as.numeric(`abweichender Rechnungsempfänger`),
+                                                       as.numeric(deviating_invoice_recipient),
+                                                       as.numeric(Auftraggeber_customer)))
 }
 
 
