@@ -404,7 +404,7 @@ get_impressions_and_bonus <- function(df, field2extract = "description") {
 #' @export
 get_invoice_information_from_document <- function(df_document,
                                                   field = "intro") {
-   #%>%
+
   if(field == "intro") {
 
    extracted_field <- df_document %>%
@@ -489,7 +489,8 @@ get_information_from_comments <- function(df_comments,
     left_join(df_comments %>%
                 distinct(id, document_id, created), by = c("id")) %>%
     group_by(key, document_id) %>%
-    slice_max(created)
+    slice_max(created) %>%
+    mutate(document_id= as.numeric(document_id))
 }
 
 
@@ -511,8 +512,9 @@ consolidate_invoice_information <- function(df_Billing_information_comment,
     select(document_id, key, value) %>%
 
     bind_rows(df_Billing_information_document %>%
-                mutate(document_id = id)) %>%
+                mutate(document_id = as.numeric(id))) %>%
     distinct(document_id, value, .keep_all = TRUE) %>%
-    select(document_id, key, value)
+    select(document_id, key, value) %>%
+    mutate(document_id = as.numeric(document_id))
 }
 

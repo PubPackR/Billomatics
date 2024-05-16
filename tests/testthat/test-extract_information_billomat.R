@@ -1,7 +1,8 @@
 test_that("get_information_from_comments_cpc", {
   ## get the datasets
   df_comments<- readRDS(testthat::test_path("comments_test.RDS"))
-  df_comments_cpc<- readRDS(testthat::test_path("comments_test_cpc_out.RDS"))
+  df_comments_cpc<- readRDS(testthat::test_path("comments_test_cpc_out.RDS")) %>%
+    mutate(document_id  = as.numeric(document_id))
 
   ## run the function
   fun_out <- get_information_from_comments(df_comments,
@@ -25,7 +26,7 @@ test_that("get_information_from_comments_rechnungsinformation", {
                                            desired_information = "Rechnungszusatzinformation")
 
   ## testing if the CPC campaign information is retrieved
-  testthat::expect_equal(fun_out, df_comments_rechnungsinfo,)
+  testthat::expect_equal(fun_out, df_comments_rechnungsinfo)
 
 
 
@@ -80,8 +81,10 @@ testthat::test_that("consolidate_information from comments and document", {
 
   ## output
 
-  df_consolidate_intro_test<- readRDS(testthat::test_path("consolidateInfo_intro_out.RDS"))
-  df_consolidate_note_test<- readRDS(testthat::test_path("consolidateInfo_note_out.RDS"))
+  df_consolidate_intro_test<- readRDS(testthat::test_path("consolidateInfo_intro_out.RDS")) %>%
+    mutate(document_id = as.numeric(document_id))
+  df_consolidate_note_test<- readRDS(testthat::test_path("consolidateInfo_note_out.RDS"))%>%
+    mutate(document_id = as.numeric(document_id))
 
   ## run the function
   fun_out <- consolidate_invoice_information(df_Billing_information_comment = df_comment_test,
