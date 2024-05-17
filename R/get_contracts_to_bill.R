@@ -68,7 +68,7 @@ get_confirmations_2_bill <- function(df_reale_starts,
     # I only keep contracts that have started after 1.1.2024
     dplyr::filter(Laufzeit_Start >= lubridate::floor_date(lubridate::today(), unit = "years"),
            # I only keep contracts that have started until the end of this month
-           Laufzeit_Start <= lubridate::ceiling_date(lubridate::today(), unit = "months") - lubridate::days(1))
+           Laufzeit_Start <= lubridate::ceiling_date(lubridate::today(), unit = "weeks") - lubridate::days(1))
 
   # find all split bills
   split_bills <- df_confirmation_number_bill_date %>%
@@ -77,6 +77,7 @@ get_confirmations_2_bill <- function(df_reale_starts,
   # find all cpc campaigns that have to be billed manually
   cpc_confirmations <- df_confirmation_items %>%
     dplyr::filter(article_id == "1248678" | stringr::str_detect(description,"CPC|Cost per")) %>%
+    filter(total_net == 0) %>%
     dplyr::distinct(confirmation_id,.keep_all = TRUE)
 
   if (create_delayed_7_days) {
@@ -92,8 +93,8 @@ get_confirmations_2_bill <- function(df_reale_starts,
   }
   # find all invoices that are part of a confirmation
   df_invoices <- df_invoices %>%
-    dplyr::filter(status == "DRAFT|COMPLETED|PAID") %>%
-    dplyr::filter(df_confirmation_id %in% df_confirmations$id)
+    dplyr::filter(status %in% c("DRAFT","OPEN","PAID","OVERDUE")) %>%
+    dplyr::filter(confirmation_id %in% df_confirmations$id)
 
   # remove all confirmations that already have >= 1 invoice
 
@@ -101,7 +102,7 @@ get_confirmations_2_bill <- function(df_reale_starts,
     dplyr::filter(!id %in% df_invoices$confirmation_id) %>%
 
     # remove all confirmations that include CPC positions
-    dplyr::filter(!id %in% df_cpc_confirmations$id) %>%
+    dplyr::filter(!id %in% cpc_confirmations$id) %>%
 
     # remove all confirmations that are split
     dplyr::filter(!confirmation_number %in% split_bills$confirmation_number)

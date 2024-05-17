@@ -56,14 +56,14 @@ get_deviating_invoice_recipient <- function(Information_bill_df) {
 #' @export
 create_invoice_recipient <- function(df_positions,Information_bill_df) {
 
-  alternative_debitor <- get_alternative_debitor(Information_bill_df)
-  deviating_invoice_recipient <- get_deviating_invoice_recipient(Information_bill_df)
+  df_alternative_debitor <- get_alternative_debitor(Information_bill_df)
+  df_deviating_invoice_recipient <- get_deviating_invoice_recipient(Information_bill_df)
 
   df_positions %>%
     mutate(document_id = as.numeric(document_id)) %>%
-    left_join(alternative_debitor, by = "document_id",
+    left_join(df_alternative_debitor, by = "document_id",
               suffix = c("",".abweichend")) %>%
-    left_join(deviating_invoice_recipient %>%
+    left_join(df_deviating_invoice_recipient %>%
                 mutate(document_id = as.numeric(document_id)) , by = "document_id") %>%
     mutate(Auftraggeber_customer = coalesce(as.numeric(Debitor.abweichend),
                                             as.numeric(Debitor)),
@@ -125,7 +125,7 @@ create_header_billing_info_text <- function(df_positions,
 
   #### truncating the fields length
   fields_with_billing_information <-  df_information_bill %>%
-    filter(!str_detect(key, "Versand|ddresse|Zahlungsziel")) %>%
+    filter(!str_detect(key, "Versand|ddresse|Zahlungsziel|Rechnungsempfänger|Debitor")) %>%
     mutate(key = str_replace_all(
       key,
       pattern = c(

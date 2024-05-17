@@ -507,12 +507,15 @@ consolidate_invoice_information <- function(df_Billing_information_comment,
                                             df_Billing_information_document
                                             ) {
 
+  if(!"document_id" %in% colnames(df_Billing_information_document)) {
+    df_Billing_information_document <- df_Billing_information_document %>%
+      mutate(document_id = as.numeric(id))
+  }
 
   df_Billing_information_comment %>%
     select(document_id, key, value) %>%
 
-    bind_rows(df_Billing_information_document %>%
-                mutate(document_id = as.numeric(id))) %>%
+    bind_rows(df_Billing_information_document) %>%
     distinct(document_id, value, .keep_all = TRUE) %>%
     select(document_id, key, value) %>%
     mutate(document_id = as.numeric(document_id))
