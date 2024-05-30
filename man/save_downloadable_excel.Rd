@@ -4,12 +4,18 @@
 \alias{save_downloadable_excel}
 \title{save_downloadable_excel}
 \usage{
-save_downloadable_excel(data, dashboard_nr, file_name)
+save_downloadable_excel(
+  data,
+  billomat_key,
+  file_name,
+  dashboard_nr_string = "02",
+  shiny_download_files = "../../base-data/shiny_download_files"
+)
 }
 \arguments{
-\item{dashboard_nr}{the dashboard number to be included in the file path}
-
 \item{file_name}{the name of the Excel file to be generated}
+
+\item{dashboard_nr}{the dashboard number to be included in the file path}
 }
 \value{
 no return values

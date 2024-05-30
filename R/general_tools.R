@@ -48,22 +48,22 @@ generate_password <- function(length = 10) {
 #' @return no return values
 
 #' @export
-save_downloadable_excel <- function(data, dashboard_nr, file_name) {
+save_downloadable_excel <- function(data, billomat_key, file_name, dashboard_nr_string = "02", shiny_download_files = "../../base-data/shiny_download_files") {
 
   # Generate a random password for Excel file encryption
   pwd_excel <- generate_password(12)
 
   # Create the Excel file with KPI data and password protection
   data %>%
-    write.xlsx(paste0(shiny_download_files, "/shiny_", dashboard_nr, "/", file_name), password = pwd_excel)
+    xlsx::write.xlsx(paste0(shiny_download_files, "/shiny_", dashboard_nr_string, "/", file_name), password = pwd_excel)
 
   # Load and update the password log, encrypting it for security
-  passwort_df <- readRDS(paste0(shiny_download_files, "/encryption_download_files.RDS")) %>%
-    safer::decrypt_object(keys$billomat[1]) %>%
-    bind_rows(data.frame(file = paste0("shiny_", dashboard_nr, "/", file_name), password = pwd_excel, ts = Sys.time())) %>%
+  readRDS(paste0(shiny_download_files, "/encryption_download_files.RDS")) %>%
+    safer::decrypt_object(billomat_key) %>%
+    bind_rows(data.frame(file = paste0("shiny_", dashboard_nr_string, "/", file_name), password = pwd_excel, ts = Sys.time())) %>%
     arrange(ts) %>%
     group_by(file) %>%
     summarise_all(last) %>%
-    safer::encrypt_object(keys$billomat[1]) %>%
+    safer::encrypt_object(billomat_key) %>%
     saveRDS(paste0(shiny_download_files, "/encryption_download_files.RDS"))
 }
