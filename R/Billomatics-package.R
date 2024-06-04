@@ -7,7 +7,6 @@
 #' @import dplyr
 #' @import tidyr
 #' @import stringr
-#' @import xlsx
 #' @import safer
 #' @import googleAuthR
 ## usethis namespace: end
