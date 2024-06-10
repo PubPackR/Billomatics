@@ -292,6 +292,15 @@ get_laufzeiten_information <- function (df)
       )
   } else {
     print ("3")
+    # add column if not existing
+    if (!"Leistungsbeginn" %in% colnames(df)) {
+      df <- df %>%
+        mutate(Leistungsbeginn = NA)
+    }
+    if (!"Leistungsende" %in% colnames(df)) {
+      df <- df %>%
+        mutate(Leistungsende = NA)
+    }
     # when there is no start and ende then I have to make this column
     df <- df %>% mutate(
       # to only keep the dates and remove all text information

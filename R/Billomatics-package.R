@@ -8,5 +8,6 @@
 #' @import tidyr
 #' @import stringr
 #' @import safer
+#' @import googleAuthR
 ## usethis namespace: end
 NULL
