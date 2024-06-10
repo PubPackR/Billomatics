@@ -134,6 +134,7 @@ read_KeysFromDescription <- function (df, sep = sep)
       "Leistungsdatum",
       "Kampagnenstart",
       "Campaign launch",
+      "Predicted start of performance",
       "Lieferdatum",
       "Beginn des Leistungszeitraum",
       ".osting.*",
@@ -147,7 +148,8 @@ read_KeysFromDescription <- function (df, sep = sep)
   to_Leistungsende <- paste0(c(
     "Kampagnenende",
     "Laufzeitende",
-    "Ende des Leistungszeitraums"
+    "Ende des Leistungszeitraums",
+    "Predicted end of performance"
   ),
   collapse = "|")
   to_Leistungszeitraum <- paste0(c("Laufzeit", "Leistungszeit", "Leistungsbeginn", "Versand.*"),
