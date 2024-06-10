@@ -12,7 +12,6 @@ Imports:
     DBI,
     httr,
     jsonlite,
-    xlsx,
     safer
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
