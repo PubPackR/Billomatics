@@ -126,9 +126,9 @@ revenue_month <-
     ## get all the customers that have at least one order that ends in the previous year,so that they are truly recurring
     potential_recurrent_customers <-
       df_past %>%
-      dplyr::select(Kunde, orderID) %>%
-      dplyr::distinct(Kunde, orderID) %>%
-      dplyr::group_by(Kunde, orderID) %>%
+      dplyr::select(Kunde, confirmation_number) %>%
+      dplyr::distinct(Kunde, confirmation_number) %>%
+      dplyr::group_by(Kunde, confirmation_number) %>%
       dplyr::mutate(numberOfOrders = dplyr::n()) %>%
       dplyr::group_by(Kunde) %>%
       dplyr::mutate(orderNumber = cumsum(numberOfOrders))
@@ -209,7 +209,7 @@ revenue_month <-
 #' Here I compute the revenue per month considering the booking date and the sales person.
 #' Function uses the revenue_month() function to purrr over the df creating the revenue types
 #'
-#' @param df the data frame which must contain the customer ("Kunde"), orderID, Month and MonthlyRevenue
+#' @param df the data frame which must contain the customer ("Kunde"), confirmation_number, Month and MonthlyRevenue
 #'
 #' @return returns a tibble with grouped revenue streams
 #'
@@ -270,9 +270,9 @@ yearly_nrr_for_month <-
     ## get all the customers that have at least one order that ends in the previous year,so that they are truly recurring
     potential_recurrent_customers <-
       df_past %>%
-      dplyr::select(Kunde, orderID) %>%
-      dplyr::distinct(Kunde, orderID) %>%
-      dplyr::group_by(Kunde, orderID) %>%
+      dplyr::select(Kunde, confirmation_number) %>%
+      dplyr::distinct(Kunde, confirmation_number) %>%
+      dplyr::group_by(Kunde, confirmation_number) %>%
       dplyr::mutate(numberOfOrders = dplyr::n()) %>%
       dplyr::group_by(Kunde) %>%
       dplyr::mutate(orderNumber = cumsum(numberOfOrders))
@@ -297,13 +297,13 @@ yearly_nrr_for_month <-
                           # second possible case the order is a new order AND customer was in the past period - this also applies to all cases given the Auftragsdatum
                           (
                             Kunde %in% potential_recurrent_customers$Kunde &
-                              !(orderID %in% potential_recurrent_customers$orderID)
+                              !(confirmation_number %in% potential_recurrent_customers$confirmation_number)
                           )
 
                         ~ "recurrent",
                         (
                           Kunde %in% potential_recurrent_customers$Kunde &
-                            orderID %in% potential_recurrent_customers$orderID
+                            confirmation_number %in% potential_recurrent_customers$confirmation_number
                         ) ~ "recurrent_new",
                         TRUE ~ "new"
                       ))
@@ -329,9 +329,9 @@ yearly_nrr_for_month <-
         revenue_type = dplyr::case_when(
           !(Kunde %in% df_current$Kunde)  ~ "churned",
           Kunde %in% df_current$Kunde &
-            orderID %in% df_current$orderID ~ "recurrent_new",
+            confirmation_number %in% df_current$confirmation_number ~ "recurrent_new",
           Kunde %in% df_current$Kunde &
-            !(orderID %in% df_current$orderID) ~ "recurrent"
+            !(confirmation_number %in% df_current$confirmation_number) ~ "recurrent"
         )
       )
 
@@ -483,7 +483,7 @@ yearly_nrr_for_month <-
       ## getting customers total revenue for the previous period
       dplyr::group_by(
         Kunde,
-        orderID,
+        confirmation_number,
         Auftragsdatum,
         Vertriebler,
         StartDate,
