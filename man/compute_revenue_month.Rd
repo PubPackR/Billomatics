@@ -7,7 +7,7 @@
 compute_revenue_month(df)
 }
 \arguments{
-\item{df}{the data frame which must contain the customer ("Kunde"), orderID, Month and MonthlyRevenue}
+\item{df}{the data frame which must contain the customer ("Kunde"), confirmation_number, Month and MonthlyRevenue}
 }
 \value{
 returns a tibble with grouped revenue streams
