@@ -53,7 +53,7 @@ extract_note <- function(df, field) {
         )
       ),
 
-      note = str_remove_all(note, "geplant.*?\\s"),
+      note = str_remove_all(note, "[Gg]eplant.*?\\s"),
       note = str_remove(note, ": \n"),
       note = str_trim(note),
 
