@@ -28,9 +28,9 @@ custom_aggregate_data <- function(df,
     df <- df %>%
       # group the data by month and categories, use floor_date to always use first of month for further processing
       group_by(Monat = floor_date(get(Monat), unit = "months"),
-               Categories = get(Category_Column)) %>%
+               Produkt = get(Category_Column)) %>%
       # aggregate by sum
-      summarise(agg_sum = sum(get(dependent_variable))) %>%
+      summarise(Umsatz = sum(get(dependent_variable))) %>%
       # filter for relevant months between Start_Date and End_Date
       filter(Monat >= Start_Date,
              Monat <= End_Date) %>%
@@ -39,11 +39,11 @@ custom_aggregate_data <- function(df,
 
     if (turn2wide) {
       df %>%
-        # pivot aggregated data.frame/table, rows indexed by month, Categories in Columns
-        pivot_wider(names_from = Categories, values_from = agg_sum) %>%
+        # pivot aggregated data.frame/table, rows indexed by month, Categories/Produkt in Columns
+        pivot_wider(names_from = Produkt, values_from = Umsatz) %>%
         rowwise() %>%
         # add column "Summe" to table
-        mutate(Summe = sum(c_across(1:length(unique(df$Categories))), na.rm = TRUE))
+        mutate(Summe = sum(c_across(1:length(unique(df$Produkt))), na.rm = TRUE))
     }
     # return data.frame without pivoting
     else {
@@ -54,9 +54,9 @@ custom_aggregate_data <- function(df,
     df <- df %>%
       # group the data by month and categories, use floor_date to always use first of month for further processing
       group_by(Monat = floor_date(get(Monat), unit = "months"),
-               Categories = get(Category_Column)) %>%
+               Produkt = get(Category_Column)) %>%
       # aggregate by count
-      summarise(Count = n_distinct(get(dependent_variable))) %>%
+      summarise(Anzahl = n_distinct(get(dependent_variable))) %>%
       # filter for relevant months between Start_Date and End_Date
       filter(Monat >= Start_Date,
              Monat <= End_Date) %>%
@@ -65,8 +65,8 @@ custom_aggregate_data <- function(df,
 
     if (turn2wide) {
       df %>%
-        # pivot aggregated data.frame/table, rows indexed by month, Categories in Columns
-        pivot_wider(names_from = Categories, values_from = Count) %>%
+        # pivot aggregated data.frame/table, rows indexed by month, Categories/Produkt in Columns
+        pivot_wider(names_from = Produkt, values_from = Anzahl) %>%
         rowwise() %>%
         # add column "Summe" to table
         mutate(Summe = sum(c_across(1:length(unique(df$Produkt))), na.rm = TRUE))
