@@ -282,7 +282,7 @@ write_db2csv <- function(table2process = "invoices",
 #' @return the most recent data table
 
 #' @export
-read_most_recent_data <- function(location, filetype = "RDS", name_starts_with = "") {
+read_most_recent_data <- function(location, filetype = "RDS", name_starts_with = "",sheet = 1) {
 
   # filter on files that starts with the parameter name_starts_with and
   # ends with the filetype
@@ -317,7 +317,7 @@ read_most_recent_data <- function(location, filetype = "RDS", name_starts_with =
 
   if (filetype == "xlsx") {
     df <-
-      openxlsx::read.xlsx(filename)
+      openxlsx::read.xlsx(filename, sheet= sheet)
   }
 
   if (filetype == "csv") {
