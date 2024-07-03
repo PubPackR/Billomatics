@@ -4,7 +4,12 @@
 \alias{read_most_recent_data}
 \title{read_most_recent_data}
 \usage{
-read_most_recent_data(location, filetype = "RDS", name_starts_with = "")
+read_most_recent_data(
+  location,
+  filetype = "RDS",
+  name_starts_with = "",
+  sheet = 1
+)
 }
 \arguments{
 \item{location}{the directors you want to read the most recent file from}

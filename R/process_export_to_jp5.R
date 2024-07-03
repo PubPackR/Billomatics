@@ -22,24 +22,28 @@ aggregate_export_jp5 <- function(tmp_folder = "../../base-data/PMI/export/tmp/",
   # I want to get all unique names and then get the start
   aggregate_files <- function(tmp_folder,name_starts_with = "") {
     Billomatics::read_most_recent_data(location = tmp_folder,filetype = "xlsx",name_starts_with = name_starts_with) %>%
-      dplyr::mutate(across(starts_with("Kopftext"),as.character),
+      dplyr::mutate(dplyr::across(starts_with("Kopftext"),as.character),
                     dplyr::across(dplyr::starts_with("Positionstext"),as.character),
                     dplyr::across(dplyr::starts_with("Sachkonto_GL_account"),as.character),
                     dplyr::across(dplyr::starts_with("Kundenauftrag_sales_order"),as.character),
                     dplyr::across(dplyr::starts_with("Kostenstelle_customer_cost_center"),as.character),
                     dplyr::across(dplyr::starts_with("PSPElement_Kunde"),as.character),
                     dplyr::across(dplyr::starts_with("Steuerklassi_fikation_Kunde_tax_classification_customer"),as.character),
+                    dplyr::across(dplyr::contains("Vertrag"),as.character),
 
-             Referenz = as.character(Referenz))
+             Referenz = as.character(Referenz),
+             Belegnummer_documentno = as.character(Belegnummer_documentno))
   }
 
   if (nrow(files > 0)) {
     files_combined <- purrr::map(1:nrow(files), ~ aggregate_files(tmp_folder,name_starts_with = files$filename[.])) %>%
-      purrr::list_rbind()
+      purrr::list_rbind() %>%
+      group_by(Belegnummer_documentno,Position,Auftragsart_order_type) %>%
+      mutate(Belegnummer_documentno = if_else(n() > 1,
+                                              paste0(Belegnummer_documentno,"_",row_number()),
+                                              Belegnummer_documentno))
 
-    openxlsx::write.xlsx(files_combined ,
-                         paste0(output_folder,"buchungsfile_Studyflix_",
-                                format(Sys.time(), "%Y-%m-%d_%H-%M-%S"),".xlsx"))
+
   } else {
 
     print("no files to export to jp5")
@@ -50,4 +54,5 @@ aggregate_export_jp5 <- function(tmp_folder = "../../base-data/PMI/export/tmp/",
   all_files <- list.files(tmp_folder,full.names = TRUE)
   purrr::map(all_files, ~ unlink(.))
 
+  return(files_combined)
 }
