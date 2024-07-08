@@ -98,7 +98,7 @@ get_confirmations_2_bill <- function(df_reale_starts,
 
   # remove all confirmations that already have >= 1 invoice
 
-  df_confirmations %>%
+  df_confirmations <- df_confirmations %>%
     dplyr::filter(!id %in% df_invoices$confirmation_id) %>%
 
     # remove all confirmations that include CPC positions
@@ -106,6 +106,8 @@ get_confirmations_2_bill <- function(df_reale_starts,
 
     # remove all confirmations that are split
     dplyr::filter(!confirmation_number %in% split_bills$confirmation_number)
+
+  df_confirmations
 }
 
 

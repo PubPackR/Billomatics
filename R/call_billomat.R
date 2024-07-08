@@ -892,15 +892,23 @@ post_all_invoice_items <- function(df_items,
 }
 
 
-## Tables required are the confirmations and confirmation items that should be posted
-## The functions returns a tibble with all posted ids
+#' post_complete_invoices
+#'
+#' This function takes the confirmations and items and turns them into an invoice
+#' @param df_items the df containing the items that should be part of the respective invoice already posted.
+#' The df must contain the invoice_id
+#' @param billomatID the billomat ID
+#' @param billomat_api_key The Billomat API key.
+#' @return  The functions returns a tibble with all posted ids
+#'
+#' @export
 post_complete_invoices <- function(billomatID,
                                    billomatApiKey,
-                                   confirmations2post,
-                                   confirmations2post_items) {
+                                   confirmations2post_df,
+                                   confirmations2post_items_df) {
 
   # get content of the response to find the newly created id of the invoice
-  posted_invoice_ids <- post_all_invoices(confirmations2post,
+  posted_invoice_ids <- post_all_invoices(confirmations2post_df,
                                           billomatID = billomatID,
                                           billomatApiKey = billomatApiKey)
 
@@ -908,7 +916,7 @@ post_complete_invoices <- function(billomatID,
 
   # create the invoice-item table
   # This has to consider the month of the bill - so I have to return the month
-  invoice_confirmation_items <- confirmation_items %>% #confirmations2post_items %>%
+  invoice_confirmation_items <- confirmations2post_items_df %>% #confirmations2post_items %>%
     left_join(posted_invoice_ids,
               by = c("confirmation_id","invoice_date"),
               relationship = "many-to-many")%>%
