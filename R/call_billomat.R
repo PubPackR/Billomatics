@@ -881,7 +881,7 @@ post_all_invoice_items <- function(df_items,
       )
 
     # iterate over all positions to create each individual invoice item
-    for (item in length(invoice_items$position)) {
+    for (item in 1:length(invoice_items$position)) {
       # item = 1
       post_single_invoice_item(df = invoice_items[item, ],
                                billomatApiKey,
