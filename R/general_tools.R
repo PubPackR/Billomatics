@@ -55,7 +55,7 @@ save_downloadable_excel <- function(data, billomat_key, file_name, dashboard_nr_
 
   # Create the Excel file with KPI data and password protection
   data %>%
-    openxlsx::write.xlsx(paste0(shiny_download_files, "/shiny_", dashboard_nr_string, "/", file_name), password = pwd_excel)
+    xlsx::write.xlsx(paste0(shiny_download_files, "/shiny_", dashboard_nr_string, "/", file_name), password = pwd_excel)
 
   # Load and update the password log, encrypting it for security
   readRDS(paste0(shiny_download_files, "/encryption_download_files.RDS")) %>%
