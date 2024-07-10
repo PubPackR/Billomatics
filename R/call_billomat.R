@@ -816,7 +816,7 @@ post_single_invoice_item <- function(df_items,
     paste0("https://", billomatID, ".billomat.net/api/", endpoint)
 
   # pass the header
-  httr::headers <- c("X-BillomatApiKey" = billomatApiKey,
+  headers <- c("X-BillomatApiKey" = billomatApiKey,
                "Content-Type" = "application/xml")
 
   # make the call and post
