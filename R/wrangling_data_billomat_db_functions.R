@@ -317,7 +317,7 @@ read_most_recent_data <- function(location, filetype = "RDS", name_starts_with =
 
   if (filetype == "xlsx") {
     df <-
-      xlsx::read.xlsx(filename, sheetIndex = sheet)
+      openxlsx::read.xlsx(filename, sheetIndex = sheet)
   }
 
   if (filetype == "csv") {
