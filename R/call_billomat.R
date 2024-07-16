@@ -922,7 +922,8 @@ post_complete_invoices <- function(billomatID,
               relationship = "many-to-many")%>%
     mutate(
       description = description,
-      unit_price = as.numeric(total_net) / as.numeric(quantity),
+      unit_price = as.numeric(total_net_unreduced) / as.numeric(quantity),
+      reduction = (as.numeric(total_net_unreduced) / as.numeric(total_net))-1,
       reduction = replace_na(reduction, "0%")
     )
 
