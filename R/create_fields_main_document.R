@@ -91,7 +91,7 @@ create_document_level_fields <- function(df_positions,
         Belegnummer_documentno = as.integer(str_remove_all(invoice_number, pattern = "[:Alpha:]")),
         # checking if it is a gutschrift, which would be Korrekturrechnung
         Auftragsart_order_type = if_else(is.na(invoice_id), "ZLRA", "ZGRA"),
-        Referenz = confirmation_number, ## here maybe the old invoice number too? How do we get this into the jp5?,
+        Referenz = document_id, ## here maybe the old invoice number too? How do we get this into the jp5?,
         Kundenreferenz = confirmation_number,
         Zuordnung_18__assignment = confirmation_number
       )
@@ -104,7 +104,7 @@ create_document_level_fields <- function(df_positions,
         ),
         # checking if it is a gutschrift, which would be Korrekturrechnung
         Auftragsart_order_type =  "ZLRA",
-        Referenz = confirmation_number,
+        Referenz = document_id,
         Kundenreferenz = confirmation_number,
         Zuordnung_18__assignment = confirmation_number
       )
