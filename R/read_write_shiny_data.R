@@ -89,3 +89,31 @@ readShinyData <- function(file, path_to_shiny_files = "../../base-data/shiny_fil
   object <- readRDS(file = path)
   return(object)
 }
+
+
+#' writeDataToConsole
+#'
+#' This function writes the structure of a data frame to the console.
+#' In you want to hardcode the data into a module, you can copy the output of this function.
+
+#' @param df The R object (normally a data frame) to be processed
+#' @return The structure of the input is printed to the console
+
+#' @export
+writeDataToConsole <- function(df){
+  df <- lapply(df, function(x) {
+    if (is.factor(x)) {
+      as.character(x)
+    } else if (lubridate::is.Date(x)) {
+      as.character(x)
+    } else {
+      x
+    }
+  })
+
+  # Verwende dput, um die Struktur auszugeben
+  out <- paste0(capture.output(dput(df, control = c("keepNA","keepInteger","niceNames", "showAttributes"))), collapse = "\n")
+  out <- gsub(", ([^ ]+ =)", ",\n\\1",out)
+  cat(out)
+
+}
