@@ -91,7 +91,7 @@ create_document_level_fields <- function(df_positions,
         Belegnummer_documentno = as.integer(str_remove_all(invoice_number, pattern = "[:Alpha:]")),
         # checking if it is a gutschrift, which would be Korrekturrechnung
         Auftragsart_order_type = if_else(is.na(invoice_id), "ZLRA", "ZGRA"),
-        Referenz = document_id, ## here maybe the old invoice number too? How do we get this into the jp5?,
+        Referenz = document_id, ## Here we use the document id of the invoice in billomat - this is unique
         Kundenreferenz = reference_customer, # as this can also the number of a previous bill I have to adjust this before creating the fields
         Zuordnung_18__assignment = confirmation_number
       )
@@ -104,7 +104,7 @@ create_document_level_fields <- function(df_positions,
         ),
         # checking if it is a gutschrift, which would be Korrekturrechnung
         Auftragsart_order_type =  "ZLRA",
-        Referenz = document_id,
+        Referenz =  format(Sys.time(), "%y%m%d%H%M"), ## here we use the timestamp as document_id of confirmations can be entered multiple times
         Kundenreferenz = confirmation_number,
         Zuordnung_18__assignment = confirmation_number
       )

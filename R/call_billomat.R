@@ -270,7 +270,7 @@ set_status_endpoint <- function(df,
       # turn the list into an xml
 
       # get the response
-      response <- httr::PUT(url = api_endpoint,
+      response <- httr::DELETE(url = api_endpoint,
                             config = httr::add_headers(header),
                             encode = httr::accept("application/xml"),
                             body = body)
