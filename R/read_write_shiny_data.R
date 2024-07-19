@@ -117,3 +117,17 @@ writeDataToConsole <- function(df){
   cat(out)
 
 }
+
+#' getShinyDataPath
+#'
+#' This function returns the filepath of a particular shiny data file
+#' If file is left empty it returns the default location where data files of this app are stored
+
+#' @param file (optional) The path to the file inside the default location
+#' @param path_to_shiny_files (optional) the path to the folder where all shiny files are stored. The files of this app are stored in path_to_shiny_files/name_of_the_app
+#' @return The path to the file
+
+#' @export
+getShinyDataPath <- function(file = NULL, path_to_shiny_files = "../../base-data/shiny_files"){
+  return(paste0(path_to_shiny_files,"/",name_of_app(), "/", file))
+}
