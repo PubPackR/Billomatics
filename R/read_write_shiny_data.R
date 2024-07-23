@@ -27,7 +27,7 @@ name_of_app <- function(){
 }
 
 
-#' saveShinyData
+#' save_shiny_data
 #'
 #' This function saves an R object to an RDS file in the folder base-data/shiny_files/name_of_the_app
 #' If the directory does not exist, the function will create it.
@@ -38,14 +38,14 @@ name_of_app <- function(){
 #' @return NULL invisibly
 
 #' @export
-saveShinyData <- function(object, file, path_to_shiny_files = "../../base-data/shiny_files") {
+save_shiny_data <- function(object, file, path_to_shiny_files = "../../base-data/shiny_files") {
 
   # consistency checks
   if(!is.character(file)){
     stop("In Function saveShinyData: Variable 'file' has to be in character format.")
   }
-  if(gsub(".*\\.([^\\.]+)$","\\1",file)!="rds"){
-    stop("In Function saveShinyData: Variable 'file' has to end on .rds")
+  if(tools::file_ext(file) != "RDS"){
+    stop("In Function saveShinyData: Variable 'file' has to end on .RDS")
   }
 
   #determine paths froms parameters
@@ -63,7 +63,8 @@ saveShinyData <- function(object, file, path_to_shiny_files = "../../base-data/s
   saveRDS(object = object, file = paste0(path,"/",name_of_file))
 }
 
-#' readShinyData
+
+#' read_shiny_data
 #'
 #' This function reads an RDS file in the folder base-data/shiny_files/name_of_the_app into an R object
 
@@ -71,7 +72,7 @@ saveShinyData <- function(object, file, path_to_shiny_files = "../../base-data/s
 #' @return The R object that was stored in the file
 
 #' @export
-readShinyData <- function(file, path_to_shiny_files = "../../base-data/shiny_files") {
+read_shiny_data <- function(file, path_to_shiny_files = "../../base-data/shiny_files") {
 
   # consistency checks
   if(!is.character(file)){
@@ -81,8 +82,8 @@ readShinyData <- function(file, path_to_shiny_files = "../../base-data/shiny_fil
   if(!file.exists(path)){
     stop(paste("In Function readShinyData: File",path,"not found"))
   }
-  if (tools::file_ext(file_path) != "rds") {
-    stop(paste("In Function readShinyData: File",path,"is not an .rds file"))
+  if (tools::file_ext(file) != "RDS") {
+    stop(paste("In Function readShinyData: File",path,"is not an .RDS file"))
   }
 
   #save object to path
@@ -91,7 +92,7 @@ readShinyData <- function(file, path_to_shiny_files = "../../base-data/shiny_fil
 }
 
 
-#' writeDataToConsole
+#' write_data_to_console
 #'
 #' This function writes the structure of a data frame to the console.
 #' In you want to hardcode the data into a module, you can copy the output of this function.
@@ -100,7 +101,7 @@ readShinyData <- function(file, path_to_shiny_files = "../../base-data/shiny_fil
 #' @return The structure of the input is printed to the console
 
 #' @export
-writeDataToConsole <- function(df){
+write_data_to_console <- function(df){
   df <- lapply(df, function(x) {
     if (is.factor(x)) {
       as.character(x)
@@ -118,7 +119,8 @@ writeDataToConsole <- function(df){
 
 }
 
-#' getShinyDataPath
+
+#' get_shiny_data_path
 #'
 #' This function returns the filepath of a particular shiny data file
 #' If file is left empty it returns the default location where data files of this app are stored
@@ -128,6 +130,6 @@ writeDataToConsole <- function(df){
 #' @return The path to the file
 
 #' @export
-getShinyDataPath <- function(file = NULL, path_to_shiny_files = "../../base-data/shiny_files"){
+get_shiny_data_path <- function(file = NULL, path_to_shiny_files = "../../base-data/shiny_files"){
   return(paste0(path_to_shiny_files,"/",name_of_app(), "/", file))
 }
