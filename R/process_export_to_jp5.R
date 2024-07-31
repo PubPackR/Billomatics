@@ -30,6 +30,7 @@ aggregate_export_jp5 <- function(tmp_folder = "../../base-data/PMI/export/tmp/",
                     dplyr::across(dplyr::starts_with("PSPElement_Kunde"),as.character),
                     dplyr::across(dplyr::starts_with("Steuerklassi_fikation_Kunde_tax_classification_customer"),as.character),
                     dplyr::across(dplyr::contains("Vertrag"),as.character),
+                    dplyr::across(everything(),as.character),
 
              Referenz = as.character(Referenz),
              Belegnummer_documentno = as.character(Belegnummer_documentno))
@@ -39,9 +40,10 @@ aggregate_export_jp5 <- function(tmp_folder = "../../base-data/PMI/export/tmp/",
     files_combined <- purrr::map(1:nrow(files), ~ aggregate_files(tmp_folder,name_starts_with = files$filename[.])) %>%
       purrr::list_rbind() %>%
       group_by(Belegnummer_documentno,Position,Auftragsart_order_type) %>%
-      mutate(Belegnummer_documentno = if_else(n() > 1,
-                                              paste0(Belegnummer_documentno,"_",row_number()),
-                                              Belegnummer_documentno))
+      mutate(Nummer = row_number(),
+             Belegnummer_documentno = case_when(Nummer > 1 ~ paste0(Belegnummer_documentno,"_",Nummer),
+                                                TRUE ~ Belegnummer_documentno)) %>%
+      select(-Nummer)
 
 
   } else {

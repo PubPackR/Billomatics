@@ -12,7 +12,7 @@ set_label_invoice <- function(invoices_checked_df,
 
   invoice_draft_df %>%
     ## add the checked to the label
-    mutate(label = if_else(id %in% invoices_checked_df$id, paste(label,"/ checked"),
+    mutate(label = if_else(id %in% invoices_checked_df$id & !str_detect(label,"/ checked"), paste(label,"/ checked"),
                            stringr::str_remove_all(label,"\\/ checked")),
            is_checked = id %in% invoices_checked_df$id)
 
