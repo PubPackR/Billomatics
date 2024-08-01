@@ -270,15 +270,22 @@ set_status_endpoint <- function(df,
       # turn the list into an xml
 
       # get the response
-      response <- httr::DELETE(url = api_endpoint,
+      response <- httr::PUT(url = api_endpoint,
                             config = httr::add_headers(header),
                             encode = httr::accept("application/xml"),
                             body = body)
-    } else {
+    } else if (status_to_set == "clear"){
       # get the response
       response <- httr::PUT(url = api_endpoint,
                             httr::add_headers(header),
                             httr::accept("application/xml"))
+    } else if (status_to_set == "delete"){
+      # get the response
+      response <- httr::DELETE(url = api_endpoint,
+                            httr::add_headers(header),
+                            httr::accept("application/xml"))
+    } else {
+      print("unknown status to set.")
     }
 
 
