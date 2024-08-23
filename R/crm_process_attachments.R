@@ -17,6 +17,8 @@
 #'
 #' @param attachments all attachments from CRM
 #' @return df with attachment creation
+#'
+#' @export
 extract_offers_and_abs_from_crm <- function(attachments) {
   attachments <- attachments %>%
     select(attachment_attachable_id, attachment_filename, attachment_created_at)
@@ -51,6 +53,8 @@ extract_offers_and_abs_from_crm <- function(attachments) {
 #'   \item{document_id}{(chr) document_id in CRM}
 #'   \item{type}{(chr) "Offer" or "AB"}
 #' }
+#'
+#' @export
 matching_table_AB_AN <- function(confirmations_billomat, offers_billomat) {
   confirmations_billomat <- confirmations_billomat %>%
       select(confirmation_number, offer_id) %>%
@@ -83,6 +87,8 @@ matching_table_AB_AN <- function(confirmations_billomat, offers_billomat) {
 #'   \item{attachable_id}{(int) id of the protocol or task with the attachment}
 #'   \item{person_id}{(int) "Offer" or "AB"}
 #' }
+#'
+#' @export
 matching_ABs_Billomat_CRM <- function(attachments, confirmations_billomat, offers_billomat, simplified_protocols){
 
   # get confirmation for every offer
@@ -112,6 +118,8 @@ matching_ABs_Billomat_CRM <- function(attachments, confirmations_billomat, offer
 #' @param crm_ABs_Offers data frame from matching_ABs_Billomat_CRM
 #' @param latest_rev_per_mensem rev_per_mensem
 #' @return enriched crm_ABs_Offers with start and end of campaign
+#'
+#' @export
 enrich_offers_ABs_with_start_end <- function(crm_ABs_Offers, latest_rev_per_mensem){
   latest_rev_per_mensem_matchable <- latest_rev_per_mensem %>%
     group_by(confirmation_number) %>%
@@ -127,6 +135,8 @@ enrich_offers_ABs_with_start_end <- function(crm_ABs_Offers, latest_rev_per_mens
 #'
 #' @param companies_crm companies file from crm main_data_files
 #' @return companies file from crm main_data_files (prepared with prepare_companies_crm())
+#'
+#' @export
 prepare_companies_crm <- function(companies_crm) {
   companies <- companies_crm %>%
     distinct() %>%
@@ -149,6 +159,8 @@ prepare_companies_crm <- function(companies_crm) {
 #' @param simplified_protocols protocols file (simplified) from crm main_data_files
 #' @param companies companies file from crm main_data_files (prepared with prepare_companies_crm())
 #' @return df with all offers and ABs from the CRM Feed
+#'
+#' @export
 get_expanded_AB_AN_from_CRM <- function(confirmations_billomat, offers_billomat, attachments, simplified_protocols, companies){
 
   confirmations_billomat_non_cancelled <- confirmations_billomat %>%
