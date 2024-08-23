@@ -47,7 +47,8 @@ offers_columns <- c(
   "total_reduction",
   "total_net_unreduced",
   "total_gross_unreduced",
-  "template_id"
+  "template_id",
+  "ist_Agentur"
 )
 
 
