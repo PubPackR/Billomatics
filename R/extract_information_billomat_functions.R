@@ -523,10 +523,10 @@ consolidate_invoice_information <- function(df_Billing_information_comment,
       mutate(document_id = as.numeric(id))
   }
 
-  df_Billing_information_comment %>%
-    select(document_id, key, value) %>%
-
-    bind_rows(df_Billing_information_document) %>%
+  df_Billing_information_document %>%
+  bind_rows(df_Billing_information_comment %>%
+    select(document_id, key, value)) %>%
+    ungroup() %>%
     distinct(document_id, value, .keep_all = TRUE) %>%
     select(document_id, key, value) %>%
     mutate(document_id = as.numeric(document_id))
