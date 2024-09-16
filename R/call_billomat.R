@@ -347,6 +347,99 @@ set_status_endpoint <- function(df,
   }
 }
 
+
+#' create_contacts_tibble
+#' Function takes the list wise returned values from the api call to get contacts and
+#' turns them into a tibble
+#' @param df_list a list where each entry is its own list.
+#' @return the call returns a tibble
+#' @export
+create_contacts_tibble <- function(df_list){
+  purrr::map(1:length(df_list), function(.) {
+
+    contact_data <- df_list[[.]]  # Safely access contact data
+
+    tibble(
+      id = if (!is.null(contact_data[["id"]]) &&
+               length(contact_data[["id"]]) > 0)
+        contact_data[["id"]][[1]]
+      else
+        NA,
+      client_id = if (!is.null(contact_data[["client_id"]]) &&
+                      length(contact_data[["client_id"]]) > 0)
+        contact_data[["client_id"]][[1]]
+      else
+        NA,
+      created = if (!is.null(contact_data[["created"]]) &&
+                    length(contact_data[["created"]]) > 0)
+        contact_data[["created"]][[1]]
+      else
+        NA,
+      updated = if (!is.null(contact_data[["updated"]]) &&
+                    length(contact_data[["updated"]]) > 0)
+        contact_data[["updated"]][[1]]
+      else
+        NA,
+      name = if (!is.null(contact_data[["name"]]) &&
+                 length(contact_data[["name"]]) > 0)
+        contact_data[["name"]][[1]]
+      else
+        NA,
+      deviating_invoice_recipient = if (!is.null(contact_data[["label"]]) &&
+                                        length(contact_data[["label"]]) > 0)
+        contact_data[["label"]][[1]]
+      else
+        NA,
+      street = if (!is.null(contact_data[["street"]]) &&
+                   length(contact_data[["street"]]) > 0)
+        contact_data[["street"]][[1]]
+      else
+        NA,
+      city = if (!is.null(contact_data[["city"]]) &&
+                 length(contact_data[["city"]]) > 0)
+        contact_data[["city"]][[1]]
+      else
+        NA,
+      zip = if (!is.null(contact_data[["zip"]]) &&
+                length(contact_data[["zip"]]) > 0)
+        contact_data[["zip"]][[1]]
+      else
+        NA,
+      country_code = if (!is.null(contact_data[["country_code"]]) &&
+                         length(contact_data[["country_code"]]) > 0)
+        contact_data[["country_code"]][[1]]
+      else
+        NA
+    )
+  }) %>% dplyr::bind_rows()
+}
+
+#' create_new_database
+#'
+#' this function deletes the db if it exists and adds the new data as new table.
+#'
+#' @param billomatDB is an DBI object containing the path to the db
+#' @param content is the name of the table
+#' @param data_db the tibble containing the data
+#' @param keys_db the encryption key for the database
+#' @export
+create_new_database <- function(billomatDB, content, data_db,keys_db){
+  if (DBI::dbExistsTable(billomatDB, name = content))
+  {
+    DBI::dbRemoveTable(billomatDB, name = content)
+    print(paste("deleted old db:",content))
+  }
+
+  # write the new tables
+  shinymanager::write_db_encrypt(
+    conn = billomatDB,
+    name =  content,
+    value =  data_db,
+    passphrase = keys_db
+  )
+  print(paste("added new db:",content))
+}
+
 ##### comments ------
 #' get_comments
 #'
@@ -354,8 +447,6 @@ set_status_endpoint <- function(df,
 #'
 #' @param ids a vector of ids numbers
 #' @param endpoint is the name of the endpoint
-
-
 #' @export
 get_comments <- function(ids,
                          endpoint = "confirmation",
