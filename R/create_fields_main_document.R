@@ -51,25 +51,18 @@ get_deviating_invoice_recipient <- function(Information_bill_df) {
 #' create_invoice_recipient
 #' This function takes the billing information provided and extracts the Debitor or deviating recipient
 #' @param df_positions The dataframe with all the positions
-#' @param Information_bill_df The dataframe containing the information about billing details from comments and document
+#' @param varname_dev_invoice_recipient 'string' with the name of the variable were the deviating deb number is stored
+#' @param varname_debitor 'string' with the name of the variable where the main deb num is stored
 #' @return The function returns a df with all deviating Debitors and their document id
 #' @export
-create_invoice_recipient <- function(df_positions,Information_bill_df) {
-
-  df_alternative_debitor <- get_alternative_debitor(Information_bill_df)
-  df_deviating_invoice_recipient <- get_deviating_invoice_recipient(Information_bill_df)
-
+create_invoice_recipient <- function(df_positions,
+                                     varname_dev_invoice_recipient = "deviating_invoice_recipient",
+                                     varname_debitor = "Debitor") {
   df_positions %>%
-    mutate(document_id = as.numeric(document_id)) %>%
-    left_join(df_alternative_debitor, by = "document_id",
-              suffix = c("",".abweichend")) %>%
-    left_join(df_deviating_invoice_recipient %>%
-                mutate(document_id = as.numeric(document_id)) , by = "document_id") %>%
-    mutate(Auftraggeber_customer = coalesce(as.numeric(Debitor.abweichend),
-                                            as.numeric(Debitor)),
-           Rechnungs_empfänger_billto_party = coalesce(as.numeric(`abweichender Rechnungsempfänger`),
-                                                       as.numeric(deviating_invoice_recipient),
-                                                       as.numeric(Auftraggeber_customer)))
+    mutate(document_id = as.numeric(document_id),
+           Auftraggeber_customer = as.numeric(.data[[varname_debitor]]),
+           Rechnungs_empfänger_billto_party = coalesce(as.numeric(.data[[varname_dev_invoice_recipient]]),
+                                                       as.numeric(.data[[varname_debitor]])))
 }
 
 

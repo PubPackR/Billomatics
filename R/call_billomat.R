@@ -126,6 +126,53 @@ retrieveData <- function(content,
                ))
 }
 
+
+
+#' fetch_all_entries
+#' this function carries out the call to get all the content of the call
+#' This is a new function using httr2
+#' @param content the name of the tables you are interested in, this is one string
+#' @param per_page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @return the call returns a list for each page
+### ergänzen der fehlenden params
+#' @export
+fetch_all_entries <- function(billomatID, content, billomatApiKey, per_page = 100) {
+  page <- 1  # Start with page 1
+  results <- list()   # To store all results
+  has_more_pages <- TRUE    # Flag to indicate more pages exist
+
+  while (has_more_pages) {
+    req <- httr2::request(paste0("https://", billomatID, ".billomat.net/api/")) |>
+      httr2::req_headers(`X-BillomatApiKey` = billomatApiKey) |>
+      httr2::req_url_path_append(content) |>
+      httr2::req_url_query(page = page, per_page = per_page) # Pagination params
+
+
+    # Perform the request and parse the response
+    resp <- req |>
+      httr2::req_perform() |>
+      httr2::resp_body_xml()
+
+    # Optionally inspect as a list
+    list_resp <- xml2::as_list(resp)
+
+    results <- c(list_resp[[1]], results)
+
+    ## check if there are more entries
+    if (length(list_resp[[1]]) < per_page) {
+      has_more_pages <- FALSE
+    } else {
+      page <- page + 1 # Go to the next page
+    }
+
+  }
+  ## return the final list
+  return(results)
+}
+
+
 #' extract_single_entry
 #' this function extracts a single entry from an xml
 #' @param entry_as_xml the name of the entry in an xml you are interested in

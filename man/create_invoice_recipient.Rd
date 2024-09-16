@@ -5,12 +5,18 @@
 \title{create_invoice_recipient
 This function takes the billing information provided and extracts the Debitor or deviating recipient}
 \usage{
-create_invoice_recipient(df_positions, Information_bill_df)
+create_invoice_recipient(
+  df_positions,
+  varname_dev_invoice_recipient = "deviating_invoice_recipient",
+  varname_debitor = "Debitor"
+)
 }
 \arguments{
 \item{df_positions}{The dataframe with all the positions}
 
-\item{Information_bill_df}{The dataframe containing the information about billing details from comments and document}
+\item{varname_dev_invoice_recipient}{'string' with the name of the variable were the deviating deb number is stored}
+
+\item{varname_debitor}{'string' with the name of the variable where the main deb num is stored}
 }
 \value{
 The function returns a df with all deviating Debitors and their document id
