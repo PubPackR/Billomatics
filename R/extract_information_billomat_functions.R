@@ -141,7 +141,8 @@ read_KeysFromDescription <- function (df, sep = sep)
       "Laufzeitbeginn",
       "Leistungsbeginn.*",
       "Leistungsstart",
-      "Startdatum"
+      "Startdatum",
+      "Leistung erbracht am"
     ),
     collapse = "|"
   )
@@ -209,7 +210,8 @@ get_laufzeiten_information <- function (df)
       "Leistungsbeginn",
       "Leistungsende",
       "Date of performance",
-      "Kampagnenstart"
+      "Kampagnenstart",
+      "Leistung erbracht am"
     ) %>%
     paste(., collapse = "|")
 
@@ -286,10 +288,8 @@ get_laufzeiten_information <- function (df)
         Ende = stringr::str_extract_all(Ende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
         Leistungsbeginn = stringr::str_extract_all(Leistungsbeginn, "[0-9]*\\.[0-9]*\\.[0-9]*"),
         Leistungsende = stringr::str_extract_all(Leistungsende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
-
-        Start = ifelse(is.na(Start), Leistungsbeginn, Start),
-        Ende = ifelse(is.na(Ende), Leistungsende, Ende)
-      )
+        Start = ifelse(is.na(Start) | Start == "character(0)", Leistungsbeginn, Start),
+        Ende = ifelse(is.na(Ende) | Ende == "character(0)", Leistungsende, Ende))
   } else {
     print ("3")
     # add column if not existing
