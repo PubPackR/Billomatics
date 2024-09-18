@@ -10,6 +10,7 @@ post_single_invoice(
   billomatApiKey,
   endpoint = "invoices",
   client_id,
+  contact_id,
   confirmation_id,
   invoice_intro,
   reduction,

@@ -820,6 +820,7 @@ post_single_invoice <-
            billomatApiKey,
            endpoint = "invoices",
            client_id,
+           contact_id,
            confirmation_id,
            invoice_intro,
            reduction,
@@ -831,6 +832,7 @@ post_single_invoice <-
     body <- list(
       invoice = list(
         client_id = structure(list(client_id)),
+        contact_id = structure(list(contact_id)),
         confirmation_id = structure(list(confirmation_id)),
         date = structure(list(invoice_date)),
         intro = structure(list(invoice_intro)),
@@ -898,6 +900,7 @@ post_all_invoices <- function(confirmations2post,
       billomatID = billomatID,
       billomatApiKey = billomatApiKey,
       client_id = confirmations2post$client_id[.],
+      contact_id = confirmations2post$contact_id[.],
       confirmation_id = confirmations2post$id[.],
       invoice_date = confirmations2post$invoice_date[.],
       invoice_intro = confirmations2post$invoice_intro[.],
