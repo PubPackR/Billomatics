@@ -5,13 +5,13 @@
 \title{authentication_process}
 \usage{
 authentication_process(
-  needed_services = c("billomat", "crm", "google sheet", "asana", "msgraph",
+  needed_services = c("billomat", "crm", "google sheet", "asana", "msgraph", "brevo",
     "google analytics"),
   args
 )
 }
 \arguments{
-\item{needed_services}{the authentication services you need as vector. Currently available: "Billomat", "CRM", "Google Sheet" & "Asana"}
+\item{needed_services}{the authentication services you need as vector.}
 
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
 }

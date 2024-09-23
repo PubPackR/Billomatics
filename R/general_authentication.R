@@ -10,12 +10,12 @@ library(googleAuthR)
 #' This function executes the requested authentication processes.
 #' It can handle manual password inputs as well as Flow Force args Inputs.
 
-#' @param needed_services the authentication services you need as vector. Currently available: "Billomat", "CRM", "Google Sheet" & "Asana"
+#' @param needed_services the authentication services you need as vector.
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "google analytics"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics"), args) {
 
   # 1 Authentication Billomat ----
 
@@ -65,7 +65,17 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     msgraph_key <- NA
   }
 
-  # 6 Authentication Google Analytics ---
+  # 6 Authentication Brevo ---
+
+  pos_Brevo <- match(1, stringr::str_detect("brevo", needed_services))
+
+  if(!is.na(pos_Brevo)) {
+    brevo_key <- authentication_brevo(args[pos_Brevo])
+  } else {
+    brevo_key <- NA
+  }
+
+  # 7 Authentication Google Analytics ---
 
   pos_Google_Analytics <- match(1, stringr::str_detect("google analytics", needed_services))
 
@@ -73,7 +83,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     authentication_Google_Analytics(args[pos_Google_Analytics])
   }
 
-  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key)
+  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key, "brevo" = brevo_key)
 
   return(keys)
 }
@@ -232,6 +242,30 @@ authentication_msgraph <-  function(args) {
   }
 
   safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+}
+
+#' authentication_brevo
+#'
+#' This function executes the Brevo authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @param return_keys optional, vector with already acquired keys
+#' @return authentication key in vector
+
+#' @export
+authentication_brevo <-  function(args) {
+
+    encrypted_api_key <- readLines("../../keys/Brevo/smpt-key.txt")
+
+    if (interactive()) {
+      decrypt_key <-
+        getPass::getPass("Bitte Decryption_Key für Brevo eingeben: ")
+    } else{
+      decrypt_key <- args
+    }
+
+    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
 
 
