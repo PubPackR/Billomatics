@@ -938,6 +938,10 @@ post_single_invoice_item <- function(df_items,
         df_items$title
       )),
 
+      article_id = structure(list(
+        df_items$article_id
+      )),
+
       unit_price = structure(list(
         df_items$unit_price
       )),
