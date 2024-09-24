@@ -414,6 +414,42 @@ create_contacts_tibble <- function(df_list){
   }) %>% dplyr::bind_rows()
 }
 
+#' convert_list_to_tibble
+#' General function to convert each contact into a tibble row
+#' @param df_list a list where each entry is its own list.
+#' @return the call returns a tibble
+#' @export
+convert_list_to_tibble <- function(df_list){
+  ## take the list and get each individual entry
+  purrr::map(1:length(df_list), function(.x) {
+    ## only get the entry
+    one_list_entry <- df_list[[.x]]  # Safely access data
+    ## get all the names in this entry
+    field_names <- names(one_list_entry)
+
+    ## extract the data of fields
+    extracted_data <- purrr::map(field_names, function(field) {
+      # If field exists and has a value, return it; otherwise return NA
+      if (!is.null(one_list_entry[[field]]) &&
+          length(one_list_entry[[field]]) > 0) {
+        return(one_list_entry[[field]][[1]])
+      } else {
+        return(NA)
+      }
+    })
+
+    # Convert the named list to a tibble
+    data_row <- rlang::set_names(extracted_data, field_names)
+
+    # Return the row as a tibble, only keep one row per id
+    dplyr::tibble(!!!data_row) %>%
+      dplyr::distinct(id, .keep_all = TRUE)
+  }) %>%
+
+    dplyr::bind_rows()
+}
+
+
 #' create_new_database
 #'
 #' this function deletes the db if it exists and adds the new data as new table.
