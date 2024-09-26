@@ -232,7 +232,7 @@ authentication_asana <-  function(args) {
 #' @export
 authentication_msgraph <-  function(args) {
 
-  encrypted_api_key <- readLines("../../keys/Date/06-06-01.txt")
+  encrypted_api_key <- readLines("../../keys/Microsoft365R/microsoft365r.txt")
 
   if (interactive()) {
     decrypt_key <-
