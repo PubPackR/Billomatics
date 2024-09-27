@@ -104,9 +104,10 @@ get_extracted_information <- function(df, field) {
 read_KeysFromDescription <- function (df, sep = sep)
 {
   replace_string <- c(
+    `01.11.2024 bis 31.01.2025 und 01.05.2025 bis 31.07.2025` = "01.11.2024 - 31.07.2025",
     `–` = "-",
     `bis zum` = "-",
-    bis = "-",
+    `bis` = "-",
     `ab dem` = "",
     `02023` = "2023",
     `März - Juli 2022` = "1.3.2022-31.7.2022",
