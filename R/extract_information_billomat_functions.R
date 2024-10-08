@@ -320,7 +320,9 @@ get_laufzeiten_information <- function (df)
     summarise(
       Laufzeit_Start = min(dmy(Start), na.rm = TRUE),
       Laufzeit_Ende = max(dmy(Ende), na.rm = TRUE)
-    )
+    ) |>
+    mutate(Laufzeit_Start = ymd(Laufzeit_Start),
+           Laufzeit_Ende = ymd(Laufzeit_Ende))
 
   return(df)
 }
