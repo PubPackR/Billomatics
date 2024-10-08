@@ -76,7 +76,7 @@ create_invoice_recipient <- function(df_positions,
 create_document_level_fields <- function(df_positions,
                                          bills_created_from) {
 
-  if (bills_created_from == "invoice") {
+  if (bills_created_from %in% c("invoice","credit_note")) {
 
     df_positions %>%
       mutate(
