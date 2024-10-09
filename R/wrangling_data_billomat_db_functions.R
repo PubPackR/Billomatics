@@ -219,10 +219,13 @@ get_db_2_wide_df <- function (db_table_name,
   df <-
     get_tables_billomat (db_table_name = db_table_name, billomatDB = billomatDB,encryption_key_db =encryption_key_db) %>%
     # keep only the rows which have a relevant key
-    # dplyr::filter (name %in% get(column_names)) %>%
+    # dplyr::filter(name %in% get(column_names)) %>%
+    # group_by(ids, page, name) %>%
+    # summarise(n = n()) %>%
     tidyr::pivot_wider(
       id_cols = c("ids", "page"),
       names_from = "name",
+      values_fn = first, # sometimes there are more than one tax value per id
       values_from = "value"
     )
   # here I save the resulting df as csv
