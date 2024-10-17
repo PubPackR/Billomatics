@@ -139,34 +139,47 @@ retrieveData <- function(content,
 ### ergänzen der fehlenden params
 #' @export
 fetch_all_entries <- function(billomatID, content, billomatApiKey, per_page = 100) {
-  page <- 1  # Start with page 1
-  results <- list()   # To store all results
-  has_more_pages <- TRUE    # Flag to indicate more pages exist
 
-  while (has_more_pages) {
+  # get the header to see the max pages
+
+  req <- httr2::request(paste0("https://", billomatID, ".billomat.net/api/")) |>
+    httr2::req_headers(`X-BillomatApiKey` = keys$billomat[2]) %>%
+    httr2::req_url_path_append(content)
+  response <- req %>% httr2::req_perform()
+  headers <- resp_headers(response)
+
+  remaining_calls <- headers[["X-Rate-Limit-Remaining"]]
+
+  # Display the remaining calls and rate limit
+  cat("Remaining API calls:", remaining_calls, "\n")
+
+  # get the total pages
+  total_entries <- headers[["X-Total-Count"]] %>% as.numeric()
+  max_page <- ceiling(total_entries / as.numeric(per_page))
+
+
+  results <- list()   # To store all results
+  page <- 1
+
+
+  for (page in (1:max_page)) {
+    print(paste0(page," of ",max_page))
     req <- httr2::request(paste0("https://", billomatID, ".billomat.net/api/")) |>
-      httr2::req_headers(`X-BillomatApiKey` = billomatApiKey) |>
+      httr2::req_headers(`X-BillomatApiKey` = billomatApiKey,
+                         `Accept`= "xml") |>
       httr2::req_url_path_append(content) |>
       httr2::req_url_query(page = page, per_page = per_page) # Pagination params
 
 
-    # Perform the request and parse the response
+    #  Perform the request and parse the response
     resp <- req |>
       httr2::req_perform() |>
       httr2::resp_body_xml()
 
     # Optionally inspect as a list
     list_resp <- xml2::as_list(resp)
-
+    #
     results <- c(list_resp[[1]], results)
-
-    ## check if there are more entries
-    if (length(list_resp[[1]]) < per_page) {
-      has_more_pages <- FALSE
-    } else {
-      page <- page + 1 # Go to the next page
-    }
-
   }
   ## return the final list
   return(results)

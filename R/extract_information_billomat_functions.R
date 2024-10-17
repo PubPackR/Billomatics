@@ -504,7 +504,7 @@ get_information_from_comments <- function(df_comments,
                 distinct(id, document_id, created), by = c("id")) %>%
     group_by(key, document_id) %>%
     slice_max(created) %>%
-    mutate(document_id= as.numeric(document_id))
+    mutate(document_id= as.character(document_id))
 }
 
 
@@ -523,7 +523,7 @@ consolidate_invoice_information <- function(df_Billing_information_comment,
 
   if(!"document_id" %in% colnames(df_Billing_information_document)) {
     df_Billing_information_document <- df_Billing_information_document %>%
-      mutate(document_id = as.numeric(id))
+      mutate(document_id = as.character(id))
   }
 
   df_Billing_information_document %>%
@@ -532,6 +532,6 @@ consolidate_invoice_information <- function(df_Billing_information_comment,
     ungroup() %>%
     distinct(document_id, value, .keep_all = TRUE) %>%
     select(document_id, key, value) %>%
-    mutate(document_id = as.numeric(document_id))
+    mutate(document_id = as.character(document_id))
 }
 
