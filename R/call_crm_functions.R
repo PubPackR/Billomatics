@@ -76,7 +76,49 @@ get_central_station_contacts <- function (api_key, pages = "all") {
   persons %>% tidyr::unnest(person)
 }
 
+#' get_responsible_person
+#'
+#' This function extracts the responsible person for each entity based on the applied tags.
+#' It prioritizes tags that start with 'W', followed by 'U', and finally 'O'.
 
+#' @param persons Dataframe containing persons with associated tags.
+#' @param employees Dataframe containing Vertriebler and Tierpool.
+#' @param o_tag_responsible Dataframe containing O-Tags and zuständig_group (Zuständiger fuer O-Tag)
+#' @return persons_to_include A dataframe containing `id` and `responsible`, which indicates the
+#' responsible person or group for each `id`, determined by the tag priority ('W', 'U', 'O').
+
+#' @export
+get_responsible_person <- function(persons, employees, o_tag_responsible) {
+
+  persons_to_include <- persons %>%
+    mutate(id = as.integer(id)) %>%
+    mutate(created_at = as_datetime(created_at, tz = "Europe/Berlin")) %>%
+    unnest(tags, names_sep = "_") %>%
+    select(id, tags_name) %>%
+    filter(grepl("^W ", tags_name) & !grepl("Termin", tags_name) | grepl("^U ", tags_name) | grepl("^O ", tags_name)) %>%
+    mutate(w_tag = ifelse(grepl("^W", tags_name), sub("W ", "", tags_name), NA)) %>%
+    mutate(u_tag = ifelse(grepl("^U", tags_name), tags_name, NA)) %>%
+    mutate(o_tag = ifelse(grepl("^O", tags_name), tags_name, NA)) %>%
+
+    left_join(employees, by = c("u_tag" = "Tierpool")) %>%
+    filter(!(!is.na(u_tag) & is.na(Vertriebler))) %>%
+    mutate(u_tag = Vertriebler) %>%
+    select(-Vertriebler) %>%
+
+    left_join(o_tag_responsible, by = c("o_tag" = "O-Tags")) %>%
+    filter(!(!is.na(o_tag) & is.na(zuständig_group))) %>%
+    mutate(o_tag = zuständig_group) %>%
+    select(-zuständig_group) %>%
+
+    mutate(prio = ifelse(is.na(w_tag), ifelse(is.na(u_tag), 3, 2), 1)) %>%
+    group_by(id) %>%
+    slice_min(prio, with_ties = TRUE) %>%
+    ungroup() %>%
+
+    mutate(responsible = ifelse(is.na(w_tag), ifelse(is.na(u_tag), o_tag, u_tag), w_tag)) %>%
+    distinct(id, responsible)
+
+}
 
 #' get_central_station_cal_events
 #'
