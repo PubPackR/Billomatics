@@ -815,15 +815,15 @@ put_resource_values <- function(billomat_id, billomat_api_key, resource, entity_
 post_comment <- function(billomat_id, billomat_api_key, comment, resource, entity_id){
 
   # set the api endpoint for the desired resource
-  api_endpoint <- paste0("https://", billomat_id, ".billomat.net/api/", resource, "-comments")
+  api_endpoint <- paste0("https://", billomat_id, ".billomat.net/api/", gsub("_", "-", resource), "-comments")
 
   # set the header with format to json
   header <- c("X-BillomatApiKey" = billomat_api_key,
               "Content-Type" = "application/json")
 
   # set the body
-  resource_comment <- paste0(resource, "-comment")
-  resource_id <- paste0(resource, "_id")
+  resource_comment <- paste0(gsub("_", "-", resource), "-comment")
+  resource_id <- paste0(gsub("-", "_", resource), "_id")
 
   comment_data <- list()
   comment_data[[resource_comment]] <- list()
