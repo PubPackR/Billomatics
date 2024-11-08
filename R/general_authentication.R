@@ -15,7 +15,7 @@ library(googleAuthR)
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB"), args) {
 
   # 1 Authentication Billomat ----
 
@@ -83,7 +83,17 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     authentication_Google_Analytics(args[pos_Google_Analytics])
   }
 
-  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key, "brevo" = brevo_key)
+  # 6 Authentication BonusDB ---
+
+  pos_Bonus_DB <- match(1, stringr::str_detect("bonusDB", needed_services))
+
+  if(!is.na(pos_Bonus_DB)) {
+    bonus_db_key <- authentication_bonus_db(args[pos_Bonus_DB])
+  } else {
+    bonus_db_key <- NA
+  }
+
+  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key, "brevo" = brevo_key, "bonusDB" = bonus_db_key)
 
   return(keys)
 }
@@ -314,6 +324,30 @@ authentication_Google_Analytics <-  function(args) {
     unlink(decrypted_file)
     print("google_analytics_auth.json deleted.")
   })
+}
+
+#' authentication_bonus_db
+#'
+#' This function executes the Bonus DB authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @param return_keys optional, vector with already acquired keys
+#' @return authentication key in vector
+
+#' @export
+authentication_bonus_db <-  function(args) {
+
+    encrypted_api_key <- readLines("../../keys/BonusDB/bonusDBKey.txt")
+
+    if (interactive()) {
+      decrypt_key <-
+        getPass::getPass("Bitte Decryption_Key für Bonus DB eingeben: ")
+    } else{
+      decrypt_key <- args
+    }
+
+    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
 
 
