@@ -46,6 +46,43 @@ curl_fetch_header <- function(content=c("articles",
   return(list(headers=httr::headers(response)))
 }
 
+#' fetch_header_httr2
+#'
+#' this function carries out the call to get the header
+#'
+#' @param content the name of the tables you are interested in, this is one string
+#' @param page which page to get
+#' @param page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @return the call returns a list with the header information
+
+#' @export
+fetch_header_httr2 <- function(content=c("articles",
+                                              "clients",
+                                              "offers",
+                                              "invoices",
+                                              "confirmations"),
+                                    billomatApiKey = billomatApiKey,
+                                    billomatID = billomatID){
+
+  req <- httr2::request(paste0("https://", billomatID, ".billomat.net/api/")) |>
+    httr2::req_headers(`X-BillomatApiKey` = billomatApiKey) %>%
+    httr2::req_url_path_append(content) %>%
+    httr2::req_url_query(page = 1, per_page = 1)
+  response <- req %>% httr2::req_perform()
+
+  # the response contains the header, the method and content as well as additional information
+  remaining_limit = as.numeric(httr2::resp_headers(response)$`x-rate-limit-remaining`)
+  # this tells me how many more calls are possible -- not important at this point
+  # this is the content of this call for the results of page 1
+  num_results <- httr2::resp_headers(response)$`x-total-count`
+  # this tells me how many results are on each page, i can keep calling pages forever,
+  # but they will have 0 length, which means I should stop at this point
+  cat(content,"header", "\n","total rows:",num_results,"remaining_limit:",remaining_limit)
+  return(list(headers=httr2::resp_headers(response)))
+}
+
 #' curl_fetch_billomat
 #' this function carries out the call to get the header
 #' @param content the name of the tables you are interested in, this is one string
