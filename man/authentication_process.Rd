@@ -6,7 +6,7 @@
 \usage{
 authentication_process(
   needed_services = c("billomat", "crm", "google sheet", "asana", "msgraph", "brevo",
-    "google analytics"),
+    "google analytics", "bonusDB"),
   args
 )
 }
