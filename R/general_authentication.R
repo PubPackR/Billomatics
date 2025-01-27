@@ -350,5 +350,50 @@ authentication_bonus_db <-  function(args) {
     safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
 
+#' authentication_Google_BigQuery
+#'
+#' This function executes the Google_BigQuery authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
 
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return no return values
+
+#' @export
+authentication_Google_BigQuery() <-  function(args) {
+  if (interactive()) {
+    decrypt_google_BigQuery_key <-
+      getPass::getPass("Enter the password for BigQuery: ")
+
+  } else {
+    decrypt_google_BigQuery_key <- args
+  }
+
+  encrypted_file <-
+    "../../keys/gsc_bigQuery/encrypted_key_service_account_bigQuery.bin"
+  decrypted_file <-
+    "../../keys/gsc_bigQuery/search-console-api-399013-5cb724656590.json"
+
+  tryCatch({
+    decrypted_data <-
+      safer::decrypt_file(infile = encrypted_file,
+                          key = decrypt_google_BigQuery_key,
+                          outfile = decrypted_file)
+    print("Decryption successful. Data saved to search-console-api-399013-5cb724656590.json")
+
+    # Authentifizieren bei Google BigQuery
+    google_gsc_BigQuery_auth <- googleAuthR::gar_auth_service(
+      json_file = decrypted_file
+    )
+
+  },
+  error = function(e) {
+    # Error handling
+    cat("An error occurred: ", e$message, "\n")
+  },
+  finally = {
+    # Cleanup of private key afterwards
+    unlink(decrypted_file)
+    print("search-console-api-399013-5cb724656590.json deleted.")
+  })
+}
 
