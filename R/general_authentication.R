@@ -367,7 +367,7 @@ authentication_bonus_db <-  function(args) {
 #' @return no return values
 
 #' @export
-authentication_Google_BigQuery() <-  function(args) {
+authentication_Google_BigQuery <-  function(args) {
   if (interactive()) {
     decrypt_google_BigQuery_key <-
       getPass::getPass("Enter the password for BigQuery: ")
