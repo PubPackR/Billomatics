@@ -15,7 +15,7 @@ library(googleAuthR)
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "bigQuery"), args) {
 
   # 1 Authentication Billomat ----
 
@@ -83,7 +83,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     authentication_Google_Analytics(args[pos_Google_Analytics])
   }
 
-  # 6 Authentication BonusDB ---
+  # 8 Authentication BonusDB ---
 
   pos_Bonus_DB <- match(1, stringr::str_detect("bonusDB", needed_services))
 
@@ -91,6 +91,14 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     bonus_db_key <- authentication_bonus_db(args[pos_Bonus_DB])
   } else {
     bonus_db_key <- NA
+  }
+
+  # 9 Authentication Google BigQuery ---
+
+  pos_Google_BigQuery <- match(1, stringr::str_detect("BigQuery", needed_services))
+
+  if(!is.na(pos_Google_BigQuery )) {
+    authentication_Google_BigQuery(args[pos_Google_BigQuery])
   }
 
   keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key, "brevo" = brevo_key, "bonusDB" = bonus_db_key)
