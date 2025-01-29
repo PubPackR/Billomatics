@@ -49,6 +49,10 @@ extract_note <- function(df, field) {
           `in [\n]` = "",
           `–` = "-",
           ` – ` = "-",
+          `Versanddatum im Zeitraum: KW 20.*KW 23 \\(SoSe 2025\\)` = "Versanddatum im Zeitraum: 12.05.2025 - 08.06.2025",
+          `Versanddatum im Zeitraum: KW 44.*KW 47 \\(WiSe 2025\\)` = "Versanddatum im Zeitraum: 27.10.2025 - 23.11.2025",
+          `Geplantes Datum: 27.01.2025` = "Leistungsdatum: 27.01.2025",
+          `Geplantes Datum der Erstellung: 27.01.2025` = "Leistungsdatum: 27.01.2025",
           `Produktbeschreibung` = "Produktbeschreibung"
         )
       ),
@@ -82,6 +86,7 @@ get_extracted_information <- function(df, field) {
         pattern = c(
           `Beginn des Leistungszeitraums` = "Laufzeitbeginn",
           `Ende des Leistungszeitraums` = "Laufzeitende"
+
         )
       ))
   }
@@ -106,13 +111,9 @@ read_KeysFromDescription <- function (df, sep = sep)
   replace_string <- c(
     `01.11.2024 bis 31.01.2025 und 01.05.2025 bis 31.07.2025` = "01.11.2024 - 31.07.2025",
     `–` = "-",
-    `Geplantes Datum: 27.01.2025` = "Leistungsdatum: 27.01.2025",
-    `Geplantes Datum der Erstellung: 27.01.2025` = "Leistungsdatum: 27.01.2025",
-    `bis zum` = "-",
+   `bis zum` = "-",
     `bis` = "-",
     `ab dem` = "",
-    `KW 20 – KW 23 (SoSe 2025)` ="12.05.2025 - 08.06.2025",
-    `KW 44 – KW 47 (WiSe 2025)` = "27.10.2025 - 23.11.2025",
     `02023` = "2023",
     `März - Juli 2022` = "1.3.2022-31.7.2022",
     `01.06 - 30.11.22` = "01.06.22 - 30.11.22",
@@ -286,7 +287,17 @@ get_laufzeiten_information <- function (df)
       # to break up the leistungszeitraum into start and end
       separate(Leistungszeitraum,
                into = c("Start", "Ende"),
-               sep = "-") %>%
+               sep = "-")
+
+    if(!"Leistungsbeginn" %in% colnames(df)) {
+      df <- df %>%
+        mutate(Leistungsbeginn = NA)}
+
+    if(!"Leistungsende" %in% colnames(df)) {
+      df <- df %>%
+        mutate(Leistungsende = NA)}
+
+    df <- df %>%
       mutate(
         # to only keep the dates and remove all text information
         Start = stringr::str_extract_all(Start, "[0-9]*\\.[0-9]*\\.[0-9]*"),
