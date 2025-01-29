@@ -389,9 +389,8 @@ authentication_Google_BigQuery <-  function(args) {
     print("Decryption successful. Data saved to search-console-api-399013-5cb724656590.json")
 
     # Authentifizieren bei Google BigQuery
-    google_gsc_BigQuery_auth <- googleAuthR::gar_auth_service(
-      json_file = decrypted_file
-    )
+    google_gsc_BigQuery_auth <- bigrquery::bq_auth(path = "../../keys/gsc_bigQuery/decrypted_key_service_account_bigQuery.json")
+
 
   },
   error = function(e) {
