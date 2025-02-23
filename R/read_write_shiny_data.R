@@ -21,8 +21,16 @@
 
 #' @export
 name_of_app <- function(){
-  #Returns the name of the current app
-  name_of_app <- gsub(".*/([^/]+)$","\\1", getwd())
+  # Get the current working directory
+  current_working_directory <- getwd()
+
+  # If ends with "_test" remove it
+  if(grepl("_test$", current_working_directory)){
+    current_working_directory <- gsub("_test$", "", current_working_directory)
+  }
+
+  # Extract the last folder of the path
+  name_of_app <- gsub(".*/([^/]+)$","\\1", current_working_directory)
   return(name_of_app)
 }
 
