@@ -15,99 +15,36 @@ library(googleAuthR)
 #' @return authentication keys as vector
 
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql"), args) {
 
-  # 1 Authentication Billomat ----
+  auth_functions <- list(
+    billomat = authentication_billomat,
+    crm = authentication_crm,
+    `google sheet` = authentication_GSheet,
+    asana = authentication_asana,
+    msgraph = authentication_msgraph,
+    brevo = authentication_brevo,
+    `google analytics` = authentication_Google_Analytics,
+    bonusDB = authentication_bonus_db,
+    BigQuery = authentication_Google_BigQuery,
+    cleverreach = authentication_cleverreach,
+    postgresql = authentication_postgresql
+  )
 
-  pos_Billomat <- match(1, stringr::str_detect("billomat", needed_services))
+  keys <- list()
 
-  if(!is.na(pos_Billomat)) {
-    billomat_key <- authentication_billomat(args[pos_Billomat])
-  } else {
-    billomat_key <- NA
+  for (service in needed_services) {
+    pos <- match(1, stringr::str_detect(service, needed_services))
+
+    if (!is.na(pos) && service %in% names(auth_functions)) {
+      keys[[service]] <- auth_functions[[service]](args[pos])
+    } else {
+      keys[[service]] <- NA
+    }
   }
-
-  # 2 Authentication CRM ----
-
-  pos_CRM <- match(1, stringr::str_detect("crm", needed_services))
-
-  if(!is.na(pos_CRM)) {
-    crm_key <- authentication_crm(args[pos_CRM])
-  } else {
-    crm_key <- NA
-  }
-
-  # 3 Authentication Google Sheet ----
-
-  pos_GSheet <- match(1, stringr::str_detect("google sheet", needed_services))
-
-  if(!is.na(pos_GSheet)) {
-    authentication_GSheet(args[pos_GSheet])
-  }
-
-  # 4 Authentication Asana ---
-
-  pos_Asana <- match(1, stringr::str_detect("asana", needed_services))
-
-  if(!is.na(pos_Asana)) {
-    asana_key <- authentication_asana(args[pos_Asana])
-  } else {
-    asana_key <- NA
-  }
-
-  # 5 Authentication MSGraph ---
-
-  pos_MSGraph <- match(1, stringr::str_detect("msgraph", needed_services))
-
-  if(!is.na(pos_MSGraph)) {
-    msgraph_key <- authentication_msgraph(args[pos_MSGraph])
-  } else {
-    msgraph_key <- NA
-  }
-
-  # 6 Authentication Brevo ---
-
-  pos_Brevo <- match(1, stringr::str_detect("brevo", needed_services))
-
-  if(!is.na(pos_Brevo)) {
-    brevo_key <- authentication_brevo(args[pos_Brevo])
-  } else {
-    brevo_key <- NA
-  }
-
-  # 7 Authentication Google Analytics ---
-
-  pos_Google_Analytics <- match(1, stringr::str_detect("google analytics", needed_services))
-
-  if(!is.na(pos_Google_Analytics)) {
-    authentication_Google_Analytics(args[pos_Google_Analytics])
-  }
-
-  # 8 Authentication BonusDB ---
-
-  pos_Bonus_DB <- match(1, stringr::str_detect("bonusDB", needed_services))
-
-  if(!is.na(pos_Bonus_DB)) {
-    bonus_db_key <- authentication_bonus_db(args[pos_Bonus_DB])
-  } else {
-    bonus_db_key <- NA
-  }
-
-  # 9 Authentication Google BigQuery ---
-
-  pos_Google_BigQuery <- match(1, stringr::str_detect("BigQuery", needed_services))
-
-  if(!is.na(pos_Google_BigQuery )) {
-    authentication_Google_BigQuery(args[pos_Google_BigQuery])
-  }
-
-  keys  <- list("billomat" = billomat_key, "crm" = crm_key, "asana" = asana_key, "msgraph" = msgraph_key, "brevo" = brevo_key, "bonusDB" = bonus_db_key)
 
   return(keys)
 }
-
-
-
 
 #' authentication_billomat
 #'
@@ -199,11 +136,14 @@ authentication_GSheet <-  function(args) {
     error = function(e) {
       # Error handling
       cat("An error occurred: ", e$message, "\n")
+      print("Please check also if you have ../../keys/GoogleSheets/encrypted_google_sheets.bin")
     },
     finally = {
       # Cleanup of private key afterwards
       unlink(decrypted_file)
       print("google_sheets_auth.json deleted.")
+
+      return("No Key")
     })
 }
 
@@ -326,11 +266,14 @@ authentication_Google_Analytics <-  function(args) {
   error = function(e) {
     # Error handling
     cat("An error occurred: ", e$message, "\n")
+    print("Please check also if you have ../../keys/GoogleAnalytics/encrypted_google_analytics.bin")
   },
   finally = {
     # Cleanup of private key afterwards
     unlink(decrypted_file)
     print("google_analytics_auth.json deleted.")
+
+    return("No Key")
   })
 }
 
@@ -396,11 +339,57 @@ authentication_Google_BigQuery <-  function(args) {
   error = function(e) {
     # Error handling
     cat("An error occurred: ", e$message, "\n")
+    print("Please check also if you have ../../keys/gsc_bigQuery/encrypted_key_service_account_bigQuery.bin")
   },
   finally = {
     # Cleanup of private key afterwards
     unlink(decrypted_file)
     print(paste0(decrypted_file, " deleted."))
+
+    return("No Key")
   })
 }
 
+#' authentication_cleverReach
+#'
+#' Diese Funktion führt den Authentifizierungsprozess für CleverReach-RESTAPI durch.
+#' Sie kann sowohl manuelle Passwort-Eingaben als auch FlowForce-Argumente verarbeiten.
+
+#' @param args Zusätzlicher Eingabeparameter, nur erforderlich bei FlowForce-Jobs
+#' @return Authentifizierungs-Token als Zeichenkette
+
+#' @export
+authentication_cleverreach <- function(args) {
+    encrypted_api_key <- readLines("../../keys/cleverReach_key.txt")
+
+    if (interactive()) {
+      decrypt_key <- getPass::getPass("Bitte Decryption_Key für CleverReach eingeben: ")
+    } else {
+      decrypt_key <- args
+    }
+
+    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+
+}
+
+
+#' authentication_postgresql
+#'
+#' This function handles the key encryption for a PostgreSQL database authentication.
+#' It supports manual password input as well as FlowForce arguments.
+
+#' @param args Additional input parameter, only needed through FlowForce Job
+#' @return PostgreSQL DB Key as String
+
+#' @export
+authentication_postgresql <- function(args) {
+    encrypted_credentials <- readLines("../../keys/PostgreSQL_DB/postgresql_key.txt")
+
+    if (interactive()) {
+      decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
+    } else {
+      decrypt_key <- args
+    }
+
+    safer::decrypt_string(encrypted_credentials, key = decrypt_key)
+}
