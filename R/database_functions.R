@@ -39,7 +39,7 @@ custom_decrypt_db <- function(df,
   return(as.data.frame(df_decrypted, stringsAsFactors = FALSE))
 }
 
-#' upsert_data_to_postgres
+#' postgres_upsert_data
 #'
 #' @param connection your database connection
 #' @param schema the schema of the table in the database
@@ -47,7 +47,7 @@ custom_decrypt_db <- function(df,
 #' @param data the data to be inserted
 #' @return Only Feedback Message in Console
 #' @export
-upsert_data_to_postgres <- function(connection, schema, table, data) {
+postgres_upsert_data <- function(connection, schema, table, data) {
   # ----- Start -----
 
   # Temporäre Tabelle erstellen (Name mit "temp_"-Prefix)
@@ -87,7 +87,7 @@ upsert_data_to_postgres <- function(connection, schema, table, data) {
   })
 }
 
-#' rename_table
+#' postgres_rename_table
 #'
 #' Renames an existing table in a PostgreSQL database.
 #'
@@ -97,7 +97,24 @@ upsert_data_to_postgres <- function(connection, schema, table, data) {
 #' @param schema The schema where the table is located (default is "raw").
 #' @return Only a feedback message in the console.
 #' @export
-rename_table <- function(con, old_name, new_name, schema = "raw") {
+postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
+  # ----- Start -----
+  query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema, old_name, new_name)
+  dbExecute(con, query)
+  message(sprintf("Table '%s.%s' renamed to '%s.%s'", schema, old_name, schema, new_name))
+}
+
+#' postgres_rename_table
+#'
+#' Renames an existing table in a PostgreSQL database.
+#'
+#' @param con The database connection object.
+#' @param old_name The current name of the table.
+#' @param new_name The new name for the table.
+#' @param schema The schema where the table is located (default is "raw").
+#' @return Only a feedback message in the console.
+#' @export
+postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
   # ----- Start -----
   query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema, old_name, new_name)
   dbExecute(con, query)
