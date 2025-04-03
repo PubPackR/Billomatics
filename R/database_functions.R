@@ -46,6 +46,7 @@ custom_decrypt_db <- function(df,
 #' @param table the table in the database
 #' @param data the data to be inserted
 #' @return Only Feedback Message in Console
+#' @export
 upsert_data_to_postgres <- function(connection, schema, table, data) {
   # ----- Start -----
 
