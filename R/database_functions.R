@@ -86,3 +86,20 @@ upsert_data_to_postgres <- function(connection, schema, table, data) {
     DBI::dbExecute(connection, paste0("DROP TABLE IF EXISTS ", temp_table))
   })
 }
+
+#' rename_table
+#'
+#' Renames an existing table in a PostgreSQL database.
+#'
+#' @param con The database connection object.
+#' @param old_name The current name of the table.
+#' @param new_name The new name for the table.
+#' @param schema The schema where the table is located (default is "raw").
+#' @return Only a feedback message in the console.
+#' @export
+rename_table <- function(con, old_name, new_name, schema = "raw") {
+  # ----- Start -----
+  query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema, old_name, new_name)
+  dbExecute(con, query)
+  message(sprintf("Table '%s.%s' renamed to '%s.%s'", schema, old_name, schema, new_name))
+}
