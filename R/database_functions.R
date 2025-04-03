@@ -1,3 +1,12 @@
+################################################################################-
+# ----- Description -------------------------------------------------------------
+#
+# This Script contains various functions for easier database management
+#
+
+################################################################################-
+# ----- Start -------------------------------------------------------------------
+
 #' custom_decrypt_db
 #'
 #' This function is used to decrypt a dataframe that is saved within a sqlite database.
@@ -28,4 +37,51 @@ custom_decrypt_db <- function(df,
     })
   })
   return(as.data.frame(df_decrypted, stringsAsFactors = FALSE))
+}
+
+#' upsert_data_to_postgres
+#'
+#' @param connection your database connection
+#' @param schema the schema of the table in the database
+#' @param table the table in the database
+#' @param data the data to be inserted
+#' @return Only Feedback Message in Console
+upsert_data_to_postgres <- function(connection, schema, table, data) {
+  # ----- Start -----
+
+  # Temporäre Tabelle erstellen (Name mit "temp_"-Prefix)
+  temp_table <- paste0("temp_", table)
+
+  # Sicherstellen, dass die temporäre Tabelle auch bei einem Fehler gelöscht wird
+  tryCatch({
+    # Daten in die temporäre Tabelle schreiben
+    DBI::dbWriteTable(connection, temp_table, data, temporary = TRUE, row.names = FALSE)
+
+    # Spaltennamen aus dem DataFrame extrahieren
+    cols <- colnames(data)
+    cols_str <- paste(cols, collapse = ", ")
+    update_str <- paste(paste0(cols, " = EXCLUDED.", cols), collapse = ", ")
+
+    # Upsert-Statement (INSERT mit ON CONFLICT)
+    query <- sprintf(
+      "INSERT INTO %s.%s (%s)\n    SELECT %s FROM %s\n    ON CONFLICT (id) DO UPDATE \n    SET %s",
+      schema, table, cols_str, cols_str, temp_table, update_str
+    )
+
+    # Query ausführen
+    DBI::dbExecute(connection, query)
+
+    # Gesamtanzahl der Zeilen in der Tabelle nach dem Upsert abrufen
+    total_rows <- DBI::dbGetQuery(connection, paste0("SELECT COUNT(*) FROM ", schema, ".", table))$count
+
+    # Erfolgreiche Rückgabe
+    paste("Upsert erfolgreich! Gesamtanzahl der Zeilen:", total_rows)
+  }, error = function(e) {
+    # Fehlerbehandlung: Fehler ausgeben und temporäre Tabelle löschen
+    message("Fehler beim Upsert: ", e$message)
+    return("Upsert fehlgeschlagen.")
+  }, finally = {
+    # Temporäre Tabelle löschen (unabhängig davon, ob ein Fehler aufgetreten ist)
+    DBI::dbExecute(connection, paste0("DROP TABLE IF EXISTS ", temp_table))
+  })
 }
