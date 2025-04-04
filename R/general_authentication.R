@@ -384,6 +384,7 @@ authentication_cleverreach <- function(args) {
 #' @export
 authentication_postgresql <- function(args) {
     encrypted_credentials <- readLines("../../keys/PostgreSQL_DB/postgresql_key.txt")
+    encrypted_server_info <- readLines("../../keys/PostgreSQL_DB/postgresql_server.txt")
 
     if (interactive()) {
       decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
@@ -391,5 +392,9 @@ authentication_postgresql <- function(args) {
       decrypt_key <- args
     }
 
-    safer::decrypt_string(encrypted_credentials, key = decrypt_key)
+    credentials <- safer::decrypt_string(encrypted_credentials, key = decrypt_key)
+    server_info <- (safer::decrypt_string(encrypted_server_info, key = decrypt_key) %>%
+      strsplit(", "))[[1]]
+
+    c(credentials, server_info)
 }

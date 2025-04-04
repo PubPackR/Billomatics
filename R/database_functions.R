@@ -104,19 +104,22 @@ postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
   message(sprintf("Table '%s.%s' renamed to '%s.%s'", schema, old_name, schema, new_name))
 }
 
-#' postgres_rename_table
+#' postgres_add_metadata
 #'
-#' Renames an existing table in a PostgreSQL database.
+#' Adds or updates metadata in the PostgreSQL database.
 #'
 #' @param con The database connection object.
-#' @param old_name The current name of the table.
-#' @param new_name The new name for the table.
-#' @param schema The schema where the table is located (default is "raw").
+#' @param key The metadata key.
+#' @param value The metadata value.
 #' @return Only a feedback message in the console.
 #' @export
-postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
-  # ----- Start -----
-  query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema, old_name, new_name)
+postgres_add_metadata <- function(con, key, value) {
+  query <- sprintf("
+    INSERT INTO raw.metadata_jobs_and_datafiles (key, value)
+    VALUES ('%s', '%s')
+    ON CONFLICT (key)
+    DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+  ", key, value)
+
   dbExecute(con, query)
-  message(sprintf("Table '%s.%s' renamed to '%s.%s'", schema, old_name, schema, new_name))
 }

@@ -5,8 +5,6 @@
 \title{postgres_rename_table}
 \usage{
 postgres_rename_table(con, old_name, new_name, schema = "raw")
-
-postgres_rename_table(con, old_name, new_name, schema = "raw")
 }
 \arguments{
 \item{con}{The database connection object.}
@@ -19,11 +17,7 @@ postgres_rename_table(con, old_name, new_name, schema = "raw")
 }
 \value{
 Only a feedback message in the console.
-
-Only a feedback message in the console.
 }
 \description{
-Renames an existing table in a PostgreSQL database.
-
 Renames an existing table in a PostgreSQL database.
 }
