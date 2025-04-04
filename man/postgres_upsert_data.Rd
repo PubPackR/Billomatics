@@ -4,7 +4,7 @@
 \alias{postgres_upsert_data}
 \title{postgres_upsert_data}
 \usage{
-postgres_upsert_data(connection, schema, table, data)
+postgres_upsert_data(connection, schema, table, data, conflict_cols = "id")
 }
 \arguments{
 \item{connection}{your database connection}

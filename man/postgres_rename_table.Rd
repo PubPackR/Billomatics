@@ -16,7 +16,7 @@ postgres_rename_table(con, old_name, new_name, schema = "raw")
 \item{schema}{The schema where the table is located (default is "raw").}
 }
 \value{
-Only a feedback message in the console.
+A message indicating success or failure.
 }
 \description{
 Renames an existing table in a PostgreSQL database.
