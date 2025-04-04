@@ -10,9 +10,9 @@ postgres_connect(
 )
 }
 \arguments{
-\item{keys}{A named list or object with elements: postgresql[\link{1}] = password, [\link{2}] = user, [\link{3}] = dbname, [\link{4}] = host, [\link{5}] = port.}
-
 \item{ssl_cert_path}{Path to the SSL certificate. Default assumes common relative path.}
+
+\item{postgres_keys}{A named list or object with elements: [\link{1}] = password, [\link{2}] = user, [\link{3}] = dbname, [\link{4}] = host, [\link{5}] = port.}
 }
 \value{
 A \code{DBI} connection object if successful. Stops with an error otherwise.

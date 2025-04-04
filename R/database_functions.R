@@ -396,7 +396,7 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
 #'
 #' Connects to a PostgreSQL database using provided credentials and gives feedback.
 #'
-#' @param keys A named list or object with elements: postgresql[[1]] = password, [[2]] = user, [[3]] = dbname, [[4]] = host, [[5]] = port.
+#' @param postgres_keys A named list or object with elements: [[1]] = password, [[2]] = user, [[3]] = dbname, [[4]] = host, [[5]] = port.
 #' @param ssl_cert_path Path to the SSL certificate. Default assumes common relative path.
 #' @return A `DBI` connection object if successful. Stops with an error otherwise.
 #' @export
@@ -404,16 +404,16 @@ postgres_connect <- function(keys, ssl_cert_path = "../../metabase-data/postgres
   tryCatch({
     con <- DBI::dbConnect(
       drv = RPostgres::Postgres(),
-      password = keys$postgresql[[1]],
-      user = keys$postgresql[[2]],
-      dbname = keys$postgresql[[3]],
-      host = keys$postgresql[[4]],
-      port = as.integer(keys$postgresql[[5]]),
+      password = postgres_keys[[1]],
+      user = postgres_keys[[2]],
+      dbname = postgres_keys[[3]],
+      host = postgres_keys[[4]],
+      port = as.integer(postgres_keys[[5]]),
       sslmode = "verify-full",
       sslrootcert = ssl_cert_path
     )
     message(sprintf("✅ Erfolgreich verbunden mit PostgreSQL-DB '%s' auf Host '%s'",
-                    keys$postgresql[[3]], keys$postgresql[[4]]))
+                    postgres_keys[[3]], postgres_keys[[4]]))
     return(con)
   }, error = function(e) {
     stop(sprintf("❌ Verbindung zur PostgreSQL-Datenbank fehlgeschlagen: %s", e$message))
