@@ -112,7 +112,7 @@ postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
 
   # Check if the old table exists
   exists_query <- sprintf("SELECT to_regclass('%s.%s');", schema, old_name)
-  exists_result <- dbGetQuery(con, exists_query)
+  exists_result <- DBI::dbGetQuery(con, exists_query)
 
   # If the table doesn't exist, return an error
   if (is.null(exists_result) || is.null(exists_result[[1]])) {
@@ -121,7 +121,7 @@ postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
 
   # Check if the new table already exists
   exists_new_query <- sprintf("SELECT to_regclass('%s.%s');", schema, new_name)
-  exists_new_result <- dbGetQuery(con, exists_new_query)
+  exists_new_result <- DBI::dbGetQuery(con, exists_new_query)
 
   # If the new table already exists, return an error
   if (!is.null(exists_new_result) && is.null(exists_new_result[[1]])) {
@@ -133,7 +133,7 @@ postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
 
   # Try to execute the rename query
   tryCatch({
-    dbExecute(con, query)
+    DBI::dbExecute(con, query)
     message(sprintf("Table '%s.%s' renamed to '%s.%s'", schema, old_name, schema, new_name))
     return(TRUE)  # Return TRUE on success
   }, error = function(e) {
@@ -160,7 +160,7 @@ postgres_add_metadata <- function(con, key, value, is_new = TRUE) {
     check_query <- sprintf("
       SELECT COUNT(*) FROM raw.metadata_jobs_and_datafiles WHERE key = '%s';
     ", key)
-    count_result <- dbGetQuery(con, check_query)
+    count_result <- DBI::dbGetQuery(con, check_query)
 
     if (count_result$count > 0) {
       stop(sprintf("Error: Metadata with key '%s' already exists and is not allowed to be updated.
@@ -176,7 +176,7 @@ postgres_add_metadata <- function(con, key, value, is_new = TRUE) {
     DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
   ", key, value)
 
-  dbExecute(con, query)
+  DBI::dbExecute(con, query)
   message(sprintf("Metadata for key '%s' has been successfully added/updated.", key))
 }
 
@@ -193,7 +193,7 @@ postgres_read_metadata <- function(con, key) {
     SELECT key, value, updated_at FROM raw.metadata_jobs_and_datafiles WHERE key = '%s';
   ", key)
 
-  result <- dbGetQuery(con, query)
+  result <- DBI::dbGetQuery(con, query)
 
   # Check if result is empty
   if (nrow(result) == 0) {
@@ -225,7 +225,7 @@ postgres_add_column <- function(con, schema, table, column_name, column_type) {
     WHERE table_schema = '%s' AND table_name = '%s' AND column_name = '%s';
   ", schema, table, column_name)
 
-  column_exists <- dbGetQuery(con, check_query)
+  column_exists <- DBI::dbGetQuery(con, check_query)
 
   if (nrow(column_exists) > 0) {
     stop(sprintf("Error: Column '%s' already exists in table '%s.%s'.", column_name, schema, table))
@@ -238,7 +238,7 @@ postgres_add_column <- function(con, schema, table, column_name, column_type) {
 
   # Try to execute the query
   tryCatch({
-    dbExecute(con, query)
+    DBI::dbExecute(con, query)
     message(sprintf("Column '%s' of type '%s' has been successfully added to '%s.%s'.", column_name, column_type, schema, table))
     return(TRUE)  # Return TRUE on success
   }, error = function(e) {
@@ -268,7 +268,7 @@ postgres_change_column_type <- function(con, schema, table, column_name, new_col
     WHERE table_schema = '%s' AND table_name = '%s' AND column_name = '%s';
   ", schema, table, column_name)
 
-  column_exists <- dbGetQuery(con, check_query)
+  column_exists <- DBI::dbGetQuery(con, check_query)
 
   if (nrow(column_exists) == 0) {
     stop(sprintf("Error: Column '%s' does not exist in table '%s.%s'.", column_name, schema, table))
@@ -281,7 +281,7 @@ postgres_change_column_type <- function(con, schema, table, column_name, new_col
 
   # Try to execute the query
   tryCatch({
-    dbExecute(con, query)
+    DBI::dbExecute(con, query)
     message(sprintf("Column '%s' in table '%s.%s' has been successfully changed to type '%s'.", column_name, schema, table, new_column_type))
     return(TRUE)  # Return TRUE on success
   }, error = function(e) {
@@ -305,7 +305,7 @@ postgres_create_table <- function(con, schema, table, columns) {
   query <- sprintf("CREATE TABLE %s.%s (%s);", schema, table, column_definitions)
 
   tryCatch({
-    dbExecute(con, query)
+    DBI::dbExecute(con, query)
     message(sprintf("Table '%s.%s' has been successfully created.", schema, table))
     return(TRUE)
   }, error = function(e) {
@@ -327,7 +327,7 @@ postgres_drop_table <- function(con, schema, table) {
   query <- sprintf("DROP TABLE IF EXISTS %s.%s;", schema, table)
 
   tryCatch({
-    dbExecute(con, query)
+    DBI::dbExecute(con, query)
     message(sprintf("Table '%s.%s' has been successfully dropped.", schema, table))
     return(TRUE)
   }, error = function(e) {
@@ -346,7 +346,7 @@ postgres_drop_table <- function(con, schema, table) {
 #' @export
 postgres_list_tables <- function(con, schema) {
   query <- sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s';", schema)
-  tables <- dbGetQuery(con, query)
+  tables <- DBI::dbGetQuery(con, query)
 
   if (nrow(tables) == 0) {
     message(sprintf("No tables found in schema '%s'.", schema))
@@ -385,7 +385,7 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
 
   # Execute query
   tryCatch({
-    dbGetQuery(con, query)
+    DBI::dbGetQuery(con, query)
   }, error = function(e) {
     message("Error in postgres_select: ", e$message)
     return(NULL)
