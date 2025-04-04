@@ -400,7 +400,7 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
 #' @param ssl_cert_path Path to the SSL certificate. Default assumes common relative path.
 #' @return A `DBI` connection object if successful. Stops with an error otherwise.
 #' @export
-postgres_connect <- function(keys, ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
+postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
   tryCatch({
     con <- DBI::dbConnect(
       drv = RPostgres::Postgres(),
