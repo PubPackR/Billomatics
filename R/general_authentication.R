@@ -58,7 +58,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 #' @export
 authentication_billomat <-  function(args) {
 
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
 
       encryption_db <-
         getPass::getPass("Enter the password for Billomat-DB: ")
@@ -89,7 +89,7 @@ authentication_crm <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/CRM.txt")
 
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_key <-
         getPass::getPass("Bitte Decryption_Key für CRM eingeben: ")
     } else{
@@ -109,7 +109,7 @@ authentication_crm <-  function(args) {
 
 #' @export
 authentication_GSheet <-  function(args) {
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_google_sheets_key <-
         getPass::getPass("Enter the password for Google Sheets: ")
 
@@ -160,7 +160,7 @@ authentication_GSheet <-  function(args) {
 #' @export
 authentication_asana <-  function(args) {
 
-  if (interactive() & length(args) == 0) {
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
 
     asana_key <-
       getPass::getPass("Enter the password for Asana: ")
@@ -192,7 +192,7 @@ authentication_msgraph <-  function(args) {
 
   encrypted_api_key <- readLines("../../keys/Microsoft365R/microsoft365r.txt")
 
-  if (interactive() & length(args) == 0) {
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
     decrypt_key <-
       getPass::getPass("Bitte Decryption_Key für MSGraph eingeben: ")
   } else{
@@ -216,7 +216,7 @@ authentication_brevo <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/Brevo/smpt-key.txt")
 
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_key <-
         getPass::getPass("Bitte Decryption_Key für Brevo eingeben: ")
     } else{
@@ -237,7 +237,7 @@ authentication_brevo <-  function(args) {
 
 #' @export
 authentication_Google_Analytics <-  function(args) {
-  if (interactive() & length(args) == 0) {
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
     decrypt_google_analytics_key <-
       getPass::getPass("Enter the password for Google Analytics: ")
 
@@ -291,7 +291,7 @@ authentication_bonus_db <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/BonusDB/bonusDBKey.txt")
 
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_key <-
         getPass::getPass("Bitte Decryption_Key für Bonus DB eingeben: ")
     } else{
@@ -311,7 +311,7 @@ authentication_bonus_db <-  function(args) {
 
 #' @export
 authentication_Google_BigQuery <-  function(args) {
-  if (interactive()  & length(args) == 0) {
+  if (interactive()  & (length(args) == 0 | is.na(args[1]))) {
     decrypt_google_BigQuery_key <-
       getPass::getPass("Enter the password for BigQuery: ")
 
@@ -362,7 +362,7 @@ authentication_Google_BigQuery <-  function(args) {
 authentication_cleverreach <- function(args) {
     encrypted_api_key <- readLines("../../keys/cleverReach_key.txt")
 
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_key <- getPass::getPass("Bitte Decryption_Key für CleverReach eingeben: ")
     } else {
       decrypt_key <- args
@@ -386,7 +386,7 @@ authentication_postgresql <- function(args) {
     encrypted_credentials <- readLines("../../keys/PostgreSQL_DB/postgresql_key.txt")
     encrypted_server_info <- readLines("../../keys/PostgreSQL_DB/postgresql_server.txt")
 
-    if (interactive() & length(args) == 0) {
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
     } else {
       decrypt_key <- args
