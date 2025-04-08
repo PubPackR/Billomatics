@@ -506,7 +506,7 @@ pull_production_tables <- function(tables,
     message("💾 Lade Daten in In-Memory-Datenbank...")
     sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
     for (table in tables) {
-      DBI::dbWriteTable(sqlite_con, gsub("\\.", "_", table), tables_data[[table]], overwrite = TRUE)
+      DBI::dbWriteTable(sqlite_con, gsub("\\.", ".", table), tables_data[[table]], overwrite = TRUE)
     }
     return(sqlite_con)
   } else if (target == "local_postgres") {
