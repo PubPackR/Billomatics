@@ -422,5 +422,101 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 
 
 
+#' Pulls production tables from a remote PostgreSQL database via SSH
+#'
+#' This function connects to a remote PostgreSQL database via SSH, retrieves the specified tables,
+#' and stores them either in an in-memory SQLite database or a local PostgreSQL database.
+#'
+#' @param tables A character vector of table names to be retrieved from the remote PostgreSQL database.
+#' @param postgres_keys A list containing PostgreSQL connection details:
+#'   - 1: Password
+#'   - 2: Username
+#'   - 3: Database name
+#'   - 4: Host
+#'   - 5: Port
+#' @param ssh_key_path The file path to the private SSH key used for connecting to the remote server.
+#' @param ssl_cert_path The file path to the SSL certificate for PostgreSQL (default is provided).
+#' @param remote_user The username for the SSH connection.
+#' @param remote_host The host address of the remote server.
+#' @param target Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
+#'   or 'local_postgres' for a local PostgreSQL database.
+#'
+#' @return A database connection object:
+#'   - If the target is 'memory', returns an SQLite connection object to the in-memory database.
+#'   - If the target is 'local_postgres', returns a PostgreSQL connection object to the local database.
+#'
+pull_production_tables <- function(tables,
+                                   postgres_keys,
+                                   ssh_key_path,
+                                   ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
+                                   remote_user = "application-user",
+                                   remote_host = "shiny.studyflix.info",
+                                   target = c("memory", "local_postgres")) {
+
+  # SSH-Verbindung aufbauen
+  message("🔐 Aufbau SSH-Verbindung...")
+  ssh_session <- ssh::ssh_connect(
+    host = paste0(remote_user, "@", remote_host),
+    keyfile = ssh_key_path
+  )
+
+  # Sicherstellen, dass die SSH-Verbindung am Ende der Funktion geschlossen wird
+  on.exit({
+    message("🔒 SSH-Verbindung wird geschlossen...")
+    ssh::ssh_disconnect(ssh_session)
+  })
+
+  # PostgreSQL-Verbindungsstring
+  conn_string <- sprintf(
+    "postgresql://%s:%s@%s:%s/%s",
+    postgres_keys[[2]],  # user
+    postgres_keys[[1]],  # password
+    postgres_keys[[4]],  # host
+    postgres_keys[[5]],  # port
+    postgres_keys[[3]]   # dbname
+  )
+
+  # Tabellen herunterladen
+  tables_data <- list()
+
+  for (table in tables) {
+    message(paste("📥 Lade Tabelle:", table))
+
+    # Befehl zum Export der Tabelle als CSV
+    cmd <- sprintf(
+      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -c "\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER"',
+      postgres_keys[[1]], postgres_keys[[3]], postgres_keys[[2]],
+      postgres_keys[[4]], postgres_keys[[5]], table
+    )
+
+    # Befehl ausführen und Ausgabe erfassen
+    csv_data <- ssh::ssh_exec_internal(ssh_session, cmd)
+
+    if (csv_data$status != 0) {
+      stop("Fehler beim Abrufen der Tabelle ", table)
+    }
+
+    # CSV-Daten in Dataframe umwandeln
+    df <- read.csv(text = rawToChar(csv_data$stdout), stringsAsFactors = FALSE)
+    tables_data[[table]] <- df
+  }
+
+  # Daten in Ziel speichern
+  if (target == "memory") {
+    message("💾 Lade Daten in In-Memory-Datenbank...")
+    sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+    for (table in tables) {
+      DBI::dbWriteTable(sqlite_con, gsub("\\.", "_", table), tables_data[[table]], overwrite = TRUE)
+    }
+    return(sqlite_con)
+  } else if (target == "local_postgres") {
+    message("⚠️ Speichern in der lokalen PostgreSQL-Datenbank ist noch nicht implementiert.")
+    # Code für lokale PostgreSQL-Datenbank folgt später
+  }
+}
+
+
+
+
 
 
