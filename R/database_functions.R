@@ -444,7 +444,7 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 #' @return A database connection object:
 #'   - If the target is 'memory', returns an SQLite connection object to the in-memory database.
 #'   - If the target is 'local_postgres', returns a PostgreSQL connection object to the local database.
-#'
+#'@export
 pull_production_tables <- function(tables,
                                    postgres_keys,
                                    ssh_key_path,
