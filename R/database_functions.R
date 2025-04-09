@@ -428,30 +428,28 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 #' and stores them either in an in-memory SQLite database or a local PostgreSQL database.
 #'
 #' @param tables A character vector of table names to be retrieved from the remote PostgreSQL database.
-#' @param postgres_keys A list containing PostgreSQL connection details:
-#'   - 1: Password
-#'   - 2: Username
-#'   - 3: Database name
-#'   - 4: Host
-#'   - 5: Port
+#' #' @param target Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
+#'   or 'local_postgres' for a local PostgreSQL database.
 #' @param ssh_key_path The file path to the private SSH key used for connecting to the remote server.
 #' @param ssl_cert_path The file path to the SSL certificate for PostgreSQL (default is provided).
 #' @param remote_user The username for the SSH connection.
 #' @param remote_host The host address of the remote server.
-#' @param target Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
-#'   or 'local_postgres' for a local PostgreSQL database.
 #'
 #' @return A database connection object:
 #'   - If the target is 'memory', returns an SQLite connection object to the in-memory database.
 #'   - If the target is 'local_postgres', returns a PostgreSQL connection object to the local database.
 #'@export
 pull_production_tables <- function(tables,
-                                   postgres_keys,
-                                   ssh_key_path,
+                                   target = c("memory", "local_postgres"),
+                                   ssh_key_path = NULL,
                                    ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
                                    remote_user = "application-user",
-                                   remote_host = "shiny.studyflix.info",
-                                   target = c("memory", "local_postgres")) {
+                                   remote_host = "shiny.studyflix.info") {
+
+  if (!interactive()) {
+    warning("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
+    return(NA)
+  }
 
   # Validation of inputs
   valid_targets <- c("memory", "local_postgres")
@@ -466,18 +464,16 @@ pull_production_tables <- function(tables,
     return(NULL)
   }
 
+  if (is.null(ssh_key_path)) {
+    user <- Sys.getenv("USER")
+    if (user == "") user <- Sys.getenv("USERNAME")
+    ssh_key_path <- file.path("C:/Users", user, ".ssh", "id_rsa")
+  }
+
   if (!file.exists(ssh_key_path)) {
     warning(sprintf("Die angegebene SSH-Key-Datei existiert nicht: %s", ssh_key_path))
     return(NULL)
   }
-
-  if (!(is.list(postgres_keys) || is.character(postgres_keys)) ||
-      length(postgres_keys) < 5 ||
-      any(sapply(postgres_keys[1:5], function(x) is.null(x) || is.na(x) || x == ""))) {
-    warning("Ungültige oder unvollständige postgres_keys. Erwartet werden 5 Werte: Passwort, User, DB-Name, Host, Port.")
-    return(NULL)
-  }
-
 
   # Establish SSH connection
   message("🔐 Aufbau SSH-Verbindung...")
@@ -496,6 +492,26 @@ pull_production_tables <- function(tables,
     try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
   })
 
+  decrypt_key <- shinymanager::custom_access_keys_2("postgresql_public_key")
+
+  # get the postgres_keys
+  cmd <- sprintf("
+  R_TEMP_SCRIPT=$(mktemp)
+  cat > \"${R_TEMP_SCRIPT}\" << 'EORSCRIPT'
+  library(safer)
+  key <- \"%s\"
+  cred <- safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_key.txt\"), key)
+  srv <- strsplit(safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_server.txt\"), key), \", \")[[1]]
+  cat(paste(c(cred, srv), collapse=\",\"))
+EORSCRIPT
+  Rscript --vanilla \"${R_TEMP_SCRIPT}\"
+  rm \"${R_TEMP_SCRIPT}\"
+", gsub("\"", "\\\"", decrypt_key))
+
+  result <- ssh::ssh_exec_internal(ssh_session, cmd)
+
+  postgres_keys <- strsplit(rawToChar(result$stdout), ",")[[1]]
+
   # Download tables
   tables_data <- list()
   failed_tables <- character()
@@ -503,11 +519,11 @@ pull_production_tables <- function(tables,
   for (table in tables) {
     message(paste("📥 Versuche Tabelle zu laden:", table))
 
-    # Command with error redirection and status query
+    # Command to get the table data
     cmd <- sprintf(
-      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -c "\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER" 2>&1; echo "EXIT_STATUS:$?"',
-      postgres_keys[[1]], postgres_keys[[3]], postgres_keys[[2]],
-      postgres_keys[[4]], postgres_keys[[5]], table
+      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
+      postgres_keys[1], postgres_keys[3], postgres_keys[2],
+      postgres_keys[4], postgres_keys[5], table
     )
 
     # Execute command
