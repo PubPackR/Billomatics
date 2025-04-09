@@ -453,70 +453,115 @@ pull_production_tables <- function(tables,
                                    remote_host = "shiny.studyflix.info",
                                    target = c("memory", "local_postgres")) {
 
-  # SSH-Verbindung aufbauen
-  message("🔐 Aufbau SSH-Verbindung...")
-  ssh_session <- ssh::ssh_connect(
-    host = paste0(remote_user, "@", remote_host),
-    keyfile = ssh_key_path
-  )
+  # Validation of inputs
+  target <- match.arg(target)
+  if (length(tables) == 0) {
+    warning("Keine Tabellen zum Abrufen angegeben.")
+    return(NULL)
+  }
 
-  # Sicherstellen, dass die SSH-Verbindung am Ende der Funktion geschlossen wird
-  on.exit({
-    message("🔒 SSH-Verbindung wird geschlossen...")
-    ssh::ssh_disconnect(ssh_session)
+  # Establish SSH connection
+  message("🔐 Aufbau SSH-Verbindung...")
+  ssh_session <- tryCatch({
+    ssh::ssh_connect(
+      host = paste0(remote_user, "@", remote_host),
+      keyfile = ssh_key_path
+    )
+  }, error = function(e) {
+    stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
   })
 
-  # PostgreSQL-Verbindungsstring
-  conn_string <- sprintf(
-    "postgresql://%s:%s@%s:%s/%s",
-    postgres_keys[[2]],  # user
-    postgres_keys[[1]],  # password
-    postgres_keys[[4]],  # host
-    postgres_keys[[5]],  # port
-    postgres_keys[[3]]   # dbname
-  )
+  # Ensure that the SSH connection is closed at the end of the function
+  on.exit({
+    message("🔒 SSH-Verbindung wird geschlossen...")
+    try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
+  })
 
-  # Tabellen herunterladen
+  # Download tables
   tables_data <- list()
+  failed_tables <- character()
 
   for (table in tables) {
-    message(paste("📥 Lade Tabelle:", table))
+    message(paste("📥 Versuche Tabelle zu laden:", table))
 
-    # Befehl zum Export der Tabelle als CSV
+    # Command with error redirection and status query
     cmd <- sprintf(
-      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -c "\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER"',
+      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -c "\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER" 2>&1; echo "EXIT_STATUS:$?"',
       postgres_keys[[1]], postgres_keys[[3]], postgres_keys[[2]],
       postgres_keys[[4]], postgres_keys[[5]], table
     )
 
-    # Befehl ausführen und Ausgabe erfassen
-    csv_data <- ssh::ssh_exec_internal(ssh_session, cmd)
+    # Execute command
+    result <- ssh::ssh_exec_internal(ssh_session, cmd)
 
-    if (csv_data$status != 0) {
-      stop("Fehler beim Abrufen der Tabelle ", table)
+    # Split the result into data and status
+    output <- rawToChar(result$stdout)
+    parts <- strsplit(output, "EXIT_STATUS:")[[1]]
+
+    data_part <- parts[1]
+    status <- as.integer(parts[2])
+
+    # Error handling
+    if (status != 0 || grepl("error", data_part, ignore.case = TRUE)) {
+      # Extract error message
+      error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) {
+        data_part
+      } else {
+        "Unbekannter Fehler (keine Fehlermeldung erkannt)"
+      }
+
+      # Identify specific error types
+      if (grepl("does not exist|existiert nicht|relation.*not found", error_msg, ignore.case = TRUE)) {
+        message(sprintf("❌ Tabelle %s existiert nicht", table))
+      } else if (grepl("permission denied|Zugriff verweigert", error_msg, ignore.case = TRUE)) {
+        message(sprintf("❌ Keine Berechtigung für Tabelle %s", table))
+      } else {
+        message(sprintf("❌ Fehler bei Tabelle %s: %s", table, error_msg))
+      }
+
+      failed_tables <- c(failed_tables, table)
+      next
     }
 
-    # CSV-Daten in Dataframe umwandeln
-    df <- read.csv(text = rawToChar(csv_data$stdout), stringsAsFactors = FALSE)
-    tables_data[[table]] <- df
+    # Convert CSV data to dataframe
+    df <- tryCatch({
+      read.csv(text = data_part, stringsAsFactors = FALSE)
+    }, error = function(e) {
+      message(sprintf("❌ Fehler beim Parsen der Daten von Tabelle %s: %s", table, e$message))
+      failed_tables <- c(failed_tables, table)
+      return(NULL)
+    })
+
+    if (!is.null(df)) {
+      tables_data[[table]] <- df
+      message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
+    }
   }
 
-  # Daten in Ziel speichern
+  # Warning when tables have failed
+  if (length(failed_tables) > 0) {
+    warning(sprintf(
+      "Konnte %d von %d Tabellen nicht laden: %s",
+      length(failed_tables), length(tables),
+      paste(failed_tables, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  if (length(tables_data) == 0) {
+    warning("Keine Tabellen konnten geladen werden.", call. = FALSE)
+    return(NULL)
+  }
+
+  # Save data to target
   if (target == "memory") {
     message("💾 Lade Daten in In-Memory-Datenbank...")
     sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
-    for (table in tables) {
-      DBI::dbWriteTable(sqlite_con, gsub("\\.", ".", table), tables_data[[table]], overwrite = TRUE)
+    for (table in names(tables_data)) {
+      DBI::dbWriteTable(sqlite_con, gsub("\\.", "_", table), tables_data[[table]], overwrite = TRUE)
     }
     return(sqlite_con)
   } else if (target == "local_postgres") {
     message("⚠️ Speichern in der lokalen PostgreSQL-Datenbank ist noch nicht implementiert.")
-    # Code für lokale PostgreSQL-Datenbank folgt später
+    return(NULL)
   }
 }
-
-
-
-
-
-
