@@ -454,11 +454,30 @@ pull_production_tables <- function(tables,
                                    target = c("memory", "local_postgres")) {
 
   # Validation of inputs
-  target <- match.arg(target)
+  valid_targets <- c("memory", "local_postgres")
+  if (!(target %in% valid_targets)) {
+    warning(sprintf("Ungültiger target-Wert: '%s'. Erlaubt sind nur: %s",
+                    target, paste(valid_targets, collapse = ", ")))
+    return(NULL)
+  }
+
   if (length(tables) == 0) {
     warning("Keine Tabellen zum Abrufen angegeben.")
     return(NULL)
   }
+
+  if (!file.exists(ssh_key_path)) {
+    warning(sprintf("Die angegebene SSH-Key-Datei existiert nicht: %s", ssh_key_path))
+    return(NULL)
+  }
+
+  if (!(is.list(postgres_keys) || is.character(postgres_keys)) ||
+      length(postgres_keys) < 5 ||
+      any(sapply(postgres_keys[1:5], function(x) is.null(x) || is.na(x) || x == ""))) {
+    warning("Ungültige oder unvollständige postgres_keys. Erwartet werden 5 Werte: Passwort, User, DB-Name, Host, Port.")
+    return(NULL)
+  }
+
 
   # Establish SSH connection
   message("🔐 Aufbau SSH-Verbindung...")
