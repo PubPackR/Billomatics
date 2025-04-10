@@ -492,7 +492,8 @@ pull_production_tables <- function(tables,
     try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
   })
 
-  decrypt_key <- shinymanager::custom_access_keys_2("postgresql_public_key")
+  produkt_key <- getPass::getPass(msg = "Gib das Passwort für den Produktnutzer ein:")
+  decrypt_key <- shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
 
   # get the postgres_keys
   cmd <- sprintf("
@@ -560,7 +561,7 @@ EORSCRIPT
 
     # Convert CSV data to dataframe
     df <- tryCatch({
-      read.csv(text = data_part, stringsAsFactors = FALSE)
+      utils::read.csv(text = data_part, stringsAsFactors = FALSE)
     }, error = function(e) {
       message(sprintf("❌ Fehler beim Parsen der Daten von Tabelle %s: %s", table, e$message))
       failed_tables <- c(failed_tables, table)
@@ -596,7 +597,24 @@ EORSCRIPT
     }
     return(sqlite_con)
   } else if (target == "local_postgres") {
-    message("⚠️ Speichern in der lokalen PostgreSQL-Datenbank ist noch nicht implementiert.")
-    return(NULL)
+    message("💾 Speichere Daten in lokale PostgreSQL-Datenbank...")
+
+    # connect to local postgres db
+    local_con <- DBI::dbConnect(
+      RPostgres::Postgres(),
+      dbname = "studyflix_local",
+      host = "localhost",
+      port = 5432,
+      user = "postgres",
+      password = produkt_key
+    )
+
+    for (table in names(tables_data)) {
+      table_name <- gsub("\\.", ".", table)
+      message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s)", table, table_name))
+      DBI::dbWriteTable(local_con, table_name, tables_data[[table]], overwrite = TRUE)
+    }
+
+    return(local_con)
   }
 }
