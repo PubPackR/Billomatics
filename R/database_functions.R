@@ -593,7 +593,8 @@ EORSCRIPT
     message("💾 Lade Daten in In-Memory-Datenbank...")
     sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
     for (table in names(tables_data)) {
-      DBI::dbWriteTable(sqlite_con, gsub("\\.", "_", table), tables_data[[table]], overwrite = TRUE)
+      table_name <- gsub("\\.", ".", table)
+      DBI::dbWriteTable(sqlite_con, table_name, tables_data[[table]], overwrite = TRUE)
     }
     return(sqlite_con)
   } else if (target == "local_postgres") {
@@ -610,11 +611,20 @@ EORSCRIPT
     )
 
     for (table in names(tables_data)) {
-      table_name <- gsub("\\.", ".", table)
-      message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s)", table, table_name))
-      DBI::dbWriteTable(local_con, table_name, tables_data[[table]], overwrite = TRUE)
-    }
+      split <- strsplit(table, "\\.")[[1]]
+      schema <- split[1]
+      table_name <- split[2]
 
+      message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
+
+      DBI::dbWriteTable(
+        conn = local_con,
+        name = DBI::Id(schema = schema, table = table_name),
+        value = tables_data[[table]],
+        overwrite = TRUE
+      )
+    }
     return(local_con)
   }
 }
+
