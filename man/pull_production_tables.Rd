@@ -6,25 +6,17 @@
 \usage{
 pull_production_tables(
   tables,
-  postgres_keys,
-  ssh_key_path,
+  target = c("memory", "local_postgres"),
+  ssh_key_path = NULL,
   ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
   remote_user = "application-user",
-  remote_host = "shiny.studyflix.info",
-  target = c("memory", "local_postgres")
+  remote_host = "shiny.studyflix.info"
 )
 }
 \arguments{
-\item{tables}{A character vector of table names to be retrieved from the remote PostgreSQL database.}
-
-\item{postgres_keys}{A list containing PostgreSQL connection details:
-\itemize{
-\item 1: Password
-\item 2: Username
-\item 3: Database name
-\item 4: Host
-\item 5: Port
-}}
+\item{tables}{A character vector of table names to be retrieved from the remote PostgreSQL database.
+#' @param target Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
+or 'local_postgres' for a local PostgreSQL database.}
 
 \item{ssh_key_path}{The file path to the private SSH key used for connecting to the remote server.}
 
@@ -33,9 +25,6 @@ pull_production_tables(
 \item{remote_user}{The username for the SSH connection.}
 
 \item{remote_host}{The host address of the remote server.}
-
-\item{target}{Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
-or 'local_postgres' for a local PostgreSQL database.}
 }
 \value{
 A database connection object:
