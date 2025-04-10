@@ -538,7 +538,7 @@ EORSCRIPT
     status <- as.integer(parts[2])
 
     # Error handling
-    if (status != 0 || grepl("error", data_part, ignore.case = TRUE)) {
+    if (status != 0 || (grepl("error", data_part, ignore.case = TRUE) & grepl("^ERROR:", output, ignore.case = TRUE))) {
       # Extract error message
       error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) {
         data_part
@@ -627,4 +627,3 @@ EORSCRIPT
     return(local_con)
   }
 }
-
