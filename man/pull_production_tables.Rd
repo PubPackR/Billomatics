@@ -2,38 +2,44 @@
 % Please edit documentation in R/database_functions.R
 \name{pull_production_tables}
 \alias{pull_production_tables}
-\title{Pulls production tables from a remote PostgreSQL database via SSH}
+\title{Pull production tables from a remote PostgreSQL database via SSH}
 \usage{
 pull_production_tables(
   tables,
   target = c("memory", "local_postgres"),
   ssh_key_path = NULL,
-  ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
-  remote_user = "application-user",
-  remote_host = "shiny.studyflix.info"
+  local_dbname = "studyflix_local",
+  local_host = "localhost",
+  local_port = 5432,
+  local_user = "postgres",
+  local_password = NULL
 )
 }
 \arguments{
-\item{tables}{A character vector of table names to be retrieved from the remote PostgreSQL database.
-#' @param target Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
-or 'local_postgres' for a local PostgreSQL database.}
+\item{tables}{A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.}
 
-\item{ssh_key_path}{The file path to the private SSH key used for connecting to the remote server.}
+\item{target}{Where to store the retrieved data: either \code{"memory"} for an in-memory SQLite database or \code{"local_postgres"} for a local PostgreSQL database.}
 
-\item{ssl_cert_path}{The file path to the SSL certificate for PostgreSQL (default is provided).}
+\item{ssh_key_path}{File path to the private SSH key for connecting to the remote server. If \code{NULL}, a default path is used.}
 
-\item{remote_user}{The username for the SSH connection.}
+\item{local_dbname}{Name of the local PostgreSQL database (only used if \code{target = "local_postgres"} and default: studyflix_local).}
 
-\item{remote_host}{The host address of the remote server.}
+\item{local_host}{Hostname of the local PostgreSQL database (default: "localhost").}
+
+\item{local_port}{Port of the local PostgreSQL database (default: 5432).}
+
+\item{local_user}{Username for the local PostgreSQL database (default: "postgres").}
+
+\item{local_password}{Password for the local PostgreSQL database. If \code{NULL}, the production password is reused.}
 }
 \value{
 A database connection object:
 \itemize{
-\item If the target is 'memory', returns an SQLite connection object to the in-memory database.
-\item If the target is 'local_postgres', returns a PostgreSQL connection object to the local database.
+\item If \code{target = "memory"}, returns an SQLite connection object (in-memory).
+\item If \code{target = "local_postgres"}, returns a PostgreSQL connection object (local).
 }
 }
 \description{
-This function connects to a remote PostgreSQL database via SSH, retrieves the specified tables,
-and stores them either in an in-memory SQLite database or a local PostgreSQL database.
+This function establishes an SSH connection to the production environment, retrieves the specified tables
+from a PostgreSQL database, and stores them either in an in-memory SQLite database or a local PostgreSQL database.
 }
