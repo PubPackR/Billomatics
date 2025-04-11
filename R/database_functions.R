@@ -427,7 +427,7 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 #' This function establishes an SSH connection to the production environment, retrieves the specified tables
 #' from a PostgreSQL database, and stores them either in an in-memory SQLite database or a local PostgreSQL database.
 #'
-#' @param tables A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.
+#' @param tables A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.If `NULL`, no tables are loaded and the DB connection is returned.
 #' @param target Where to store the retrieved data: either `"memory"` for an in-memory SQLite database or `"local_postgres"` for a local PostgreSQL database.
 #' @param ssh_key_path File path to the private SSH key for connecting to the remote server. If `NULL`, a default path is used.
 #' @param local_dbname Name of the local PostgreSQL database (only used if `target = "local_postgres"` and default: studyflix_local).
@@ -441,7 +441,7 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 #' - If `target = "local_postgres"`, returns a PostgreSQL connection object (local).
 #'
 #' @export
-pull_production_tables <- function(tables,
+pull_production_tables <- function(tables = NULL,
                                    target = c("memory", "local_postgres"),
                                    ssh_key_path = NULL,
                                    local_dbname = "studyflix_local",
@@ -464,6 +464,10 @@ pull_production_tables <- function(tables,
     library(pkg, character.only = TRUE)
   }
 
+  if (length(target) > 1) {
+    target <- target[1]
+  }
+
   # Validation of inputs
   valid_targets <- c("memory", "local_postgres")
   if (!(target %in% valid_targets)) {
@@ -472,158 +476,143 @@ pull_production_tables <- function(tables,
     return(NULL)
   }
 
-  if (length(tables) == 0) {
-    warning("Keine Tabellen zum Abrufen angegeben.")
-    return(NULL)
-  }
-
-  if (is.null(ssh_key_path)) {
-    user <- Sys.getenv("USER")
-    if (user == "") user <- Sys.getenv("USERNAME")
-    ssh_key_path <- file.path("C:/Users", user, ".ssh", "id_rsa")
-  }
-
-  if (!file.exists(ssh_key_path)) {
-    warning(sprintf("Die angegebene SSH-Key-Datei existiert nicht: %s", ssh_key_path))
-    return(NULL)
-  }
-
-  # Setting the constants for the SSH connection
-  remote_user <- "application-user"
-  remote_host <- "shiny.studyflix.info"
-  ssl_cert_path <- "../../metabase-data/postgres/eu-central-1-bundle.pem"
-
-  # Establish SSH connection
-  message("🔐 Aufbau SSH-Verbindung...")
-  ssh_session <- tryCatch({
-    ssh::ssh_connect(
-      host = paste0(remote_user, "@", remote_host),
-      keyfile = ssh_key_path,
-      passwd = getPass("Gib dein Passphrase für den SSH Key ein:")
-    )
-  }, error = function(e) {
-    stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
-  })
-
-  # Ensure that the SSH connection is closed at the end of the function
-  on.exit({
-    message("🔒 SSH-Verbindung wird geschlossen...")
-    try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
-  })
-
-  produkt_key <- getPass::getPass(msg = "Gib das Passwort für den Produktnutzer ein:")
-  decrypt_key <- shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
-
-  # get the postgres_keys
-  cmd <- sprintf("
-  R_TEMP_SCRIPT=$(mktemp)
-  cat > \"${R_TEMP_SCRIPT}\" << 'EORSCRIPT'
-  library(safer)
-  key <- \"%s\"
-  cred <- safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_key.txt\"), key)
-  srv <- strsplit(safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_server.txt\"), key), \", \")[[1]]
-  cat(paste(c(cred, srv), collapse=\",\"))
-EORSCRIPT
-  Rscript --vanilla \"${R_TEMP_SCRIPT}\"
-  rm \"${R_TEMP_SCRIPT}\"
-", gsub("\"", "\\\"", decrypt_key))
-
-  result <- ssh::ssh_exec_internal(ssh_session, cmd)
-
-  postgres_keys <- strsplit(rawToChar(result$stdout), ",")[[1]]
-
-  # Download tables
+  produkt_key <- NULL
   tables_data <- list()
   failed_tables <- character()
 
-  for (table in tables) {
-    message(paste("📥 Versuche Tabelle zu laden:", table))
+  if (length(tables) > 0) {
 
-    # Command to get the table data
-    cmd <- sprintf(
-      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
-      postgres_keys[1], postgres_keys[3], postgres_keys[2],
-      postgres_keys[4], postgres_keys[5], table
-    )
-
-    # Execute command
-    result <- ssh::ssh_exec_internal(ssh_session, cmd)
-
-    # Split the result into data and status
-    output <- rawToChar(result$stdout)
-    parts <- strsplit(output, "EXIT_STATUS:")[[1]]
-
-    data_part <- parts[1]
-    status <- as.integer(parts[2])
-
-    # Error handling
-    if (status != 0 || (grepl("error", data_part, ignore.case = TRUE) & grepl("^ERROR:", output, ignore.case = TRUE))) {
-      # Extract error message
-      error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) {
-        data_part
-      } else {
-        "Unbekannter Fehler (keine Fehlermeldung erkannt)"
-      }
-
-      # Identify specific error types
-      if (grepl("does not exist|existiert nicht|relation.*not found", error_msg, ignore.case = TRUE)) {
-        message(sprintf("❌ Tabelle %s existiert nicht", table))
-      } else if (grepl("permission denied|Zugriff verweigert", error_msg, ignore.case = TRUE)) {
-        message(sprintf("❌ Keine Berechtigung für Tabelle %s", table))
-      } else {
-        message(sprintf("❌ Fehler bei Tabelle %s: %s", table, error_msg))
-      }
-
-      failed_tables <- c(failed_tables, table)
-      next
+    if (is.null(ssh_key_path)) {
+      user <- Sys.getenv("USER")
+      if (user == "") user <- Sys.getenv("USERNAME")
+      ssh_key_path <- file.path("C:/Users", user, ".ssh", "id_rsa")
     }
 
-    # Convert CSV data to dataframe
-    df <- tryCatch({
-      utils::read.csv(text = data_part, stringsAsFactors = FALSE)
-    }, error = function(e) {
-      message(sprintf("❌ Fehler beim Parsen der Daten von Tabelle %s: %s", table, e$message))
-      failed_tables <- c(failed_tables, table)
+    if (!file.exists(ssh_key_path)) {
+      warning(sprintf("Die angegebene SSH-Key-Datei existiert nicht: %s", ssh_key_path))
       return(NULL)
+    }
+
+    # SSH-Verbindungsdaten
+    remote_user <- "application-user"
+    remote_host <- "shiny.studyflix.info"
+
+    message("🔐 Aufbau SSH-Verbindung...")
+    ssh_session <- tryCatch({
+      ssh::ssh_connect(
+        host = paste0(remote_user, "@", remote_host),
+        keyfile = ssh_key_path,
+        passwd = getPass("Gib dein Passphrase für den SSH Key ein:")
+      )
+    }, error = function(e) {
+      stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
     })
 
-    if (!is.null(df)) {
-      tables_data[[table]] <- df
-      message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
+    on.exit({
+      message("🔒 SSH-Verbindung wird geschlossen...")
+      try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
+    })
+
+    produkt_key <- getPass::getPass(msg = "Gib das Passwort für den Produktnutzer ein:")
+    decrypt_key <- shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
+
+    # get the postgres_keys
+    cmd <- sprintf("
+      R_TEMP_SCRIPT=$(mktemp)
+      cat > \"${R_TEMP_SCRIPT}\" << 'EORSCRIPT'
+      library(safer)
+      key <- \"%s\"
+      cred <- safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_key.txt\"), key)
+      srv <- strsplit(safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_server.txt\"), key), \", \")[[1]]
+      cat(paste(c(cred, srv), collapse=\",\"))
+EORSCRIPT
+      Rscript --vanilla \"${R_TEMP_SCRIPT}\"
+      rm \"${R_TEMP_SCRIPT}\"
+    ", gsub("\"", "\\\"", decrypt_key))
+
+    result <- ssh::ssh_exec_internal(ssh_session, cmd)
+    postgres_keys <- strsplit(rawToChar(result$stdout), ",")[[1]]
+
+    # Tabellen herunterladen
+    for (table in tables) {
+      message(paste("📥 Versuche Tabelle zu laden:", table))
+
+      cmd <- sprintf(
+        'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
+        postgres_keys[1], postgres_keys[3], postgres_keys[2],
+        postgres_keys[4], postgres_keys[5], table
+      )
+
+      result <- ssh::ssh_exec_internal(ssh_session, cmd)
+      output <- rawToChar(result$stdout)
+      parts <- strsplit(output, "EXIT_STATUS:")[[1]]
+      data_part <- parts[1]
+      status <- as.integer(parts[2])
+
+      if (status != 0 || (grepl("error", data_part, ignore.case = TRUE) & grepl("^ERROR:", output, ignore.case = TRUE))) {
+        error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) data_part else "Unbekannter Fehler (keine Fehlermeldung erkannt)"
+        if (grepl("does not exist|existiert nicht|relation.*not found", error_msg, ignore.case = TRUE)) {
+          message(sprintf("❌ Tabelle %s existiert nicht", table))
+        } else if (grepl("permission denied|Zugriff verweigert", error_msg, ignore.case = TRUE)) {
+          message(sprintf("❌ Keine Berechtigung für Tabelle %s", table))
+        } else {
+          message(sprintf("❌ Fehler bei Tabelle %s: %s", table, error_msg))
+        }
+        failed_tables <- c(failed_tables, table)
+        next
+      }
+
+      df <- tryCatch({
+        utils::read.csv(text = data_part, stringsAsFactors = FALSE)
+      }, error = function(e) {
+        message(sprintf("❌ Fehler beim Parsen der Daten von Tabelle %s: %s", table, e$message))
+        failed_tables <- c(failed_tables, table)
+        return(NULL)
+      })
+
+      if (!is.null(df)) {
+        tables_data[[table]] <- df
+        message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
+      }
+    }
+
+    if (length(failed_tables) > 0) {
+      warning(sprintf(
+        "Konnte %d von %d Tabellen nicht laden: %s",
+        length(failed_tables), length(tables),
+        paste(failed_tables, collapse = ", ")
+      ), call. = FALSE)
     }
   }
 
-  # Warning when tables have failed
-  if (length(failed_tables) > 0) {
-    warning(sprintf(
-      "Konnte %d von %d Tabellen nicht laden: %s",
-      length(failed_tables), length(tables),
-      paste(failed_tables, collapse = ", ")
-    ), call. = FALSE)
-  }
-
-  if (length(tables_data) == 0) {
+  if (length(tables_data) == 0 && length(tables) > 0) {
     warning("Keine Tabellen konnten geladen werden.", call. = FALSE)
     return(NULL)
   }
 
-  # Save data to target
+  # Ziel: memory
   if (target == "memory") {
-    message("💾 Lade Daten in In-Memory-Datenbank...")
+    message("💾 Lade In-Memory-Datenbank...")
     sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
     for (table in names(tables_data)) {
       table_name <- gsub("\\.", ".", table)
       DBI::dbWriteTable(sqlite_con, table_name, tables_data[[table]], overwrite = TRUE)
     }
     return(sqlite_con)
-  } else if (target == "local_postgres") {
-    message("💾 Speichere Daten in lokale PostgreSQL-Datenbank...")
+  }
+
+  # Ziel: lokale PostgreSQL
+  if (target == "local_postgres") {
+    message("💾 Lade lokale PostgreSQL-Datenbank...")
 
     if (is.null(local_password)) {
-      local_password <- produkt_key
+      if (!is.null(produkt_key)) {
+        local_password <- produkt_key
+      } else {
+        local_password <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+      }
     }
 
-    # Connect to local PostgreSQL DB
     local_con <- tryCatch({
       DBI::dbConnect(
         RPostgres::Postgres(),
@@ -638,7 +627,6 @@ EORSCRIPT
       return(NULL)
     })
 
-    # Stop if the con to local postgres is null
     if (is.null(local_con)) {
       return(NULL)
     }
@@ -649,7 +637,6 @@ EORSCRIPT
       table_name <- split[2]
 
       DBI::dbExecute(local_con, sprintf('CREATE SCHEMA IF NOT EXISTS "%s";', schema))
-
       message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
 
       DBI::dbWriteTable(
@@ -659,6 +646,9 @@ EORSCRIPT
         overwrite = TRUE
       )
     }
+
     return(local_con)
   }
+
+  return(NULL)
 }

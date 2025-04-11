@@ -5,7 +5,7 @@
 \title{Pull production tables from a remote PostgreSQL database via SSH}
 \usage{
 pull_production_tables(
-  tables,
+  tables = NULL,
   target = c("memory", "local_postgres"),
   ssh_key_path = NULL,
   local_dbname = "studyflix_local",
@@ -16,7 +16,7 @@ pull_production_tables(
 )
 }
 \arguments{
-\item{tables}{A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.}
+\item{tables}{A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.If \code{NULL}, no tables are loaded and the DB connection is returned.}
 
 \item{target}{Where to store the retrieved data: either \code{"memory"} for an in-memory SQLite database or \code{"local_postgres"} for a local PostgreSQL database.}
 
