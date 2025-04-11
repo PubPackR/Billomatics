@@ -422,33 +422,46 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 
 
 
-#' Pulls production tables from a remote PostgreSQL database via SSH
+#' Pull production tables from a remote PostgreSQL database via SSH
 #'
-#' This function connects to a remote PostgreSQL database via SSH, retrieves the specified tables,
-#' and stores them either in an in-memory SQLite database or a local PostgreSQL database.
+#' This function establishes an SSH connection to the production environment, retrieves the specified tables
+#' from a PostgreSQL database, and stores them either in an in-memory SQLite database or a local PostgreSQL database.
 #'
-#' @param tables A character vector of table names to be retrieved from the remote PostgreSQL database.
-#' #' @param target Specifies where to store the retrieved tables: either 'memory' for an in-memory SQLite database
-#'   or 'local_postgres' for a local PostgreSQL database.
-#' @param ssh_key_path The file path to the private SSH key used for connecting to the remote server.
-#' @param ssl_cert_path The file path to the SSL certificate for PostgreSQL (default is provided).
-#' @param remote_user The username for the SSH connection.
-#' @param remote_host The host address of the remote server.
+#' @param tables A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.
+#' @param target Where to store the retrieved data: either `"memory"` for an in-memory SQLite database or `"local_postgres"` for a local PostgreSQL database.
+#' @param ssh_key_path File path to the private SSH key for connecting to the remote server. If `NULL`, a default path is used.
+#' @param local_dbname Name of the local PostgreSQL database (only used if `target = "local_postgres"` and default: studyflix_local).
+#' @param local_host Hostname of the local PostgreSQL database (default: "localhost").
+#' @param local_port Port of the local PostgreSQL database (default: 5432).
+#' @param local_user Username for the local PostgreSQL database (default: "postgres").
+#' @param local_password Password for the local PostgreSQL database. If `NULL`, the production password is reused.
 #'
 #' @return A database connection object:
-#'   - If the target is 'memory', returns an SQLite connection object to the in-memory database.
-#'   - If the target is 'local_postgres', returns a PostgreSQL connection object to the local database.
-#'@export
+#' - If `target = "memory"`, returns an SQLite connection object (in-memory).
+#' - If `target = "local_postgres"`, returns a PostgreSQL connection object (local).
+#'
+#' @export
 pull_production_tables <- function(tables,
                                    target = c("memory", "local_postgres"),
                                    ssh_key_path = NULL,
-                                   ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
-                                   remote_user = "application-user",
-                                   remote_host = "shiny.studyflix.info") {
+                                   local_dbname = "studyflix_local",
+                                   local_host = "localhost",
+                                   local_port = 5432,
+                                   local_user = "postgres",
+                                   local_password = NULL) {
 
   if (!interactive()) {
     warning("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
     return(NA)
+  }
+
+  required_packages <- c("DBI", "RPostgres", "RSQLite", "ssh", "getPass", "shinymanager", "utils")
+
+  for (pkg in required_packages) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      install.packages(pkg)
+    }
+    library(pkg, character.only = TRUE)
   }
 
   # Validation of inputs
@@ -475,12 +488,18 @@ pull_production_tables <- function(tables,
     return(NULL)
   }
 
+  # Setting the constants for the SSH connection
+  remote_user <- "application-user"
+  remote_host <- "shiny.studyflix.info"
+  ssl_cert_path <- "../../metabase-data/postgres/eu-central-1-bundle.pem"
+
   # Establish SSH connection
   message("🔐 Aufbau SSH-Verbindung...")
   ssh_session <- tryCatch({
     ssh::ssh_connect(
       host = paste0(remote_user, "@", remote_host),
-      keyfile = ssh_key_path
+      keyfile = ssh_key_path,
+      passwd = getPass("Gib dein Passphrase für den SSH Key ein:")
     )
   }, error = function(e) {
     stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
@@ -600,20 +619,36 @@ EORSCRIPT
   } else if (target == "local_postgres") {
     message("💾 Speichere Daten in lokale PostgreSQL-Datenbank...")
 
-    # connect to local postgres db
-    local_con <- DBI::dbConnect(
-      RPostgres::Postgres(),
-      dbname = "studyflix_local",
-      host = "localhost",
-      port = 5432,
-      user = "postgres",
-      password = produkt_key
-    )
+    if (is.null(local_password)) {
+      local_password <- produkt_key
+    }
+
+    # Connect to local PostgreSQL DB
+    local_con <- tryCatch({
+      DBI::dbConnect(
+        RPostgres::Postgres(),
+        dbname = local_dbname,
+        host = local_host,
+        port = local_port,
+        user = local_user,
+        password = local_password
+      )
+    }, error = function(e) {
+      message("Fehler bei der Verbindung zur lokalen PostgreSQL-Datenbank. Weitere Informationen zur lokalen PostgreSQL stehen in unserem Wiki.")
+      return(NULL)
+    })
+
+    # Stop if the con to local postgres is null
+    if (is.null(local_con)) {
+      return(NULL)
+    }
 
     for (table in names(tables_data)) {
       split <- strsplit(table, "\\.")[[1]]
       schema <- split[1]
       table_name <- split[2]
+
+      DBI::dbExecute(local_con, sprintf('CREATE SCHEMA IF NOT EXISTS "%s";', schema))
 
       message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
 
