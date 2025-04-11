@@ -18,7 +18,7 @@ pull_production_tables(
 \arguments{
 \item{tables}{A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.If \code{NULL}, no tables are loaded and the DB connection is returned.}
 
-\item{target}{Where to store the retrieved data: either \code{"memory"} for an in-memory SQLite database or \code{"local_postgres"} for a local PostgreSQL database.}
+\item{target}{Where to store the retrieved data: either \code{"memory"} for an in-memory SQLite database or \code{"local_postgres"} for a local PostgreSQL database. If \code{NULL}, the default memory is used.}
 
 \item{ssh_key_path}{File path to the private SSH key for connecting to the remote server. If \code{NULL}, a default path is used.}
 

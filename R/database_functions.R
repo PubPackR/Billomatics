@@ -428,7 +428,7 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 #' from a PostgreSQL database, and stores them either in an in-memory SQLite database or a local PostgreSQL database.
 #'
 #' @param tables A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.If `NULL`, no tables are loaded and the DB connection is returned.
-#' @param target Where to store the retrieved data: either `"memory"` for an in-memory SQLite database or `"local_postgres"` for a local PostgreSQL database.
+#' @param target Where to store the retrieved data: either `"memory"` for an in-memory SQLite database or `"local_postgres"` for a local PostgreSQL database. If `NULL`, the default memory is used.
 #' @param ssh_key_path File path to the private SSH key for connecting to the remote server. If `NULL`, a default path is used.
 #' @param local_dbname Name of the local PostgreSQL database (only used if `target = "local_postgres"` and default: studyflix_local).
 #' @param local_host Hostname of the local PostgreSQL database (default: "localhost").
