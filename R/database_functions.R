@@ -613,6 +613,38 @@ EORSCRIPT
       }
     }
 
+    # Step 1: Connect to the default 'postgres' database
+    admin_con <- tryCatch({
+      DBI::dbConnect(
+        RPostgres::Postgres(),
+        dbname = "postgres",  # default maintenance db
+        host = local_host,
+        port = local_port,
+        user = local_user,
+        password = local_password
+      )
+    }, error = function(e) {
+      message("❌ Verbindung zum lokalen PostgreSQL-Server fehlgeschlagen.")
+      return(NULL)
+    })
+
+    if (is.null(admin_con)) return(NULL)
+
+    # Step 2: Check if local_dbname exists
+    db_exists <- DBI::dbGetQuery(admin_con, sprintf(
+      "SELECT 1 FROM pg_database WHERE datname = '%s';", local_dbname
+    ))
+
+    # Step 3: Create the database if it doesn't exist
+    if (nrow(db_exists) == 0) {
+      message(sprintf("📦 Lokale Datenbank '%s' existiert noch nicht. Wird erstellt...", local_dbname))
+      DBI::dbExecute(admin_con, sprintf("CREATE DATABASE \"%s\";", local_dbname))
+    }
+
+    # Step 4: Close admin connection
+    DBI::dbDisconnect(admin_con)
+
+    # Step 5: Connect to the target database
     local_con <- tryCatch({
       DBI::dbConnect(
         RPostgres::Postgres(),
@@ -623,14 +655,13 @@ EORSCRIPT
         password = local_password
       )
     }, error = function(e) {
-      message("Fehler bei der Verbindung zur lokalen PostgreSQL-Datenbank. Weitere Informationen zur lokalen PostgreSQL stehen in unserem Wiki.")
+      message("❌ Verbindung zur lokalen PostgreSQL-Datenbank fehlgeschlagen.")
       return(NULL)
     })
 
-    if (is.null(local_con)) {
-      return(NULL)
-    }
+    if (is.null(local_con)) return(NULL)
 
+    # Step 6: Write tables
     for (table in names(tables_data)) {
       split <- strsplit(table, "\\.")[[1]]
       schema <- split[1]
