@@ -924,6 +924,8 @@ postgres_load_db_tables_to_list <- function(
 ) {
 
   if (is.null(conn)) {
+    is_connection_available <- FALSE
+
     if (!interactive() && is.null(keys_postgres)) {
       stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
     }
@@ -933,6 +935,8 @@ postgres_load_db_tables_to_list <- function(
       local_pw <- NULL
     }
     conn <- postgres_connect(keys_postgres, local_pw)
+  } else {
+    is_connection_available <- TRUE
   }
 
   if (is.null(tables)) {
@@ -1039,6 +1043,11 @@ postgres_load_db_tables_to_list <- function(
       # Füge die Tabelle dem Schema hinzu
       schema_list[[schema]][[table_name]] <- tbl_data
     }
+  }
+
+  if(!is_connection_available) {
+    # Schließe die Verbindung, wenn sie nicht extern bereitgestellt wurde
+    DBI::dbDisconnect(conn)
   }
 
   # Rückgabe der Liste von Schemata mit Tabellen als DataFrames
