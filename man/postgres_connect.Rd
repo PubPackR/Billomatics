@@ -5,18 +5,20 @@
 \title{postgres_connect}
 \usage{
 postgres_connect(
-  postgres_keys,
+  postgres_keys = NULL,
+  local_pw = NULL,
   ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem"
 )
 }
 \arguments{
-\item{postgres_keys}{A named list or object with elements: [\link{1}] = password, [\link{2}] = user, [\link{3}] = dbname, [\link{4}] = host, [\link{5}] = port.}
+\item{postgres_keys}{A named list or object with credentials for production use.}
 
-\item{ssl_cert_path}{Path to the SSL certificate. Default assumes common relative path.}
+\item{ssl_cert_path}{Path to the SSL certificate for production use.}
 }
 \value{
 A \code{DBI} connection object if successful. Stops with an error otherwise.
 }
 \description{
-Connects to a PostgreSQL database using provided credentials and gives feedback.
+Connects to a PostgreSQL database. Uses secure credentials in production.
+In interactive mode, connects to local database instead.
 }

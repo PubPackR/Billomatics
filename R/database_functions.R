@@ -48,7 +48,6 @@ custom_decrypt_db <- function(df,
 #' @return Only Feedback Message in Console
 #' @export
 postgres_upsert_data <- function(connection, schema, table, data, conflict_cols = "id") {
-  # ----- Start -----
 
   # Check if the connection is valid
   if (DBI::dbIsValid(connection) == FALSE) {
@@ -121,7 +120,6 @@ postgres_upsert_data <- function(connection, schema, table, data, conflict_cols 
 #' @return A message indicating success or failure.
 #' @export
 postgres_rename_table <- function(con, schema, old_name, new_name) {
-  # ----- Start -----
 
   # Extract schema and table if provided in old_name
   if (grepl("\\.", old_name)) {
@@ -265,7 +263,6 @@ postgres_read_metadata <- function(con, key) {
 #' @return A feedback message in the console indicating success or failure.
 #' @export
 postgres_add_column <- function(con, schema, table, column_name, column_type) {
-  # ----- Start -----
 
   # Extract schema and table if combined in `table`
   if (grepl("\\.", table)) {
@@ -321,7 +318,6 @@ postgres_add_column <- function(con, schema, table, column_name, column_type) {
 #' @return A feedback message in the console indicating success or failure.
 #' @export
 postgres_change_column_type <- function(con, schema, table, column_name, new_column_type) {
-  # ----- Start -----
 
   # Extract schema and table if combined in `table`
   if (grepl("\\.", table)) {
@@ -474,10 +470,9 @@ postgres_list_tables <- function(con, schema = NULL) {
   return(tables)
 }
 
-
 #' postgres_select
 #'
-#' Selects data from a PostgreSQL table.
+#' Selects data from a PostgreSQL table and logs the access in raw.metadata_data_selection_log.
 #'
 #' @param con The database connection object.
 #' @param schema The schema of the table.
@@ -485,11 +480,11 @@ postgres_list_tables <- function(con, schema = NULL) {
 #' @param columns A character vector of column names to select (default is "*").
 #' @param where Optional SQL `WHERE` clause (without the word WHERE).
 #' @param limit Optional number of rows to limit.
-#' @return A data frame containing the result.
+#' @return A data frame containing the result or NULL in case of failure.
 #' @export
 postgres_select <- function(con, schema, table, columns = "*", where = NULL, limit = NULL) {
-  # Columns part
-  cols <- if (length(columns) == 1 && columns == "*") "*" else paste(columns, collapse = ", ")
+  # Determine full schema.table name for logging
+  original_input <- if (!is.null(schema)) paste0(schema, ".", table) else table
 
   # Extract schema and table if combined in `table`
   if (grepl("\\.", table)) {
@@ -504,53 +499,100 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
     stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
   }
 
-  # Build query
+  # Prepare query
+  cols <- if (length(columns) == 1 && columns == "*") "*" else paste(columns, collapse = ", ")
   query <- sprintf("SELECT %s FROM %s.%s", cols, schema, table)
+  if (!is.null(where)) query <- paste(query, "WHERE", where)
+  if (!is.null(limit)) query <- paste(query, "LIMIT", limit)
 
-  if (!is.null(where)) {
-    query <- paste(query, "WHERE", where)
-  }
+  # Get caller info and user
+  caller <- deparse(sys.call(-1))
+  user <- Sys.info()[["user"]]
+  working_dir <- getwd()
+  timestamp <- Sys.time()
 
-  if (!is.null(limit)) {
-    query <- paste(query, "LIMIT", limit)
-  }
+  # Try to execute query and log the access
+  result <- tryCatch({
+    df <- DBI::dbGetQuery(con, query)
 
-  # Execute query
-  tryCatch({
-    DBI::dbGetQuery(con, query)
+    # Erfolgreiches Logging
+    DBI::dbExecute(con, glue::glue_sql("
+      INSERT INTO raw.metadata_data_selection_log
+      (schema_table, timestamp, working_directory, user, caller, success)
+      VALUES ({original_input}, {timestamp}, {working_dir}, {user}, {caller}, TRUE)
+    ", .con = con))
+
+    df
   }, error = function(e) {
+    # Fehler-Logging
+    DBI::dbExecute(con, glue::glue_sql("
+      INSERT INTO raw.metadata_data_selection_log
+      (schema_table, timestamp, working_directory, user, caller, success, error_message)
+      VALUES ({original_input}, {timestamp}, {working_dir}, {user}, {caller}, FALSE, {e$message})
+    ", .con = con))
+
     message("Error in postgres_select: ", e$message)
     return(NULL)
   })
+
+  return(result)
 }
 
 #' postgres_connect
 #'
-#' Connects to a PostgreSQL database using provided credentials and gives feedback.
+#' Connects to a PostgreSQL database. Uses secure credentials in production.
+#' In interactive mode, connects to local database instead.
 #'
-#' @param postgres_keys A named list or object with elements: [[1]] = password, [[2]] = user, [[3]] = dbname, [[4]] = host, [[5]] = port.
-#' @param ssl_cert_path Path to the SSL certificate. Default assumes common relative path.
+#' @param postgres_keys A named list or object with credentials for production use.
+#' @param ssl_cert_path Path to the SSL certificate for production use.
 #' @return A `DBI` connection object if successful. Stops with an error otherwise.
 #' @export
-postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
+postgres_connect <- function(postgres_keys = NULL,
+                             local_pw = NULL,
+                             ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
   tryCatch({
-    con <- DBI::dbConnect(
-      drv = RPostgres::Postgres(),
-      password = postgres_keys[[1]],
-      user = postgres_keys[[2]],
-      dbname = postgres_keys[[3]],
-      host = postgres_keys[[4]],
-      port = as.integer(postgres_keys[[5]]),
-      sslmode = "verify-full",
-      sslrootcert = ssl_cert_path
-    )
-    message(sprintf("✅ Erfolgreich verbunden mit PostgreSQL-DB '%s' auf Host '%s'",
-                    postgres_keys[[3]], postgres_keys[[4]]))
-    return(con)
+    if (interactive()) {
+      # 🔒 Lokale Verbindung im interaktiven Modus
+      message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
+
+      if (is.null(local_pw)) {
+        local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+      }
+
+      local_con <- DBI::dbConnect(
+        drv = RPostgres::Postgres(),
+        dbname = "studyflix_local",
+        host = "localhost",
+        port = 5432,
+        user = "postgres",
+        password = local_pw
+      )
+
+      rm(local_pw)
+
+      message("✅ Erfolgreich mit der lokalen Datenbank verbunden (studyflix_local)")
+      return(local_con)
+    } else {
+      # 🌐 Produktionsverbindung außerhalb von interactive()
+      con <- DBI::dbConnect(
+        drv = RPostgres::Postgres(),
+        password = postgres_keys[[1]],
+        user = postgres_keys[[2]],
+        dbname = postgres_keys[[3]],
+        host = postgres_keys[[4]],
+        port = as.integer(postgres_keys[[5]]),
+        sslmode = "verify-full",
+        sslrootcert = ssl_cert_path
+      )
+      message(sprintf("✅ Erfolgreich verbunden mit PostgreSQL-DB '%s' auf Host '%s'",
+                      postgres_keys[[3]], postgres_keys[[4]]))
+      return(con)
+    }
   }, error = function(e) {
     stop(sprintf("❌ Verbindung zur PostgreSQL-Datenbank fehlgeschlagen: %s", e$message))
   })
 }
+
 
 
 
@@ -573,7 +615,7 @@ postgres_connect <- function(postgres_keys, ssl_cert_path = "../../metabase-data
 #' - If `target = "local_postgres"`, returns a PostgreSQL connection object (local).
 #'
 #' @export
-pull_production_tables <- function(tables = NULL,
+postgres_pull_production_tables <- function(tables = NULL,
                                    target = c("memory", "local_postgres"),
                                    ssh_key_path = NULL,
                                    local_dbname = "studyflix_local",
@@ -699,7 +741,7 @@ EORSCRIPT
 
         # Convert "t"/"f" columns to logical if appropriate
         tmp_df <- lapply(tmp_df, function(col) {
-          if (all(na.omit(col) %in% c("t", "f"))) {
+          if (all(na.omit(col) %in% c("t", "f", ""))) {
             return(col == "t")
           }
           return(col)
@@ -831,3 +873,174 @@ EORSCRIPT
   return(NULL)
 }
 
+#' Load Specific Tables from PostgreSQL Database into List of DataFrames by Schema
+#'
+#' Diese Funktion verbindet sich mit einer PostgreSQL-Datenbank und lädt die angegebenen Tabellen
+#' mithilfe der Funktion `postgres_select()`. Die Tabellen werden in einer verschachtelten Liste
+#' organisiert, wobei jede Ebene dem jeweiligen Schema entspricht.
+#'
+#' Die Funktion kann in interaktiven Sitzungen automatisch eine Verbindung zur lokalen Datenbank aufbauen
+#' und – falls gewünscht – fehlende Tabellen aus der Produktionsumgebung lokal synchronisieren.
+#'
+#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
+#'        Beispiel: `c("raw.crm_leads", "analytics.dashboard_metrics")`.
+#' @param conn Ein bestehendes PostgreSQL-Connection-Objekt. Wenn `NULL`, wird eine neue Verbindung
+#'        über `postgres_connect()` hergestellt (basierend auf interaktivem Modus oder `keys_postgres`).
+#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt bei `conn = NULL`
+#'        und außerhalb des interaktiven Modus). Die Liste muss folgende Einträge enthalten:
+#'        `password`, `user`, `dbname`, `host`, `port`.
+#' @param update_available_tables Logisch. Wenn `TRUE`, werden **alle** angegebenen Tabellen vor dem Einlesen
+#'        aus der Produktion gezogen. Wenn `FALSE` (Standard), werden nur Tabellen gezogen, die lokal
+#'        noch **nicht** existieren.
+#' @param ssh_key_path Pfad zum SSH-Schlüssel für die Verbindung zur Produktionsumgebung (wird beim Ziehen der Daten benötigt).
+#'
+#' @return Eine verschachtelte Liste:
+#' - Die äußere Liste ist nach Schemanamen benannt (z. B. `"raw"`).
+#' - Jede Schema-Liste enthält DataFrames der Tabellen innerhalb dieses Schemas.
+#'
+#' @details
+#' - Im interaktiven Modus wird standardmäßig eine Verbindung zur lokalen Datenbank hergestellt.
+#'   Hierzu wird das Passwort abgefragt (sofern `local_pw` nicht direkt übergeben wird).
+#' - Wenn `update_available_tables = FALSE`, prüft die Funktion zunächst, welche Tabellen bereits
+#'   lokal in der Datenbank vorhanden sind. Nur fehlende Tabellen werden aus der Produktionsumgebung gezogen.
+#' - Die Tabelleninhalte werden mithilfe von `postgres_select()` abgerufen.
+#'
+#' @examples
+#' \dontrun{
+#'   # Nur lokal nicht vorhandene Tabellen ziehen und laden
+#'   data_list <- postgres_load_db_tables_to_list(
+#'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
+#'     update_available_tables = FALSE
+#'   )
+#' }
+#'
+#' @export
+postgres_load_db_tables_to_list <- function(
+  tables = NULL,
+  conn = NULL,
+  keys_postgres = NULL,
+  update_available_tables = FALSE,
+  ssh_key_path = NULL
+) {
+
+  if (is.null(conn)) {
+    if (!interactive() && is.null(keys_postgres)) {
+      stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
+    }
+    if (interactive()) {
+      local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+    } else {
+      local_pw <- NULL
+    }
+    conn <- postgres_connect(keys_postgres, local_pw)
+  }
+
+  if (is.null(tables)) {
+    warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
+    return(NULL)
+  }
+
+  # Produktionsdaten bei Bedarf synchronisieren
+  if (interactive()) {
+    if (update_available_tables) {
+      message("Lade alle Tabellen aus der Produktion (update_available_tables = TRUE).")
+      postgres_pull_production_tables(
+        tables = tables,
+        target = c("local_postgres"),
+        ssh_key_path = ssh_key_path,
+        local_dbname = "studyflix_local",
+        local_host = "localhost",
+        local_port = 5432,
+        local_user = "postgres",
+        local_password = local_pw
+      )
+    } else {
+      # Tabellennamen in Schema und Name aufspalten
+      split_tables <- strsplit(tables, "\\.")
+      schemas <- vapply(split_tables, `[`, character(1), 1)
+      table_names <- vapply(split_tables, `[`, character(1), 2)
+
+      # Abfrage existierender Tabellen in der lokalen DB
+      existing_tables <- DBI::dbGetQuery(
+        conn,
+        "
+        SELECT table_schema || '.' || table_name AS full_table_name
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('information_schema', 'pg_catalog');
+      "
+      )$full_table_name
+
+      # Wenn update_available_tables = FALSE → nur fehlende Tabellen laden
+      if (!update_available_tables) {
+        missing_tables <- tables[!tables %in% existing_tables]
+
+        if (length(missing_tables) == 0) {
+          message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
+        } else {
+          message(
+            "⬇️ Ziehe nur fehlende Tabellen aus Produktion: ",
+            paste(missing_tables, collapse = ", ")
+          )
+          postgres_pull_production_tables(
+            tables = missing_tables,
+            target = c("local_postgres"),
+            ssh_key_path = ssh_key_path,
+            local_dbname = "studyflix_local",
+            local_host = "localhost",
+            local_port = 5432,
+            local_user = "postgres",
+            local_password = local_pw
+          )
+        }
+        message(
+          "Lade nur fehlende Tabellen aus der Produktion (update_available_tables = FALSE)."
+        )
+        postgres_pull_production_tables(
+          tables = tables,
+          target = c("local_postgres"),
+          ssh_key_path = ssh_key_path,
+          local_dbname = "studyflix_local",
+          local_host = "localhost",
+          local_port = 5432,
+          local_user = "postgres",
+          local_password = local_pw
+        )
+      }
+
+    }
+    rm(local_pw)
+  }
+
+  # Initialisiere eine leere Liste für die Schemata
+  schema_list <- list()
+
+  # Lade jede Tabelle, extrahiere das Schema und speichere es in der entsprechenden Schema-Liste
+  for (table in tables) {
+    # Extrahiere das Schema und den Tabellennamen
+    parts <- strsplit(table, "\\.")[[1]]
+
+    if (length(parts) != 2) {
+      warning("Ungültiges Tabellennamenformat für ", table, ". Verwende 'schema.table'.")
+      next
+    }
+
+    schema <- parts[1]
+    table_name <- parts[2]
+
+    # Lade die Tabelle aus der Datenbank
+    tbl_data <- postgres_select(conn, schema, table_name)
+
+    # Falls die Tabelle geladen wurde, füge sie der entsprechenden Schema-Liste hinzu
+    if (!is.null(tbl_data)) {
+      # Falls das Schema noch nicht existiert, initialisiere es
+      if (!exists(schema, envir = schema_list)) {
+        schema_list[[schema]] <- list()
+      }
+      # Füge die Tabelle dem Schema hinzu
+      schema_list[[schema]][[table_name]] <- tbl_data
+    }
+  }
+
+  # Rückgabe der Liste von Schemata mit Tabellen als DataFrames
+  return(schema_list)
+}

@@ -20,8 +20,8 @@ postgres_select(con, schema, table, columns = "*", where = NULL, limit = NULL)
 \item{limit}{Optional number of rows to limit.}
 }
 \value{
-A data frame containing the result.
+A data frame containing the result or NULL in case of failure.
 }
 \description{
-Selects data from a PostgreSQL table.
+Selects data from a PostgreSQL table and logs the access in raw.metadata_data_selection_log.
 }
