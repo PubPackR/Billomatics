@@ -4,16 +4,16 @@
 \alias{postgres_list_tables}
 \title{postgres_list_tables}
 \usage{
-postgres_list_tables(con, schema)
+postgres_list_tables(con, schema = NULL)
 }
 \arguments{
 \item{con}{The database connection object.}
 
-\item{schema}{The schema from which to list the tables.}
+\item{schema}{Optional. The schema from which to list the tables. If NULL, lists from all schemas.}
 }
 \value{
-A vector of table names.
+A data frame with schema and table names.
 }
 \description{
-Lists all tables in a specified schema.
+Lists all tables in a specified schema, or all schemas if none is specified.
 }

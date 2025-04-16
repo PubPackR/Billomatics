@@ -4,7 +4,7 @@
 \alias{postgres_add_metadata}
 \title{postgres_add_metadata}
 \usage{
-postgres_add_metadata(con, key, value, is_new = TRUE)
+postgres_add_metadata(con, key, value, is_new = FALSE)
 }
 \arguments{
 \item{con}{The database connection object.}

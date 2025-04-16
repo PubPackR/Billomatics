@@ -55,6 +55,19 @@ postgres_upsert_data <- function(connection, schema, table, data, conflict_cols 
     stop("Invalid database connection.")
   }
 
+  # Extract schema and table if combined in `table`
+  if (grepl("\\.", table)) {
+    parts <- strsplit(table, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema <- parts[1]
+      table <- parts[2]
+    } else {
+      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
+    }
+  } else if (is.null(schema)) {
+    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  }
+
   # Temporäre Tabelle erstellen (Name mit "temp_"-Prefix)
   temp_table <- paste0("temp_", table)
 
@@ -102,44 +115,80 @@ postgres_upsert_data <- function(connection, schema, table, data, conflict_cols 
 #' Renames an existing table in a PostgreSQL database.
 #'
 #' @param con The database connection object.
+#' @param schema The schema where the table is located.
 #' @param old_name The current name of the table.
 #' @param new_name The new name for the table.
-#' @param schema The schema where the table is located (default is "raw").
 #' @return A message indicating success or failure.
 #' @export
-postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
+postgres_rename_table <- function(con, schema, old_name, new_name) {
   # ----- Start -----
 
-  # Check if the old table exists
-  exists_query <- sprintf("SELECT to_regclass('%s.%s');", schema, old_name)
+  # Extract schema and table if provided in old_name
+  if (grepl("\\.", old_name)) {
+    parts <- strsplit(old_name, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema_old <- parts[1]
+      old_name <- parts[2]
+    } else {
+      stop("Invalid format for `old_name`. Use 'schema.table' or provide `schema` separately.")
+    }
+  } else if (!is.null(schema)) {
+    schema_old <- schema
+  } else {
+    stop("Schema must be provided either in `old_name` or via the `schema` argument.")
+  }
+
+  # Extract schema and table if provided in new_name
+  if (grepl("\\.", new_name)) {
+    parts <- strsplit(new_name, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema_new <- parts[1]
+      new_name <- parts[2]
+    } else {
+      stop("Invalid format for `new_name`. Use 'schema.table' or only table name.")
+    }
+  } else {
+    schema_new <- schema_old
+  }
+
+  # Ensure the old table exists
+  exists_query <- sprintf("SELECT to_regclass('%s.%s');", schema_old, old_name)
   exists_result <- DBI::dbGetQuery(con, exists_query)
 
-  # If the table doesn't exist, return an error
-  if (is.null(exists_result) || is.null(exists_result[[1]])) {
-    stop(sprintf("Error: Table '%s.%s' does not exist.", schema, old_name))
+  if (is.null(exists_result[[1]])) {
+    stop(sprintf("Error: Table '%s.%s' does not exist.", schema_old, old_name))
   }
 
-  # Check if the new table already exists
-  exists_new_query <- sprintf("SELECT to_regclass('%s.%s');", schema, new_name)
+  # Ensure the new table name doesn't already exist
+  exists_new_query <- sprintf("SELECT to_regclass('%s.%s');", schema_new, new_name)
   exists_new_result <- DBI::dbGetQuery(con, exists_new_query)
 
-  # If the new table already exists, return an error
-  if (!is.null(exists_new_result) && is.null(exists_new_result[[1]])) {
-    stop(sprintf("Error: Table '%s.%s' already exists.", schema, new_name))
+  if (!is.null(exists_new_result[[1]])) {
+    stop(sprintf("Error: Table '%s.%s' already exists.", schema_new, new_name))
   }
 
-  # Perform the renaming
-  query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema, old_name, new_name)
-
-  # Try to execute the rename query
+  # Perform rename or move+rename if schemas differ
   tryCatch({
+    if (schema_old == schema_new) {
+      # Just rename within same schema
+      query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema_old, old_name, new_name)
+    } else {
+      # Rename and move across schemas
+      temp_rename <- paste0("temp_", as.integer(Sys.time()))
+      queries <- c(
+        sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema_old, old_name, temp_rename),
+        sprintf("ALTER TABLE %s.%s SET SCHEMA %s;", schema_old, temp_rename, schema_new),
+        sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema_new, temp_rename, new_name)
+      )
+      query <- paste(queries, collapse = " ")
+    }
+
     DBI::dbExecute(con, query)
-    message(sprintf("Table '%s.%s' renamed to '%s.%s'", schema, old_name, schema, new_name))
-    return(TRUE)  # Return TRUE on success
+    message(sprintf("✅ Table '%s.%s' renamed to '%s.%s'", schema_old, old_name, schema_new, new_name))
+    return(TRUE)
   }, error = function(e) {
-    # Handle any errors during the renaming process
-    message("Error renaming table: ", e$message)
-    return(FALSE)  # Return FALSE on failure
+    message("❌ Error renaming table: ", e$message)
+    return(FALSE)
   })
 }
 
@@ -154,7 +203,7 @@ postgres_rename_table <- function(con, old_name, new_name, schema = "raw") {
 #'               If TRUE, an error is raised if the metadata with the given key already exists.
 #' @return A feedback message in the console or an error message.
 #' @export
-postgres_add_metadata <- function(con, key, value, is_new = TRUE) {
+postgres_add_metadata <- function(con, key, value, is_new = FALSE) {
   # Check if metadata already exists (if is_new is TRUE)
   if (is_new) {
     check_query <- sprintf("
@@ -218,6 +267,19 @@ postgres_read_metadata <- function(con, key) {
 postgres_add_column <- function(con, schema, table, column_name, column_type) {
   # ----- Start -----
 
+  # Extract schema and table if combined in `table`
+  if (grepl("\\.", table)) {
+    parts <- strsplit(table, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema <- parts[1]
+      table <- parts[2]
+    } else {
+      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
+    }
+  } else if (is.null(schema)) {
+    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  }
+
   # Check if the column already exists in the table
   check_query <- sprintf("
     SELECT column_name
@@ -261,6 +323,19 @@ postgres_add_column <- function(con, schema, table, column_name, column_type) {
 postgres_change_column_type <- function(con, schema, table, column_name, new_column_type) {
   # ----- Start -----
 
+  # Extract schema and table if combined in `table`
+  if (grepl("\\.", table)) {
+    parts <- strsplit(table, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema <- parts[1]
+      table <- parts[2]
+    } else {
+      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
+    }
+  } else if (is.null(schema)) {
+    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  }
+
   # Check if the column exists in the table
   check_query <- sprintf("
     SELECT column_name
@@ -302,6 +377,20 @@ postgres_change_column_type <- function(con, schema, table, column_name, new_col
 #' @export
 postgres_create_table <- function(con, schema, table, columns) {
   column_definitions <- paste(names(columns), columns, collapse = ", ")
+
+  # Extract schema and table if combined in `table`
+  if (grepl("\\.", table)) {
+    parts <- strsplit(table, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema <- parts[1]
+      table <- parts[2]
+    } else {
+      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
+    }
+  } else if (is.null(schema)) {
+    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  }
+
   query <- sprintf("CREATE TABLE %s.%s (%s);", schema, table, column_definitions)
 
   tryCatch({
@@ -324,6 +413,20 @@ postgres_create_table <- function(con, schema, table, columns) {
 #' @return A feedback message in the console indicating success or failure.
 #' @export
 postgres_drop_table <- function(con, schema, table) {
+
+  # Extract schema and table if combined in `table`
+  if (grepl("\\.", table)) {
+    parts <- strsplit(table, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema <- parts[1]
+      table <- parts[2]
+    } else {
+      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
+    }
+  } else if (is.null(schema)) {
+    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  }
+
   query <- sprintf("DROP TABLE IF EXISTS %s.%s;", schema, table)
 
   tryCatch({
@@ -338,23 +441,39 @@ postgres_drop_table <- function(con, schema, table) {
 
 #' postgres_list_tables
 #'
-#' Lists all tables in a specified schema.
+#' Lists all tables in a specified schema, or all schemas if none is specified.
 #'
 #' @param con The database connection object.
-#' @param schema The schema from which to list the tables.
-#' @return A vector of table names.
+#' @param schema Optional. The schema from which to list the tables. If NULL, lists from all schemas.
+#' @return A data frame with schema and table names.
 #' @export
-postgres_list_tables <- function(con, schema) {
-  query <- sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s';", schema)
+postgres_list_tables <- function(con, schema = NULL) {
+  if (is.null(schema)) {
+    query <- "
+      SELECT table_schema, table_name
+      FROM information_schema.tables
+      WHERE table_type = 'BASE TABLE'
+        AND table_schema NOT IN ('pg_catalog', 'information_schema');"
+  } else {
+    query <- sprintf("
+      SELECT table_schema, table_name
+      FROM information_schema.tables
+      WHERE table_schema = '%s'
+        AND table_type = 'BASE TABLE';", schema)
+  }
+
   tables <- DBI::dbGetQuery(con, query)
 
   if (nrow(tables) == 0) {
-    message(sprintf("No tables found in schema '%s'.", schema))
+    message(ifelse(is.null(schema),
+                   "No user-defined tables found.",
+                   sprintf("No tables found in schema '%s'.", schema)))
     return(NULL)
   }
 
-  return(tables$table_name)
+  return(tables)
 }
+
 
 #' postgres_select
 #'
@@ -371,6 +490,19 @@ postgres_list_tables <- function(con, schema) {
 postgres_select <- function(con, schema, table, columns = "*", where = NULL, limit = NULL) {
   # Columns part
   cols <- if (length(columns) == 1 && columns == "*") "*" else paste(columns, collapse = ", ")
+
+  # Extract schema and table if combined in `table`
+  if (grepl("\\.", table)) {
+    parts <- strsplit(table, "\\.")[[1]]
+    if (length(parts) == 2) {
+      schema <- parts[1]
+      table <- parts[2]
+    } else {
+      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
+    }
+  } else if (is.null(schema)) {
+    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  }
 
   # Build query
   query <- sprintf("SELECT %s FROM %s.%s", cols, schema, table)
@@ -563,9 +695,24 @@ EORSCRIPT
       }
 
       df <- tryCatch({
-        utils::read.csv(text = data_part, stringsAsFactors = FALSE)
+        tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE)
+
+        # Convert "t"/"f" columns to logical if appropriate
+        tmp_df <- lapply(tmp_df, function(col) {
+          if (all(na.omit(col) %in% c("t", "f"))) {
+            return(col == "t")
+          }
+          return(col)
+        })
+
+        df <- as.data.frame(tmp_df, stringsAsFactors = FALSE)
+        df
       }, error = function(e) {
-        message(sprintf("❌ Fehler beim Parsen der Daten von Tabelle %s: %s", table, e$message))
+        message(sprintf(
+          "❌ Fehler beim Parsen der Daten von Tabelle %s: %s",
+          table,
+          e$message
+        ))
         failed_tables <- c(failed_tables, table)
         return(NULL)
       })
@@ -683,3 +830,4 @@ EORSCRIPT
 
   return(NULL)
 }
+

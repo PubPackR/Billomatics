@@ -4,16 +4,16 @@
 \alias{postgres_rename_table}
 \title{postgres_rename_table}
 \usage{
-postgres_rename_table(con, old_name, new_name, schema = "raw")
+postgres_rename_table(con, schema, old_name, new_name)
 }
 \arguments{
 \item{con}{The database connection object.}
 
+\item{schema}{The schema where the table is located.}
+
 \item{old_name}{The current name of the table.}
 
 \item{new_name}{The new name for the table.}
-
-\item{schema}{The schema where the table is located (default is "raw").}
 }
 \value{
 A message indicating success or failure.
