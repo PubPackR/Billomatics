@@ -805,10 +805,9 @@ postgres_connect <- function(postgres_keys = NULL,
                              ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
   tryCatch({
     if (interactive()) {
-      # 🔒 Lokale Verbindung im interaktiven Modus
-      message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
 
       if (is.null(local_pw)) {
+        message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
         local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
       }
 
@@ -1340,4 +1339,108 @@ postgres_load_tables_to_schema_list <- function(tables, conn) {
   }
 
   return(schema_list)
+}
+
+#' Verbindung zur PostgreSQL-Datenbank herstellen und bei Bedarf lokale Tabellen aktualisieren
+#'
+#' Diese Funktion stellt eine Verbindung zu einer PostgreSQL-Datenbank her. Wenn im interaktiven Modus keine bestehende
+#' Verbindung übergeben wird, wird das Passwort für den Produktnutzer abgefragt und eine neue Verbindung aufgebaut.
+#' Es können Tabellen aus der Produktionsumgebung synchronisiert werden, wenn sie in der lokalen Datenbank fehlen.
+#'
+#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`, z. B.
+#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. Wenn keine Tabellen angegeben werden,
+#'        wird keine Synchronisation durchgeführt.
+#' @param conn Ein bestehendes PostgreSQL-Connection-Objekt. Wenn `NULL`, wird eine neue Verbindung aufgebaut.
+#'        Im interaktiven Modus wird das Passwort für den Produktnutzer abgefragt, wenn keine Verbindung übergeben wird.
+#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn `conn = NULL`).
+#'        Die Liste muss folgende Einträge enthalten: `password`, `user`, `dbname`, `host`, `port`.
+#' @param update_available_tables Logisch. Wenn `TRUE`, werden **alle** angegebenen Tabellen vor dem Einlesen
+#'        aus der Produktion gezogen. Wenn `FALSE` (Standard), werden nur Tabellen gezogen, die lokal
+#'        noch **nicht** existieren.
+#' @param ssh_key_path Pfad zum SSH-Schlüssel für die Verbindung zur Produktionsumgebung (wird beim Ziehen der Daten benötigt).
+#'
+#' @return Gibt entweder das bestehende Connection-Objekt zurück (im Server-Modus) oder eine neue Verbindung,
+#'         wenn eine hergestellt wird. Wenn keine Tabellen angegeben sind, wird `NULL` zurückgegeben.
+#'
+#' @details
+#' - Im interaktiven Modus wird eine Verbindung zur lokalen PostgreSQL-Datenbank hergestellt und das Passwort für den Produktnutzer abgefragt.
+#' - Im Server-Modus wird nur eine Connection zurückgegeben, wenn keine übergebene Verbindung vorhanden ist.
+#' - Wenn `update_available_tables = FALSE`, wird geprüft, welche Tabellen lokal fehlen. Nur diese werden aus der Produktionsumgebung gezogen.
+#' - Wenn `update_available_tables = TRUE`, werden alle angegebenen Tabellen aus der Produktion synchronisiert.
+#' - Die Tabellen werden mithilfe der Funktion `postgres_pull_production_tables()` aus der Produktionsumgebung abgerufen.
+#'
+#' @examples
+#' \dontrun{
+#'   # Verbinde dich mit der lokalen DB und lade fehlende Tabellen
+#'   conn <- postgres_connect_and_update_local(
+#'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
+#'     update_available_tables = FALSE
+#'   )
+#' }
+#'
+#' @seealso [postgres_connect()], [postgres_pull_production_tables()]
+#'
+#' @importFrom getPass getPass
+#' @export
+postgres_connect_and_update_local <- function(
+  tables = NULL,
+  conn = NULL,
+  keys_postgres = NULL,
+  update_available_tables = FALSE,
+  ssh_key_path = NULL
+) {
+
+    is_connection_available <- FALSE
+
+    if (interactive()) {
+      message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
+      local_pw <- NULL
+      if (is.null(conn)) {
+        local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+        if (is.null(local_pw)) {
+          stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
+        }
+        is_connection_available <- FALSE
+        conn <- postgres_connect(postgres_keys = keys_postgres, local_pw = local_pw)
+      } else {
+        is_connection_available <- TRUE
+      }
+    } else {
+      if (is.null(conn)) {
+        if (is.null(keys_postgres)) {
+          stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
+        }
+        message("ℹ️ Server-Modus erkannt - Gebe nur Connection zurück")
+        conn <- postgres_connect(postgres_keys = keys_postgres)
+        return(conn)
+      }
+      message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe nichts zurück.")
+      return(NULL)
+    }
+
+  if (is.null(tables)) {
+    warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
+    return(NULL)
+  }
+
+  # Produktionsdaten bei Bedarf synchronisieren
+  if (interactive()) {
+    tables_to_pull <- postgres_get_tables_to_pull(tables, conn, update_available_tables)
+    if (length(tables_to_pull) > 0) {
+      message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
+      postgres_pull_production_tables(
+        tables = tables_to_pull,
+        target = "local_postgres",
+        ssh_key_path = ssh_key_path,
+        local_dbname = "studyflix_local",
+        local_host = "localhost",
+        local_port = 5432,
+        local_user = "postgres",
+        local_password = local_pw
+      )
+    } else {
+      message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
+    }
+  }
+  return(conn)
 }
