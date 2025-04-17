@@ -7,21 +7,45 @@
 postgres_select(con, schema, table, columns = "*", where = NULL, limit = NULL)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI. This object should represent a valid connection to a PostgreSQL database.}
 
-\item{schema}{The schema of the table.}
+\item{schema}{The schema of the table where the data will be selected from. This is a required parameter if \code{table} is provided with a schema (e.g., \code{public.my_table}).}
 
-\item{table}{The name of the table.}
+\item{table}{The name of the table from which data is selected. The table name should be specified as \code{schema.table} or just \code{table} if the schema is provided separately.}
 
-\item{columns}{A character vector of column names to select (default is "*").}
+\item{columns}{A character vector of column names to select. If not specified, all columns (\code{*}) are selected by default.
+Example: \code{columns = c("column1", "column2")}. Default is \code{*}.}
 
-\item{where}{Optional SQL \code{WHERE} clause (without the word WHERE).}
+\item{where}{Optional SQL \code{WHERE} clause (without the word WHERE). This is a string that specifies the condition for filtering the rows to be selected.
+It should not include the word \code{WHERE}. Example: \code{where = "age > 30"}.}
 
-\item{limit}{Optional number of rows to limit.}
+\item{limit}{Optional number of rows to limit the result. If not provided, no limit is applied. Example: \code{limit = 10} will return at most 10 rows.}
 }
 \value{
-A data frame containing the result or NULL in case of failure.
+A data frame containing the selected rows from the specified table. If the query fails, an empty data frame is returned,
+and an error message is logged.
 }
 \description{
 Selects data from a PostgreSQL table and logs the access in raw.metadata_data_selection_log.
+This function performs a safe SQL \code{SELECT} operation on the specified table and optionally applies a \code{WHERE} clause and row limit.
+It also logs the data selection operation for audit purposes.
+}
+\details{
+\itemize{
+\item This function builds a SQL \code{SELECT} query by combining the specified columns, table, optional \code{WHERE} clause, and row limit.
+\item The function logs the successful execution of the query along with the number of rows retrieved in the \code{raw.metadata_data_selection_log} table.
+\item In case of an error, the failure is logged, including the SQL query and the error message.
+\item SQL parameters (such as in the \code{WHERE} clause) should be sanitized and handled appropriately to avoid SQL injection risks.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+# Select all data from the 'public.users' table
+result <- postgres_select(connection, "public", "users")
+# Select specific columns with a WHERE clause
+result <- postgres_select(connection, "public", "users", columns = c("id", "name"), where = "age > 30", limit = 10)
+}
+
 }

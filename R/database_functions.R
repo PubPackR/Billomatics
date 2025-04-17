@@ -17,9 +17,7 @@
 #' @param key The key.
 #' @return The specified columns of the database table gets decrypted
 #' @export
-custom_decrypt_db <- function(df,
-                              columns_to_decrypt,
-                              key = NULL) {
+custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
   df_decrypted <- df
   columns_to_decrpyt <- columns_to_decrypt %||% names(df)
 
@@ -41,11 +39,31 @@ custom_decrypt_db <- function(df,
 
 #' postgres_upsert_data
 #'
-#' @param connection your database connection
-#' @param schema the schema of the table in the database
-#' @param table the table in the database
-#' @param data the data to be inserted
-#' @return Only Feedback Message in Console
+#' This function performs an upsert (insert or update) operation to a PostgreSQL database. It first writes the data to a temporary table,
+#' and then performs an `INSERT INTO ... ON CONFLICT ... DO UPDATE` operation, which inserts new rows and updates existing rows based
+#' on a conflict with specified columns.
+#'
+#' @param connection An active database connection object (created with DBI).
+#' @param schema The schema in which the table exists in the database.
+#' @param table The name of the table in the database. The schema can either be provided separately or as part of the table name
+#' (in the format `schema.table`).
+#' @param data A data.frame containing the data to be inserted or updated in the database.
+#' @param conflict_cols A character vector specifying one or more columns that should be checked for conflicts (defaults to "id").
+#' @return A numeric value indicating the number of affected rows (inserted or updated).
+#' @details
+#' - The function will first attempt to create a temporary table in the database using the data's column names.
+#' - Then, it will attempt to perform the upsert operation using an `INSERT INTO ... ON CONFLICT ... DO UPDATE` SQL statement.
+#' - In case of failure, an error message will be printed, and the function will return 0.
+#' - The function also logs the time taken to perform the operation, providing insight into the performance for large datasets.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' data <- data.frame(id = c(1, 2), name = c("Alice", "Bob"))
+#' postgres_upsert_data(connection, "public", "my_table", data)
+#' }
+#'
 #' @export
 postgres_upsert_data <- function(connection, schema, table, data, conflict_cols = "id") {
 
@@ -72,8 +90,13 @@ postgres_upsert_data <- function(connection, schema, table, data, conflict_cols 
 
   # Sicherstellen, dass die temporäre Tabelle auch bei einem Fehler gelöscht wird
   tryCatch({
-    # Daten in die temporäre Tabelle schreiben
-    DBI::dbWriteTable(connection, temp_table, data, temporary = TRUE, row.names = FALSE)
+    # Bulk-Insert anstelle von dbWriteTable
+    # Temporäre Tabelle erstellen
+    dbExecute(connection, paste0("CREATE TEMPORARY TABLE ", temp_table, " (",
+                                 paste(names(data), collapse = ", "), ")"))
+
+    # Daten in die temporäre Tabelle einfügen
+    dbWriteTable(connection, temp_table, data, append = TRUE, row.names = FALSE)
 
     # Spaltennamen aus dem DataFrame extrahieren
     cols <- colnames(data)
@@ -89,11 +112,17 @@ postgres_upsert_data <- function(connection, schema, table, data, conflict_cols 
       schema, table, cols_str, cols_str, temp_table, conflict_cols_str, update_str
     )
 
+    # Query ausführen und Zeit messen
+    start_time <- Sys.time()
+    dbExecute(connection, query)
+    end_time <- Sys.time()
+
     # Query ausführen
     DBI::dbExecute(connection, query)
 
-    # Anzahl der betroffenen Zeilen abfragen (inserted und updated)
-    affected_rows <- DBI::dbGetQuery(connection, paste0("SELECT COUNT(*) FROM ", schema, ".", table))$count
+    # Erfolgsnachricht mit Ausführungszeit
+    message(paste("Upsert erfolgreich! Gesamtanzahl der Zeilen:", affected_rows,
+                  "- Dauer:", round(difftime(end_time, start_time, units = "secs"), 2), "Sekunden"))
 
     message(paste("Upsert erfolgreich! Gesamtanzahl der Zeilen:", affected_rows))
 
@@ -111,13 +140,28 @@ postgres_upsert_data <- function(connection, schema, table, data, conflict_cols 
 
 #' postgres_rename_table
 #'
-#' Renames an existing table in a PostgreSQL database.
+#' Renames an existing table in a PostgreSQL database, and optionally moves it to a different schema.
+#' If the old and new table names are in different schemas, the table will be moved to the new schema and renamed.
 #'
-#' @param con The database connection object.
-#' @param schema The schema where the table is located.
-#' @param old_name The current name of the table.
-#' @param new_name The new name for the table.
-#' @return A message indicating success or failure.
+#' @param con The database connection object, created using DBI.
+#' @param schema The schema where the old table is located. If not provided in `old_name`, this argument is required.
+#' @param old_name The current name of the table (can be in the format `schema.table`).
+#' @param new_name The new name for the table (can be in the format `schema.table`).
+#' @return A logical value indicating success (`TRUE`) or failure (`FALSE`). Additionally, a message will be printed
+#' indicating whether the renaming was successful or if there was an error.
+#' @details
+#' - If the `old_name` or `new_name` includes both schema and table (i.e., `schema.table` format), the schema is extracted automatically.
+#' - The function checks if the old table exists and ensures that the new table name is not already in use.
+#' - If the old and new table names are in different schemas, the function will rename and move the table across schemas.
+#' - If the old and new table names are in the same schema, the function will only rename the table.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' postgres_rename_table(connection, "public", "old_table_name", "new_table_name")
+#' }
+#'
 #' @export
 postgres_rename_table <- function(con, schema, old_name, new_name) {
 
@@ -192,14 +236,34 @@ postgres_rename_table <- function(con, schema, old_name, new_name) {
 
 #' postgres_add_metadata
 #'
-#' Adds or updates metadata in the PostgreSQL database.
+#' Adds or updates metadata in the PostgreSQL database. If the `is_new` argument is set to `TRUE`, it ensures that
+#' the metadata with the given key does not already exist in the database. If the metadata exists, an error is raised.
+#' If `is_new` is `FALSE` (default), it performs an upsert (insert or update), updating the metadata value for the
+#' given key.
 #'
-#' @param con The database connection object.
-#' @param key The metadata key.
-#' @param value The metadata value.
-#' @param is_new A logical value indicating whether the metadata should be treated as new (default is FALSE).
-#'               If TRUE, an error is raised if the metadata with the given key already exists.
-#' @return A feedback message in the console or an error message.
+#' @param con The database connection object, created using DBI.
+#' @param key The metadata key. This is a unique identifier for the metadata.
+#' @param value The metadata value that will be associated with the given key.
+#' @param is_new A logical value indicating whether the metadata should be treated as new. If set to `TRUE`, an error
+#'               will be raised if the metadata with the given key already exists. The default value is `FALSE`, in which
+#'               case the metadata will be updated if it already exists.
+#' @return A message indicating whether the metadata was successfully added or updated, or an error message if the
+#'         metadata already exists and `is_new` is `TRUE`.
+#' @details
+#' - The function checks whether a metadata entry already exists for the given key if `is_new == TRUE`.
+#' - If the metadata exists and `is_new == TRUE`, an error is raised with a message indicating the conflict.
+#' - If `is_new == FALSE`, the function uses an `INSERT ... ON CONFLICT` statement to either insert new metadata or update
+#'   the existing metadata value.
+#' - The table `raw.metadata_jobs_and_datafiles` is used to store the metadata. The table should have at least two columns:
+#'   `key` and `value`.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' postgres_add_metadata(connection, "job_1", "Completed", is_new = TRUE)
+#' }
+#'
 #' @export
 postgres_add_metadata <- function(con, key, value, is_new = FALSE) {
   # Check if metadata already exists (if is_new is TRUE)
@@ -229,11 +293,29 @@ postgres_add_metadata <- function(con, key, value, is_new = FALSE) {
 
 #' postgres_read_metadata
 #'
-#' Reads metadata from the PostgreSQL database.
+#' Reads metadata from the PostgreSQL database based on a specified key.
+#' This function retrieves the `key`, `value`, and `updated_at` of the metadata entry associated with the provided key.
+#' If the key doesn't exist in the metadata table, it returns NULL.
 #'
-#' @param con The database connection object.
+#' @param con The database connection object, created using DBI.
 #' @param key The metadata key to retrieve.
-#' @return A data frame with the metadata key and value, or NULL if the key doesn't exist.
+#' @return A data frame containing the metadata `key`, `value`, and `updated_at`.
+#'         If the key doesn't exist, it returns `NULL` and prints a message indicating that no metadata was found.
+#' @details
+#' - The function performs a `SELECT` query to retrieve the metadata entry associated with the provided `key` from the table
+#'   `raw.metadata_jobs_and_datafiles`.
+#' - The returned data frame contains three columns: `key`, `value`, and `updated_at`.
+#' - If no metadata entry is found for the specified key, the function returns `NULL` and prints a message indicating that no
+#'   metadata was found for the given key.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' metadata <- postgres_read_metadata(connection, "job_1")
+#' print(metadata)
+#' }
+#'
 #' @export
 postgres_read_metadata <- function(con, key) {
   query <- sprintf("
@@ -251,16 +333,30 @@ postgres_read_metadata <- function(con, key) {
   return(result)
 }
 
+
 #' postgres_add_column
 #'
 #' Adds a new column to an existing table in PostgreSQL.
+#' This function checks if the column already exists, and if not, it adds the specified column to the table with the given type.
 #'
-#' @param con The database connection object.
+#' @param con The database connection object, created using DBI.
 #' @param schema The schema where the table is located.
 #' @param table The name of the table to which the column will be added.
-#' @param column_name The name of the new column.
-#' @param column_type The data type of the new column.
-#' @return A feedback message in the console indicating success or failure.
+#' @param column_name The name of the new column to add.
+#' @param column_type The data type of the new column (e.g., "text", "integer", "boolean").
+#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
+#' @details
+#' - The function first checks if the specified column already exists in the given table and schema.
+#' - If the column does not exist, it constructs and executes an `ALTER TABLE` query to add the new column.
+#' - If the column already exists, the function raises an error and halts the operation.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' postgres_add_column(connection, "raw", "my_table", "new_column", "text")
+#' }
+#'
 #' @export
 postgres_add_column <- function(con, schema, table, column_name, column_type) {
 
@@ -306,16 +402,31 @@ postgres_add_column <- function(con, schema, table, column_name, column_type) {
   })
 }
 
+
 #' postgres_change_column_type
 #'
 #' Changes the data type of an existing column in a PostgreSQL table.
+#' This function allows altering the data type of a specific column in an existing table.
+#' If the column doesn't exist, an error is raised.
 #'
-#' @param con The database connection object.
+#' @param con The database connection object, created using DBI.
 #' @param schema The schema where the table is located.
 #' @param table The name of the table containing the column.
 #' @param column_name The name of the column whose data type will be changed.
-#' @param new_column_type The new data type for the column.
-#' @return A feedback message in the console indicating success or failure.
+#' @param new_column_type The new data type for the column (e.g., "text", "integer", "boolean").
+#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
+#' @details
+#' - The function first checks if the specified column exists in the table and schema.
+#' - If the column exists, it constructs and executes an `ALTER TABLE` query to change the column's data type.
+#' - If the column does not exist, the function raises an error and halts the operation.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' postgres_change_column_type(connection, "raw", "my_table", "my_column", "text")
+#' }
+#'
 #' @export
 postgres_change_column_type <- function(con, schema, table, column_name, new_column_type) {
 
@@ -364,12 +475,26 @@ postgres_change_column_type <- function(con, schema, table, column_name, new_col
 #' postgres_create_table
 #'
 #' Creates a new table in a PostgreSQL database.
+#' This function allows creating a new table with specified column names and data types in a given schema.
 #'
-#' @param con The database connection object.
+#' @param con The database connection object, created using DBI.
 #' @param schema The schema where the table will be created.
 #' @param table The name of the table to be created.
-#' @param columns A named vector where names are column names and values are data types.
-#' @return A feedback message in the console indicating success or failure.
+#' @param columns A named vector where names are column names and values are data types (e.g., c("column1" = "integer", "column2" = "text")).
+#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
+#' @details
+#' - The function first checks if the schema is provided either via the `schema` argument or embedded in the `table` argument as 'schema.table'.
+#' - The table creation SQL query is dynamically constructed from the provided column names and data types.
+#' - If the table creation is successful, a success message is shown, and the function returns `TRUE`.
+#' - If any error occurs during table creation, an error message is shown, and the function returns `FALSE`.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' postgres_create_table(connection, "raw", "new_table", c("id" = "integer", "name" = "text", "created_at" = "timestamp"))
+#' }
+#'
 #' @export
 postgres_create_table <- function(con, schema, table, columns) {
   column_definitions <- paste(names(columns), columns, collapse = ", ")
@@ -402,11 +527,26 @@ postgres_create_table <- function(con, schema, table, columns) {
 #' postgres_drop_table
 #'
 #' Drops a table from a PostgreSQL database.
+#' This function allows dropping an existing table from the specified schema in the database.
 #'
-#' @param con The database connection object.
+#' @param con The database connection object, created using DBI.
 #' @param schema The schema where the table is located.
 #' @param table The name of the table to be dropped.
-#' @return A feedback message in the console indicating success or failure.
+#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
+#' @details
+#' - The function first checks if the schema is provided either via the `schema` argument or embedded in the `table` argument as 'schema.table'.
+#' - The SQL query to drop the table is constructed and executed.
+#' - If the table exists, it will be dropped. If it doesn't exist, no error will occur due to the `IF EXISTS` clause in the SQL statement.
+#' - If the operation is successful, a success message is shown, and the function returns `TRUE`.
+#' - If any error occurs during table deletion, an error message is shown, and the function returns `FALSE`.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' postgres_drop_table(connection, "raw", "old_table")
+#' }
+#'
 #' @export
 postgres_drop_table <- function(con, schema, table) {
 
@@ -439,9 +579,25 @@ postgres_drop_table <- function(con, schema, table) {
 #'
 #' Lists all tables in a specified schema, or all schemas if none is specified.
 #'
-#' @param con The database connection object.
+#' @param con The database connection object, created using DBI.
 #' @param schema Optional. The schema from which to list the tables. If NULL, lists from all schemas.
 #' @return A data frame with schema and table names.
+#' @details
+#' - This function queries the `information_schema.tables` view to retrieve all user-defined base tables from the specified schema.
+#' - If no schema is specified (`schema = NULL`), it will return tables from all schemas excluding system schemas like `pg_catalog` and `information_schema`.
+#' - If no tables are found, a message will be displayed indicating that no tables are available in the specified schema or in general.
+#' - The returned data frame contains two columns: `table_schema` and `table_name`, which represent the schema and the name of the table, respectively.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' # List tables from a specific schema
+#' tables <- postgres_list_tables(connection, "public")
+#' # List tables from all schemas
+#' tables_all <- postgres_list_tables(connection)
+#' }
+#'
 #' @export
 postgres_list_tables <- function(con, schema = NULL) {
   if (is.null(schema)) {
@@ -473,14 +629,37 @@ postgres_list_tables <- function(con, schema = NULL) {
 #' postgres_select
 #'
 #' Selects data from a PostgreSQL table and logs the access in raw.metadata_data_selection_log.
+#' This function performs a safe SQL `SELECT` operation on the specified table and optionally applies a `WHERE` clause and row limit.
+#' It also logs the data selection operation for audit purposes.
 #'
-#' @param con The database connection object.
-#' @param schema The schema of the table.
-#' @param table The name of the table.
-#' @param columns A character vector of column names to select (default is "*").
-#' @param where Optional SQL `WHERE` clause (without the word WHERE).
-#' @param limit Optional number of rows to limit.
-#' @return A data frame containing the result or NULL in case of failure.
+#' @param con The database connection object, created using DBI. This object should represent a valid connection to a PostgreSQL database.
+#' @param schema The schema of the table where the data will be selected from. This is a required parameter if `table` is provided with a schema (e.g., `public.my_table`).
+#' @param table The name of the table from which data is selected. The table name should be specified as `schema.table` or just `table` if the schema is provided separately.
+#' @param columns A character vector of column names to select. If not specified, all columns (`*`) are selected by default.
+#'                Example: `columns = c("column1", "column2")`. Default is `*`.
+#' @param where Optional SQL `WHERE` clause (without the word WHERE). This is a string that specifies the condition for filtering the rows to be selected.
+#'              It should not include the word `WHERE`. Example: `where = "age > 30"`.
+#' @param limit Optional number of rows to limit the result. If not provided, no limit is applied. Example: `limit = 10` will return at most 10 rows.
+#'
+#' @return A data frame containing the selected rows from the specified table. If the query fails, an empty data frame is returned,
+#'         and an error message is logged.
+#'
+#' @details
+#' - This function builds a SQL `SELECT` query by combining the specified columns, table, optional `WHERE` clause, and row limit.
+#' - The function logs the successful execution of the query along with the number of rows retrieved in the `raw.metadata_data_selection_log` table.
+#' - In case of an error, the failure is logged, including the SQL query and the error message.
+#' - SQL parameters (such as in the `WHERE` clause) should be sanitized and handled appropriately to avoid SQL injection risks.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' # Select all data from the 'public.users' table
+#' result <- postgres_select(connection, "public", "users")
+#' # Select specific columns with a WHERE clause
+#' result <- postgres_select(connection, "public", "users", columns = c("id", "name"), where = "age > 30", limit = 10)
+#' }
+#'
 #' @export
 postgres_select <- function(con, schema, table, columns = "*", where = NULL, limit = NULL) {
   # Determine full schema.table name for logging
@@ -501,36 +680,23 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
 
   # Prepare query
   cols <- if (length(columns) == 1 && columns == "*") "*" else paste(columns, collapse = ", ")
-  query <- sprintf("SELECT %s FROM %s.%s", cols, schema, table)
-  if (!is.null(where)) query <- paste(query, "WHERE", where)
-  if (!is.null(limit)) query <- paste(query, "LIMIT", limit)
+  query <- "SELECT %s FROM %s.%s"
+  query <- sprintf(query, cols, schema, table)
 
-  # Get caller info and user
-  caller <- deparse(sys.call(-1))
-  user <- Sys.info()[["user"]]
-  working_dir <- getwd()
-  timestamp <- Sys.time()
+  if (!is.null(where)) {
+    query <- paste(query, "WHERE", where)
+  }
+  if (!is.null(limit)) {
+    query <- paste(query, "LIMIT", limit)
+  }
 
-  # Try to execute query and log the access
+  # Ausführung + Logging
   result <- tryCatch({
     df <- DBI::dbGetQuery(con, query)
-
-    # Erfolgreiches Logging
-    DBI::dbExecute(con, glue::glue_sql("
-      INSERT INTO raw.metadata_data_selection_log
-      (schema_table, timestamp, working_directory, user, caller, success)
-      VALUES ({original_input}, {timestamp}, {working_dir}, {user}, {caller}, TRUE)
-    ", .con = con))
-
+    postgres_log_data_selection(con, original_input, success = TRUE)
     df
   }, error = function(e) {
-    # Fehler-Logging
-    DBI::dbExecute(con, glue::glue_sql("
-      INSERT INTO raw.metadata_data_selection_log
-      (schema_table, timestamp, working_directory, user, caller, success, error_message)
-      VALUES ({original_input}, {timestamp}, {working_dir}, {user}, {caller}, FALSE, {e$message})
-    ", .con = con))
-
+    postgres_log_data_selection(con, original_input, success = FALSE, error_message = e$message)
     message("Error in postgres_select: ", e$message)
     return(NULL)
   })
@@ -538,14 +704,101 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
   return(result)
 }
 
+#' postgres_log_data_selection
+#'
+#' Logs access to a PostgreSQL table in `raw.metadata_data_selection_log` for audit and tracking purposes.
+#'
+#' @param con Database connection object, created using DBI. This object should represent a valid connection to a PostgreSQL database.
+#' @param original_input Full schema.table name as a string. This is the table name and schema where the data was selected from.
+#' @param success Logical value indicating whether the data access was successful. Default is `TRUE`.
+#' @param error_message Optional error message, which will be logged if `success` is `FALSE`. If the operation was successful, this can be omitted (default is `NA_character_`).
+#'
+#' @details
+#' - This function logs the access of a table in the `raw.metadata_data_selection_log` table. It captures the time of access, the user who executed the query, the working directory, the success status, and any error messages if applicable.
+#' - The `raw.metadata_data_selection_log` table is automatically created if it does not already exist.
+#' - This function is useful for tracking data access and operations performed on tables for auditing and troubleshooting purposes.
+#' - The `error_message` is only recorded when `success` is `FALSE`, and is left empty (NA) if the operation was successful.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+#' # Log successful data selection from the "public.users" table
+#' postgres_log_data_selection(connection, "public.users", success = TRUE)
+#' # Log a failed data selection with an error message
+#' postgres_log_data_selection(connection, "public.users", success = FALSE, error_message = "Query failed due to timeout.")
+#' }
+#'
+#' @export
+
+postgres_log_data_selection <- function(con, original_input, success = TRUE, error_message = NA_character_) {
+
+  # Infos sammeln
+  username <- Sys.info()[["user"]]
+  working_dir <- getwd()
+  timestamp <- Sys.time()
+
+  # Log-Tabelle anlegen, falls sie nicht existiert
+  logging_table_exists <- DBI::dbExistsTable(con, DBI::Id(schema = "raw", table = "metadata_data_selection_log"))
+
+  if (!logging_table_exists) {
+    DBI::dbExecute(con, "
+      CREATE TABLE raw.metadata_data_selection_log (
+        id SERIAL PRIMARY KEY,
+        schema_table TEXT,
+        timestamp TIMESTAMP,
+        working_directory TEXT,
+        username TEXT,
+        success BOOLEAN,
+        error_message TEXT
+      );
+    ")
+  }
+
+  # Logging durchführen
+  DBI::dbExecute(con, glue::glue_sql("
+    INSERT INTO raw.metadata_data_selection_log
+    (schema_table, timestamp, working_directory, username, success, error_message)
+    VALUES ({original_input}, {timestamp}, {working_dir}, {username}, {success}, {error_message})
+  ", .con = con))
+}
+
 #' postgres_connect
 #'
-#' Connects to a PostgreSQL database. Uses secure credentials in production.
-#' In interactive mode, connects to local database instead.
+#' Establishes a connection to a PostgreSQL database, either locally or to a production database, based on the environment.
+#' In interactive mode, it connects to a local database. In production, it uses secure credentials and SSL for a secure connection.
 #'
-#' @param postgres_keys A named list or object with credentials for production use.
-#' @param ssl_cert_path Path to the SSL certificate for production use.
-#' @return A `DBI` connection object if successful. Stops with an error otherwise.
+#' @param postgres_keys A named list or object containing credentials for production use. The elements should include:
+#'   - `postgres_keys[[1]]`: Password for the database.
+#'   - `postgres_keys[[2]]`: Username for the database.
+#'   - `postgres_keys[[3]]`: Database name.
+#'   - `postgres_keys[[4]]`: Host of the database.
+#'   - `postgres_keys[[5]]`: Port for the database connection.
+#' @param local_pw A password for the local database connection. This is required in interactive mode if not provided.
+#' @param ssl_cert_path Path to the SSL certificate file used for the secure connection in production. Default is set to `"../../metabase-data/postgres/eu-central-1-bundle.pem"`.
+#' @return A `DBI` connection object if the connection is successful. Stops with an error otherwise.
+#' @details
+#' - The function determines whether to connect to the local database or a production PostgreSQL database based on the environment (`interactive()` check).
+#' - In interactive mode, the user will be prompted to enter a password for the local database.
+#' - In production mode, secure credentials are retrieved from the `postgres_keys` argument, and SSL is enabled for the connection.
+#' - The function stops with a custom error message if the connection fails.
+#'
+#' @examples
+#' \dontrun{
+#' # Connect to local PostgreSQL database in interactive mode
+#' connection <- postgres_connect(local_pw = "local_password")
+#'
+#' # Connect to production PostgreSQL database using credentials
+#' postgres_keys <- list(
+#'   "prod_password",
+#'   "prod_user",
+#'   "prod_dbname",
+#'   "prod_host",
+#'   5432
+#' )
+#' connection_prod <- postgres_connect(postgres_keys = postgres_keys)
+#' }
+#'
 #' @export
 postgres_connect <- function(postgres_keys = NULL,
                              local_pw = NULL,
@@ -593,8 +846,53 @@ postgres_connect <- function(postgres_keys = NULL,
   })
 }
 
+#' Aufbau einer SSH-Verbindung mit Keyfile und Passphrase
+#'
+#' Diese Funktion stellt eine SSH-Verbindung zu einem Remote-Host her. Dabei wird ein privater SSH-Schlüssel
+#' verwendet, dessen Pfad übergeben wird. Die zugehörige Passphrase wird interaktiv abgefragt (via `getPass()`).
+#'
+#' @param ssh_key_path Pfad zum privaten SSH-Key (z. B. `~/.ssh/id_rsa`).
+#' @param remote_user Benutzername für den Remote-Login.
+#' @param remote_host Adresse des Remote-Hosts (z. B. `server.example.com`).
+#'
+#' @return Ein aktives SSH-Verbindungsobjekt vom Typ `ssh::ssh_session`.
+#'
+#' @details
+#' - Die Funktion verwendet das Paket `ssh`, um eine Verbindung zum Remote-Server aufzubauen.
+#' - Vor dem Verbindungsaufbau wird geprüft, ob der angegebene SSH-Key existiert.
+#' - Tritt ein Fehler beim Verbindungsaufbau auf, wird dieser abgefangen und als Fehlermeldung ausgegeben.
+#'
+#' @examples
+#' \dontrun{
+#'   ssh_session <- establish_ssh_connection(
+#'     ssh_key_path = "~/.ssh/id_rsa",
+#'     remote_user = "mein_nutzer",
+#'     remote_host = "remote.studyflix.de"
+#'   )
+#' }
+#'
+#' @seealso [ssh::ssh_connect()]
+#'
+#' @importFrom getPass getPass
+#' @export
+establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host) {
+  if (!file.exists(ssh_key_path)) {
+    stop("Die angegebene SSH-Key-Datei existiert nicht: ", ssh_key_path)
+  }
 
+  message("🔐 Aufbau SSH-Verbindung...")
+  ssh_session <- tryCatch({
+    ssh::ssh_connect(
+      host = paste0(remote_user, "@", remote_host),
+      keyfile = ssh_key_path,
+      passwd = getPass("Gib dein Passphrase für den SSH Key ein:")
+    )
+  }, error = function(e) {
+    stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
+  })
 
+  return(ssh_session)
+}
 
 #' Pull production tables from a remote PostgreSQL database via SSH
 #'
@@ -622,7 +920,8 @@ postgres_pull_production_tables <- function(tables = NULL,
                                    local_host = "localhost",
                                    local_port = 5432,
                                    local_user = "postgres",
-                                   local_password = NULL) {
+                                   local_password = NULL,
+                                   local_password_is_product = TRUE) {
 
   if (!interactive()) {
     warning("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -671,23 +970,20 @@ postgres_pull_production_tables <- function(tables = NULL,
     remote_user <- "application-user"
     remote_host <- "shiny.studyflix.info"
 
-    message("🔐 Aufbau SSH-Verbindung...")
-    ssh_session <- tryCatch({
-      ssh::ssh_connect(
-        host = paste0(remote_user, "@", remote_host),
-        keyfile = ssh_key_path,
-        passwd = getPass("Gib dein Passphrase für den SSH Key ein:")
-      )
-    }, error = function(e) {
-      stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
-    })
+    # Verwende die Funktion zur SSH-Verbindung
+    ssh_session <- establish_ssh_connection(ssh_key_path, remote_user, remote_host)
 
     on.exit({
       message("🔒 SSH-Verbindung wird geschlossen...")
       try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
     })
 
-    produkt_key <- getPass::getPass(msg = "Gib das Passwort für den Produktnutzer ein:")
+    if (!is.null(local_password) & local_password_is_product) {
+      produkt_key <- local_password
+    } else {
+      produkt_key <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+    }
+
     decrypt_key <- shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
 
     # get the postgres_keys
@@ -772,6 +1068,8 @@ EORSCRIPT
         paste(failed_tables, collapse = ", ")
       ), call. = FALSE)
     }
+  } else {
+    message("ℹ️ Keine Tabellen angegeben. Es wird nur die DB-Verbindung zurückgegeben.")
   }
 
   if (length(tables_data) == 0 && length(tables) > 0) {
@@ -865,6 +1163,7 @@ EORSCRIPT
         value = tables_data[[table]],
         overwrite = TRUE
       )
+
     }
 
     return(local_con)
@@ -926,14 +1225,13 @@ postgres_load_db_tables_to_list <- function(
   if (is.null(conn)) {
     is_connection_available <- FALSE
 
-    if (!interactive() && is.null(keys_postgres)) {
+    # Passwort abfragen, wenn keine Verbindung übergeben wurde
+    local_pw <- if (interactive()) getPass::getPass("Gib das Passwort für den Produktnutzer ein:") else NULL
+
+    if (is.null(keys_postgres) && is.null(local_pw)) {
       stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
     }
-    if (interactive()) {
-      local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
-    } else {
-      local_pw <- NULL
-    }
+
     conn <- postgres_connect(keys_postgres, local_pw)
   } else {
     is_connection_available <- TRUE
@@ -946,11 +1244,12 @@ postgres_load_db_tables_to_list <- function(
 
   # Produktionsdaten bei Bedarf synchronisieren
   if (interactive()) {
-    if (update_available_tables) {
-      message("Lade alle Tabellen aus der Produktion (update_available_tables = TRUE).")
+    tables_to_pull <- postgres_get_tables_to_pull(tables, conn, update_available_tables)
+    if (length(tables_to_pull) > 0) {
+      message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
       postgres_pull_production_tables(
-        tables = tables,
-        target = c("local_postgres"),
+        tables = tables_to_pull,
+        target = "local_postgres",
         ssh_key_path = ssh_key_path,
         local_dbname = "studyflix_local",
         local_host = "localhost",
@@ -959,68 +1258,70 @@ postgres_load_db_tables_to_list <- function(
         local_password = local_pw
       )
     } else {
-      # Tabellennamen in Schema und Name aufspalten
-      split_tables <- strsplit(tables, "\\.")
-      schemas <- vapply(split_tables, `[`, character(1), 1)
-      table_names <- vapply(split_tables, `[`, character(1), 2)
-
-      # Abfrage existierender Tabellen in der lokalen DB
-      existing_tables <- DBI::dbGetQuery(
-        conn,
-        "
-        SELECT table_schema || '.' || table_name AS full_table_name
-        FROM information_schema.tables
-        WHERE table_schema NOT IN ('information_schema', 'pg_catalog');
-      "
-      )$full_table_name
-
-      # Wenn update_available_tables = FALSE → nur fehlende Tabellen laden
-      if (!update_available_tables) {
-        missing_tables <- tables[!tables %in% existing_tables]
-
-        if (length(missing_tables) == 0) {
-          message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
-        } else {
-          message(
-            "⬇️ Ziehe nur fehlende Tabellen aus Produktion: ",
-            paste(missing_tables, collapse = ", ")
-          )
-          postgres_pull_production_tables(
-            tables = missing_tables,
-            target = c("local_postgres"),
-            ssh_key_path = ssh_key_path,
-            local_dbname = "studyflix_local",
-            local_host = "localhost",
-            local_port = 5432,
-            local_user = "postgres",
-            local_password = local_pw
-          )
-        }
-        message(
-          "Lade nur fehlende Tabellen aus der Produktion (update_available_tables = FALSE)."
-        )
-        postgres_pull_production_tables(
-          tables = tables,
-          target = c("local_postgres"),
-          ssh_key_path = ssh_key_path,
-          local_dbname = "studyflix_local",
-          local_host = "localhost",
-          local_port = 5432,
-          local_user = "postgres",
-          local_password = local_pw
-        )
-      }
-
+      message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
     }
-    rm(local_pw)
   }
 
-  # Initialisiere eine leere Liste für die Schemata
+  schema_list <- postgres_load_tables_to_schema_list(tables, conn)
+
+  if(!is_connection_available) {
+    # Schließe die Verbindung, wenn sie nicht extern bereitgestellt wurde
+    DBI::dbDisconnect(conn)
+  }
+
+  # Rückgabe der Liste von Schemata mit Tabellen als DataFrames
+  return(schema_list)
+}
+
+#' Ermittelt Tabellen, die aus der Produktion gezogen werden müssen
+#'
+#' Diese Hilfsfunktion prüft basierend auf dem Parameter `update_available_tables`,
+#' ob alle oder nur fehlende Tabellen aus der Produktionsdatenbank geholt werden sollen.
+#' Dazu wird die aktuelle Verbindung zur lokalen Datenbank genutzt, um vorhandene Tabellen zu erkennen.
+#'
+#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
+#' @param conn Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.
+#' @param update_available_tables Logisch. Wenn `TRUE`, werden alle Tabellen zurückgegeben (vollständiger Refresh).
+#'
+#' @return Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
+#'
+#' @keywords internal
+postgres_get_tables_to_pull <- function(tables, conn, update_available_tables) {
+  if (update_available_tables) {
+    return(tables)
+  }
+
+  # Tabellen in der lokalen DB abfragen
+  existing_tables <- DBI::dbGetQuery(
+    conn,
+    "
+    SELECT table_schema || '.' || table_name AS full_table_name
+    FROM information_schema.tables
+    WHERE table_schema NOT IN ('information_schema', 'pg_catalog');
+    "
+  )$full_table_name
+
+  missing_tables <- tables[!tables %in% existing_tables]
+  return(missing_tables)
+}
+
+#' Lädt Tabellen in verschachtelte Liste nach Schema
+#'
+#' Diese Hilfsfunktion lädt die angegebenen Tabellen aus der PostgreSQL-Datenbank mithilfe von `postgres_select()`
+#' und speichert sie in einer Liste, gruppiert nach Schema. Jede Tabelle wird als DataFrame abgelegt.
+#'
+#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
+#' @param conn Eine bestehende Verbindung zur PostgreSQL-Datenbank.
+#'
+#' @return Eine verschachtelte Liste mit folgendem Aufbau:
+#'   - Namen der obersten Ebene sind die Schemanamen (z. B. `"raw"`).
+#'   - Jede Schema-Liste enthält benannte Einträge für jede geladene Tabelle als DataFrame.
+#'
+#' @keywords internal
+postgres_load_tables_to_schema_list <- function(tables, conn) {
   schema_list <- list()
 
-  # Lade jede Tabelle, extrahiere das Schema und speichere es in der entsprechenden Schema-Liste
   for (table in tables) {
-    # Extrahiere das Schema und den Tabellennamen
     parts <- strsplit(table, "\\.")[[1]]
 
     if (length(parts) != 2) {
@@ -1031,25 +1332,12 @@ postgres_load_db_tables_to_list <- function(
     schema <- parts[1]
     table_name <- parts[2]
 
-    # Lade die Tabelle aus der Datenbank
     tbl_data <- postgres_select(conn, schema, table_name)
 
-    # Falls die Tabelle geladen wurde, füge sie der entsprechenden Schema-Liste hinzu
     if (!is.null(tbl_data)) {
-      # Falls das Schema noch nicht existiert, initialisiere es
-      if (!exists(schema, envir = schema_list)) {
-        schema_list[[schema]] <- list()
-      }
-      # Füge die Tabelle dem Schema hinzu
       schema_list[[schema]][[table_name]] <- tbl_data
     }
   }
 
-  if(!is_connection_available) {
-    # Schließe die Verbindung, wenn sie nicht extern bereitgestellt wurde
-    DBI::dbDisconnect(conn)
-  }
-
-  # Rückgabe der Liste von Schemata mit Tabellen als DataFrames
   return(schema_list)
 }

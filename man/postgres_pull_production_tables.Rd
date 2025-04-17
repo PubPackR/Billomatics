@@ -12,7 +12,8 @@ postgres_pull_production_tables(
   local_host = "localhost",
   local_port = 5432,
   local_user = "postgres",
-  local_password = NULL
+  local_password = NULL,
+  local_password_is_product = TRUE
 )
 }
 \arguments{

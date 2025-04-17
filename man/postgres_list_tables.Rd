@@ -7,7 +7,7 @@
 postgres_list_tables(con, schema = NULL)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
 \item{schema}{Optional. The schema from which to list the tables. If NULL, lists from all schemas.}
 }
@@ -16,4 +16,23 @@ A data frame with schema and table names.
 }
 \description{
 Lists all tables in a specified schema, or all schemas if none is specified.
+}
+\details{
+\itemize{
+\item This function queries the \code{information_schema.tables} view to retrieve all user-defined base tables from the specified schema.
+\item If no schema is specified (\code{schema = NULL}), it will return tables from all schemas excluding system schemas like \code{pg_catalog} and \code{information_schema}.
+\item If no tables are found, a message will be displayed indicating that no tables are available in the specified schema or in general.
+\item The returned data frame contains two columns: \code{table_schema} and \code{table_name}, which represent the schema and the name of the table, respectively.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+# List tables from a specific schema
+tables <- postgres_list_tables(connection, "public")
+# List tables from all schemas
+tables_all <- postgres_list_tables(connection)
+}
+
 }

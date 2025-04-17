@@ -11,14 +11,48 @@ postgres_connect(
 )
 }
 \arguments{
-\item{postgres_keys}{A named list or object with credentials for production use.}
+\item{postgres_keys}{A named list or object containing credentials for production use. The elements should include:
+\itemize{
+\item \code{postgres_keys[[1]]}: Password for the database.
+\item \code{postgres_keys[[2]]}: Username for the database.
+\item \code{postgres_keys[[3]]}: Database name.
+\item \code{postgres_keys[[4]]}: Host of the database.
+\item \code{postgres_keys[[5]]}: Port for the database connection.
+}}
 
-\item{ssl_cert_path}{Path to the SSL certificate for production use.}
+\item{local_pw}{A password for the local database connection. This is required in interactive mode if not provided.}
+
+\item{ssl_cert_path}{Path to the SSL certificate file used for the secure connection in production. Default is set to \code{"../../metabase-data/postgres/eu-central-1-bundle.pem"}.}
 }
 \value{
-A \code{DBI} connection object if successful. Stops with an error otherwise.
+A \code{DBI} connection object if the connection is successful. Stops with an error otherwise.
 }
 \description{
-Connects to a PostgreSQL database. Uses secure credentials in production.
-In interactive mode, connects to local database instead.
+Establishes a connection to a PostgreSQL database, either locally or to a production database, based on the environment.
+In interactive mode, it connects to a local database. In production, it uses secure credentials and SSL for a secure connection.
+}
+\details{
+\itemize{
+\item The function determines whether to connect to the local database or a production PostgreSQL database based on the environment (\code{interactive()} check).
+\item In interactive mode, the user will be prompted to enter a password for the local database.
+\item In production mode, secure credentials are retrieved from the \code{postgres_keys} argument, and SSL is enabled for the connection.
+\item The function stops with a custom error message if the connection fails.
+}
+}
+\examples{
+\dontrun{
+# Connect to local PostgreSQL database in interactive mode
+connection <- postgres_connect(local_pw = "local_password")
+
+# Connect to production PostgreSQL database using credentials
+postgres_keys <- list(
+  "prod_password",
+  "prod_user",
+  "prod_dbname",
+  "prod_host",
+  5432
+)
+connection_prod <- postgres_connect(postgres_keys = postgres_keys)
+}
+
 }

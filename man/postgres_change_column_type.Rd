@@ -7,7 +7,7 @@
 postgres_change_column_type(con, schema, table, column_name, new_column_type)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
 \item{schema}{The schema where the table is located.}
 
@@ -15,11 +15,28 @@ postgres_change_column_type(con, schema, table, column_name, new_column_type)
 
 \item{column_name}{The name of the column whose data type will be changed.}
 
-\item{new_column_type}{The new data type for the column.}
+\item{new_column_type}{The new data type for the column (e.g., "text", "integer", "boolean").}
 }
 \value{
-A feedback message in the console indicating success or failure.
+A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
 }
 \description{
 Changes the data type of an existing column in a PostgreSQL table.
+This function allows altering the data type of a specific column in an existing table.
+If the column doesn't exist, an error is raised.
+}
+\details{
+\itemize{
+\item The function first checks if the specified column exists in the table and schema.
+\item If the column exists, it constructs and executes an \verb{ALTER TABLE} query to change the column's data type.
+\item If the column does not exist, the function raises an error and halts the operation.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+postgres_change_column_type(connection, "raw", "my_table", "my_column", "text")
+}
+
 }

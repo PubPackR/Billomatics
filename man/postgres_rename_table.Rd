@@ -7,17 +7,35 @@
 postgres_rename_table(con, schema, old_name, new_name)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
-\item{schema}{The schema where the table is located.}
+\item{schema}{The schema where the old table is located. If not provided in \code{old_name}, this argument is required.}
 
-\item{old_name}{The current name of the table.}
+\item{old_name}{The current name of the table (can be in the format \code{schema.table}).}
 
-\item{new_name}{The new name for the table.}
+\item{new_name}{The new name for the table (can be in the format \code{schema.table}).}
 }
 \value{
-A message indicating success or failure.
+A logical value indicating success (\code{TRUE}) or failure (\code{FALSE}). Additionally, a message will be printed
+indicating whether the renaming was successful or if there was an error.
 }
 \description{
-Renames an existing table in a PostgreSQL database.
+Renames an existing table in a PostgreSQL database, and optionally moves it to a different schema.
+If the old and new table names are in different schemas, the table will be moved to the new schema and renamed.
+}
+\details{
+\itemize{
+\item If the \code{old_name} or \code{new_name} includes both schema and table (i.e., \code{schema.table} format), the schema is extracted automatically.
+\item The function checks if the old table exists and ensures that the new table name is not already in use.
+\item If the old and new table names are in different schemas, the function will rename and move the table across schemas.
+\item If the old and new table names are in the same schema, the function will only rename the table.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+postgres_rename_table(connection, "public", "old_table_name", "new_table_name")
+}
+
 }

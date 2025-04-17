@@ -7,17 +7,34 @@
 postgres_create_table(con, schema, table, columns)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
 \item{schema}{The schema where the table will be created.}
 
 \item{table}{The name of the table to be created.}
 
-\item{columns}{A named vector where names are column names and values are data types.}
+\item{columns}{A named vector where names are column names and values are data types (e.g., c("column1" = "integer", "column2" = "text")).}
 }
 \value{
-A feedback message in the console indicating success or failure.
+A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
 }
 \description{
 Creates a new table in a PostgreSQL database.
+This function allows creating a new table with specified column names and data types in a given schema.
+}
+\details{
+\itemize{
+\item The function first checks if the schema is provided either via the \code{schema} argument or embedded in the \code{table} argument as 'schema.table'.
+\item The table creation SQL query is dynamically constructed from the provided column names and data types.
+\item If the table creation is successful, a success message is shown, and the function returns \code{TRUE}.
+\item If any error occurs during table creation, an error message is shown, and the function returns \code{FALSE}.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+postgres_create_table(connection, "raw", "new_table", c("id" = "integer", "name" = "text", "created_at" = "timestamp"))
+}
+
 }

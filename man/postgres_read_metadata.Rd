@@ -7,13 +7,34 @@
 postgres_read_metadata(con, key)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
 \item{key}{The metadata key to retrieve.}
 }
 \value{
-A data frame with the metadata key and value, or NULL if the key doesn't exist.
+A data frame containing the metadata \code{key}, \code{value}, and \code{updated_at}.
+If the key doesn't exist, it returns \code{NULL} and prints a message indicating that no metadata was found.
 }
 \description{
-Reads metadata from the PostgreSQL database.
+Reads metadata from the PostgreSQL database based on a specified key.
+This function retrieves the \code{key}, \code{value}, and \code{updated_at} of the metadata entry associated with the provided key.
+If the key doesn't exist in the metadata table, it returns NULL.
+}
+\details{
+\itemize{
+\item The function performs a \code{SELECT} query to retrieve the metadata entry associated with the provided \code{key} from the table
+\code{raw.metadata_jobs_and_datafiles}.
+\item The returned data frame contains three columns: \code{key}, \code{value}, and \code{updated_at}.
+\item If no metadata entry is found for the specified key, the function returns \code{NULL} and prints a message indicating that no
+metadata was found for the given key.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+metadata <- postgres_read_metadata(connection, "job_1")
+print(metadata)
+}
+
 }

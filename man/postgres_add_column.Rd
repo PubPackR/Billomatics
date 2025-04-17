@@ -7,19 +7,35 @@
 postgres_add_column(con, schema, table, column_name, column_type)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
 \item{schema}{The schema where the table is located.}
 
 \item{table}{The name of the table to which the column will be added.}
 
-\item{column_name}{The name of the new column.}
+\item{column_name}{The name of the new column to add.}
 
-\item{column_type}{The data type of the new column.}
+\item{column_type}{The data type of the new column (e.g., "text", "integer", "boolean").}
 }
 \value{
-A feedback message in the console indicating success or failure.
+A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
 }
 \description{
 Adds a new column to an existing table in PostgreSQL.
+This function checks if the column already exists, and if not, it adds the specified column to the table with the given type.
+}
+\details{
+\itemize{
+\item The function first checks if the specified column already exists in the given table and schema.
+\item If the column does not exist, it constructs and executes an \verb{ALTER TABLE} query to add the new column.
+\item If the column already exists, the function raises an error and halts the operation.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+postgres_add_column(connection, "raw", "my_table", "new_column", "text")
+}
+
 }

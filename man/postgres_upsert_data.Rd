@@ -7,17 +7,39 @@
 postgres_upsert_data(connection, schema, table, data, conflict_cols = "id")
 }
 \arguments{
-\item{connection}{your database connection}
+\item{connection}{An active database connection object (created with DBI).}
 
-\item{schema}{the schema of the table in the database}
+\item{schema}{The schema in which the table exists in the database.}
 
-\item{table}{the table in the database}
+\item{table}{The name of the table in the database. The schema can either be provided separately or as part of the table name
+(in the format \code{schema.table}).}
 
-\item{data}{the data to be inserted}
+\item{data}{A data.frame containing the data to be inserted or updated in the database.}
+
+\item{conflict_cols}{A character vector specifying one or more columns that should be checked for conflicts (defaults to "id").}
 }
 \value{
-Only Feedback Message in Console
+A numeric value indicating the number of affected rows (inserted or updated).
 }
 \description{
-postgres_upsert_data
+This function performs an upsert (insert or update) operation to a PostgreSQL database. It first writes the data to a temporary table,
+and then performs an \verb{INSERT INTO ... ON CONFLICT ... DO UPDATE} operation, which inserts new rows and updates existing rows based
+on a conflict with specified columns.
+}
+\details{
+\itemize{
+\item The function will first attempt to create a temporary table in the database using the data's column names.
+\item Then, it will attempt to perform the upsert operation using an \verb{INSERT INTO ... ON CONFLICT ... DO UPDATE} SQL statement.
+\item In case of failure, an error message will be printed, and the function will return 0.
+\item The function also logs the time taken to perform the operation, providing insight into the performance for large datasets.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+data <- data.frame(id = c(1, 2), name = c("Alice", "Bob"))
+postgres_upsert_data(connection, "public", "my_table", data)
+}
+
 }

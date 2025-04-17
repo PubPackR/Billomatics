@@ -7,18 +7,41 @@
 postgres_add_metadata(con, key, value, is_new = FALSE)
 }
 \arguments{
-\item{con}{The database connection object.}
+\item{con}{The database connection object, created using DBI.}
 
-\item{key}{The metadata key.}
+\item{key}{The metadata key. This is a unique identifier for the metadata.}
 
-\item{value}{The metadata value.}
+\item{value}{The metadata value that will be associated with the given key.}
 
-\item{is_new}{A logical value indicating whether the metadata should be treated as new (default is FALSE).
-If TRUE, an error is raised if the metadata with the given key already exists.}
+\item{is_new}{A logical value indicating whether the metadata should be treated as new. If set to \code{TRUE}, an error
+will be raised if the metadata with the given key already exists. The default value is \code{FALSE}, in which
+case the metadata will be updated if it already exists.}
 }
 \value{
-A feedback message in the console or an error message.
+A message indicating whether the metadata was successfully added or updated, or an error message if the
+metadata already exists and \code{is_new} is \code{TRUE}.
 }
 \description{
-Adds or updates metadata in the PostgreSQL database.
+Adds or updates metadata in the PostgreSQL database. If the \code{is_new} argument is set to \code{TRUE}, it ensures that
+the metadata with the given key does not already exist in the database. If the metadata exists, an error is raised.
+If \code{is_new} is \code{FALSE} (default), it performs an upsert (insert or update), updating the metadata value for the
+given key.
+}
+\details{
+\itemize{
+\item The function checks whether a metadata entry already exists for the given key if \code{is_new == TRUE}.
+\item If the metadata exists and \code{is_new == TRUE}, an error is raised with a message indicating the conflict.
+\item If \code{is_new == FALSE}, the function uses an \verb{INSERT ... ON CONFLICT} statement to either insert new metadata or update
+the existing metadata value.
+\item The table \code{raw.metadata_jobs_and_datafiles} is used to store the metadata. The table should have at least two columns:
+\code{key} and \code{value}.
+}
+}
+\examples{
+\dontrun{
+# Example usage:
+connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
+postgres_add_metadata(connection, "job_1", "Completed", is_new = TRUE)
+}
+
 }
