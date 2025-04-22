@@ -2,61 +2,63 @@
 % Please edit documentation in R/database_functions.R
 \name{postgres_connect_and_update_local}
 \alias{postgres_connect_and_update_local}
-\title{Verbindung zur PostgreSQL-Datenbank herstellen und bei Bedarf lokale Tabellen aktualisieren}
+\title{Verbindung zur lokalen PostgreSQL-Datenbank mit optionaler Tabellensynchronisation}
 \usage{
 postgres_connect_and_update_local(
   tables = NULL,
-  conn = NULL,
+  con = NULL,
   keys_postgres = NULL,
   update_available_tables = FALSE,
-  ssh_key_path = NULL
+  ssh_key_path = NULL,
+  local_dbname = "studyflix_local",
+  local_host = "localhost",
+  local_port = 5432,
+  local_user = "postgres",
+  local_pw = NULL,
+  load_in_memory = FALSE
 )
 }
 \arguments{
-\item{tables}{Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format \code{"schema.tabelle"}, z. B.
-\code{c("raw.crm_leads", "analytics.dashboard_metrics")}. Wenn keine Tabellen angegeben werden,
-wird keine Synchronisation durchgeführt.}
+\item{tables}{Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format \code{"schema.tabelle"}, z. B.
+\code{c("raw.crm_leads", "analytics.dashboard_metrics")}. Wenn \code{NULL}, findet keine Synchronisation statt.}
 
-\item{conn}{Ein bestehendes PostgreSQL-Connection-Objekt. Wenn \code{NULL}, wird eine neue Verbindung aufgebaut.
-Im interaktiven Modus wird das Passwort für den Produktnutzer abgefragt, wenn keine Verbindung übergeben wird.}
+\item{con}{Ein bestehendes PostgreSQL-Verbindungsobjekt. Wenn \code{NULL}, wird eine neue Verbindung aufgebaut.}
 
-\item{keys_postgres}{Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn \code{conn = NULL}).
-Die Liste muss folgende Einträge enthalten: \code{password}, \code{user}, \code{dbname}, \code{host}, \code{port}.}
+\item{keys_postgres}{Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn \code{con = NULL}).
+Erforderliche Felder: \code{password}, \code{user}, \code{dbname}, \code{host}, \code{port}.}
 
-\item{update_available_tables}{Logisch. Wenn \code{TRUE}, werden \strong{alle} angegebenen Tabellen vor dem Einlesen
-aus der Produktion gezogen. Wenn \code{FALSE} (Standard), werden nur Tabellen gezogen, die lokal
-noch \strong{nicht} existieren.}
+\item{update_available_tables}{Logisch. Wenn \code{TRUE}, werden alle angegebenen Tabellen aus der Produktion
+geladen. Wenn \code{FALSE} (Standard), werden nur Tabellen geladen, die lokal fehlen.}
 
-\item{ssh_key_path}{Pfad zum SSH-Schlüssel für die Verbindung zur Produktionsumgebung (wird beim Ziehen der Daten benötigt).}
+\item{ssh_key_path}{Pfad zum SSH-Schlüssel für den Zugriff auf die Produktionsdatenbank.}
+
+\item{local_dbname, }{local_host, local_port, local_user, local_pw Parameter zur Konfiguration der lokalen Datenbankverbindung.}
+
+\item{load_in_memory}{Logisch. Wird aktuell nicht genutzt und ist standardmäßig \code{FALSE}.}
 }
 \value{
-Gibt entweder das bestehende Connection-Objekt zurück (im Server-Modus) oder eine neue Verbindung,
-wenn eine hergestellt wird. Wenn keine Tabellen angegeben sind, wird \code{NULL} zurückgegeben.
+Gibt ein Verbindungsobjekt zur lokalen Datenbank zurück, sofern eine neue Verbindung aufgebaut wurde.
+Gibt \code{NULL} zurück, wenn keine Tabellen angegeben sind und keine neue Verbindung erforderlich ist.
 }
 \description{
-Diese Funktion stellt eine Verbindung zu einer PostgreSQL-Datenbank her. Wenn im interaktiven Modus keine bestehende
-Verbindung übergeben wird, wird das Passwort für den Produktnutzer abgefragt und eine neue Verbindung aufgebaut.
-Es können Tabellen aus der Produktionsumgebung synchronisiert werden, wenn sie in der lokalen Datenbank fehlen.
+Diese Funktion stellt eine Verbindung zu einer lokalen PostgreSQL-Datenbank her. Optional können angegebene
+Tabellen aus der Produktionsumgebung geladen werden – entweder vollständig oder nur, wenn sie lokal noch nicht vorhanden sind.
 }
 \details{
+Die Funktion kann sowohl interaktiv (z. B. in RStudio) als auch im Server-Kontext verwendet werden.
 \itemize{
-\item Im interaktiven Modus wird eine Verbindung zur lokalen PostgreSQL-Datenbank hergestellt und das Passwort für den Produktnutzer abgefragt.
-\item Im Server-Modus wird nur eine Connection zurückgegeben, wenn keine übergebene Verbindung vorhanden ist.
-\item Wenn \code{update_available_tables = FALSE}, wird geprüft, welche Tabellen lokal fehlen. Nur diese werden aus der Produktionsumgebung gezogen.
-\item Wenn \code{update_available_tables = TRUE}, werden alle angegebenen Tabellen aus der Produktion synchronisiert.
-\item Die Tabellen werden mithilfe der Funktion \code{postgres_pull_production_tables()} aus der Produktionsumgebung abgerufen.
+\item Im interaktiven Modus wird bei fehlender Verbindung das Passwort für den lokalen Datenbanknutzer abgefragt.
+\item Im Server-Modus wird nur eine Verbindung aufgebaut, wenn keine übergeben wurde.
+\item Wenn Tabellen angegeben sind, wird geprüft, ob sie lokal bereits existieren (außer bei \code{update_available_tables = TRUE}).
+\item Fehlende oder zu aktualisierende Tabellen werden automatisch aus der Produktionsumgebung übernommen.
 }
 }
 \examples{
 \dontrun{
-  # Verbinde dich mit der lokalen DB und lade fehlende Tabellen
-  conn <- postgres_connect_and_update_local(
+  # Verbindung herstellen und nur fehlende Tabellen laden
+  con <- postgres_connect_and_update_local(
     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
     update_available_tables = FALSE
   )
 }
-
-}
-\seealso{
-\code{\link[=postgres_connect]{postgres_connect()}}, \code{\link[=postgres_pull_production_tables]{postgres_pull_production_tables()}}
 }

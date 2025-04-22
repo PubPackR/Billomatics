@@ -5,54 +5,68 @@
 \title{postgres_connect}
 \usage{
 postgres_connect(
+  local_host = "localhost",
+  local_port = 5432,
+  local_user = "postgres",
+  local_dbname = "studyflix_local",
   postgres_keys = NULL,
   local_pw = NULL,
   ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem"
 )
 }
 \arguments{
-\item{postgres_keys}{A named list or object containing credentials for production use. The elements should include:
+\item{local_host}{Hostname der lokalen Datenbank. Standard ist \code{"localhost"}.}
+
+\item{local_port}{Port der lokalen Datenbank. Standard ist \code{5432}.}
+
+\item{local_user}{Benutzername für die lokale Datenbank. Standard ist \code{"postgres"}.}
+
+\item{local_dbname}{Name der lokalen Datenbank. Standard ist \code{"studyflix_local"}.}
+
+\item{postgres_keys}{Ein benannter Vektor oder eine Liste mit Produktions-Zugangsdaten in folgender Reihenfolge:
 \itemize{
-\item \code{postgres_keys[[1]]}: Password for the database.
-\item \code{postgres_keys[[2]]}: Username for the database.
-\item \code{postgres_keys[[3]]}: Database name.
-\item \code{postgres_keys[[4]]}: Host of the database.
-\item \code{postgres_keys[[5]]}: Port for the database connection.
+\item \code{postgres_keys[[1]]}: Passwort
+\item \code{postgres_keys[[2]]}: Benutzername
+\item \code{postgres_keys[[3]]}: Name der Datenbank
+\item \code{postgres_keys[[4]]}: Hostname
+\item \code{postgres_keys[[5]]}: Port (als Zahl)
 }}
 
-\item{local_pw}{A password for the local database connection. This is required in interactive mode if not provided.}
+\item{local_pw}{Optionales Passwort für die lokale Datenbankverbindung. Wird in interaktiver Umgebung abgefragt, falls nicht angegeben.}
 
-\item{ssl_cert_path}{Path to the SSL certificate file used for the secure connection in production. Default is set to \code{"../../metabase-data/postgres/eu-central-1-bundle.pem"}.}
+\item{ssl_cert_path}{Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist \code{"../../metabase-data/postgres/eu-central-1-bundle.pem"}.}
 }
 \value{
-A \code{DBI} connection object if the connection is successful. Stops with an error otherwise.
+Ein \code{DBIConnection}-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
 }
 \description{
-Establishes a connection to a PostgreSQL database, either locally or to a production database, based on the environment.
-In interactive mode, it connects to a local database. In production, it uses secure credentials and SSL for a secure connection.
+Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).
 }
 \details{
 \itemize{
-\item The function determines whether to connect to the local database or a production PostgreSQL database based on the environment (\code{interactive()} check).
-\item In interactive mode, the user will be prompted to enter a password for the local database.
-\item In production mode, secure credentials are retrieved from the \code{postgres_keys} argument, and SSL is enabled for the connection.
-\item The function stops with a custom error message if the connection fails.
+\item In interaktiven Sessions (\code{interactive() == TRUE}) wird eine Verbindung zur lokalen PostgreSQL-Datenbank aufgebaut.
+\itemize{
+\item Existiert die angegebene lokale Datenbank nicht, wird sie automatisch erstellt.
+\item Falls \code{local_pw} nicht angegeben ist, wird das Passwort via \code{getPass::getPass()} sicher abgefragt.
+}
+\item In nicht-interaktiven Sessions (z. B. auf Servern) wird die Verbindung zur Produktionsdatenbank aufgebaut – mit SSL-Verschlüsselung und übergebener Zertifikatsdatei.
+\item Verbindungsfehler lösen einen spezifischen Fehler mit erklärender Meldung aus.
 }
 }
 \examples{
 \dontrun{
-# Connect to local PostgreSQL database in interactive mode
-connection <- postgres_connect(local_pw = "local_password")
+# Interaktive Verbindung zur lokalen Datenbank
+con_local <- postgres_connect(local_pw = "dein_passwort")
 
-# Connect to production PostgreSQL database using credentials
-postgres_keys <- list(
-  "prod_password",
+# Verbindung zur Produktionsdatenbank (nicht interaktiv)
+keys <- list(
+  "prod_pw",
   "prod_user",
-  "prod_dbname",
+  "prod_db",
   "prod_host",
   5432
 )
-connection_prod <- postgres_connect(postgres_keys = postgres_keys)
+con_prod <- postgres_connect(postgres_keys = keys)
 }
 
 }

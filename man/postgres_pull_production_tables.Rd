@@ -6,24 +6,23 @@
 \usage{
 postgres_pull_production_tables(
   tables = NULL,
-  target = c("memory", "local_postgres"),
   ssh_key_path = NULL,
   local_dbname = "studyflix_local",
   local_host = "localhost",
   local_port = 5432,
   local_user = "postgres",
   local_password = NULL,
-  local_password_is_product = TRUE
+  load_in_memory = FALSE,
+  local_password_is_product = FALSE
 )
 }
 \arguments{
-\item{tables}{A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.If \code{NULL}, no tables are loaded and the DB connection is returned.}
-
-\item{target}{Where to store the retrieved data: either \code{"memory"} for an in-memory SQLite database or \code{"local_postgres"} for a local PostgreSQL database. If \code{NULL}, the default memory is used.}
+\item{tables}{A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote database.
+If \code{NULL}, no tables are loaded and only the database connection is returned.}
 
 \item{ssh_key_path}{File path to the private SSH key for connecting to the remote server. If \code{NULL}, a default path is used.}
 
-\item{local_dbname}{Name of the local PostgreSQL database (only used if \code{target = "local_postgres"} and default: studyflix_local).}
+\item{local_dbname}{Name of the local PostgreSQL database (used if \code{load_in_memory = FALSE}, default: "studyflix_local").}
 
 \item{local_host}{Hostname of the local PostgreSQL database (default: "localhost").}
 
@@ -32,15 +31,21 @@ postgres_pull_production_tables(
 \item{local_user}{Username for the local PostgreSQL database (default: "postgres").}
 
 \item{local_password}{Password for the local PostgreSQL database. If \code{NULL}, the production password is reused.}
+
+\item{load_in_memory}{Logical. If \code{TRUE}, the retrieved tables are stored in an in-memory SQLite database and returned as such.
+If \code{FALSE} (default), the data is written to a local PostgreSQL database.}
+
+\item{local_password_is_product}{Logical. If \code{TRUE}, assumes \code{local_password} is already the decrypted production key.}
 }
 \value{
 A database connection object:
 \itemize{
-\item If \code{target = "memory"}, returns an SQLite connection object (in-memory).
-\item If \code{target = "local_postgres"}, returns a PostgreSQL connection object (local).
+\item If \code{load_in_memory = TRUE}, returns an in-memory SQLite connection.
+\item If \code{load_in_memory = FALSE}, returns a connection to the local PostgreSQL database.
 }
 }
 \description{
-This function establishes an SSH connection to the production environment, retrieves the specified tables
-from a PostgreSQL database, and stores them either in an in-memory SQLite database or a local PostgreSQL database.
+This internal function establishes an SSH connection to the production environment, retrieves the specified tables
+from a PostgreSQL database, and stores them either in an in-memory SQLite database or in a local PostgreSQL instance.
 }
+\keyword{internal}

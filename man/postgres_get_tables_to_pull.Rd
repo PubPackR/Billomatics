@@ -4,12 +4,12 @@
 \alias{postgres_get_tables_to_pull}
 \title{Ermittelt Tabellen, die aus der Produktion gezogen werden müssen}
 \usage{
-postgres_get_tables_to_pull(tables, conn, update_available_tables)
+postgres_get_tables_to_pull(tables, con, update_available_tables)
 }
 \arguments{
 \item{tables}{Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format \code{"schema.tabelle"}.}
 
-\item{conn}{Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.}
+\item{con}{Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.}
 
 \item{update_available_tables}{Logisch. Wenn \code{TRUE}, werden alle Tabellen zurückgegeben (vollständiger Refresh).}
 }

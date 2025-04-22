@@ -575,57 +575,6 @@ postgres_drop_table <- function(con, schema, table) {
   })
 }
 
-#' postgres_list_tables
-#'
-#' Lists all tables in a specified schema, or all schemas if none is specified.
-#'
-#' @param con The database connection object, created using DBI.
-#' @param schema Optional. The schema from which to list the tables. If NULL, lists from all schemas.
-#' @return A data frame with schema and table names.
-#' @details
-#' - This function queries the `information_schema.tables` view to retrieve all user-defined base tables from the specified schema.
-#' - If no schema is specified (`schema = NULL`), it will return tables from all schemas excluding system schemas like `pg_catalog` and `information_schema`.
-#' - If no tables are found, a message will be displayed indicating that no tables are available in the specified schema or in general.
-#' - The returned data frame contains two columns: `table_schema` and `table_name`, which represent the schema and the name of the table, respectively.
-#'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' # List tables from a specific schema
-#' tables <- postgres_list_tables(connection, "public")
-#' # List tables from all schemas
-#' tables_all <- postgres_list_tables(connection)
-#' }
-#'
-#' @export
-postgres_list_tables <- function(con, schema = NULL) {
-  if (is.null(schema)) {
-    query <- "
-      SELECT table_schema, table_name
-      FROM information_schema.tables
-      WHERE table_type = 'BASE TABLE'
-        AND table_schema NOT IN ('pg_catalog', 'information_schema');"
-  } else {
-    query <- sprintf("
-      SELECT table_schema, table_name
-      FROM information_schema.tables
-      WHERE table_schema = '%s'
-        AND table_type = 'BASE TABLE';", schema)
-  }
-
-  tables <- DBI::dbGetQuery(con, query)
-
-  if (nrow(tables) == 0) {
-    message(ifelse(is.null(schema),
-                   "No user-defined tables found.",
-                   sprintf("No tables found in schema '%s'.", schema)))
-    return(NULL)
-  }
-
-  return(tables)
-}
-
 #' postgres_select
 #'
 #' Selects data from a PostgreSQL table and logs the access in raw.metadata_data_selection_log.
@@ -730,7 +679,6 @@ postgres_select <- function(con, schema, table, columns = "*", where = NULL, lim
 #' }
 #'
 #' @export
-
 postgres_log_data_selection <- function(con, original_input, success = TRUE, error_message = NA_character_) {
 
   # Infos sammeln
@@ -763,44 +711,148 @@ postgres_log_data_selection <- function(con, original_input, success = TRUE, err
   ", .con = con))
 }
 
+#' Collect Data and Log the Table Names
+#'
+#' Executes a `dbplyr` query and logs the names of all involved database tables.
+#'
+#' @param tbl Ein `dbplyr`-Lazy Query-Objekt, dessen Ergebnis abgefragt wird.
+#' @param con Die Datenbankverbindung für das Logging. Standardmäßig wird `con` aus der globalen Umgebung gezogen.
+#'
+#' @return Das Ergebnis von `dplyr::collect(tbl)`, typischerweise ein Data Frame.
+#'
+#' @details
+#' Die Funktion ermittelt Tabellen-Namen aus `tbl$lazy_query` über eine rekursive Suche.
+#' Diese Namen werden in eine Protokolltabelle geschrieben.
+#' Bei Fehlern wird dies ebenfalls protokolliert und der Fehler erneut geworfen.
+#'
+#' @examples
+#' tbl <- dplyr::tbl(con, "some_table")
+#' df <- collect_and_log(tbl)
+#'
+#' @export
+collect_and_log <- function(tbl, con = get("con", envir = globalenv())) {
+  tryCatch({
+    # Run the query
+    result <- dplyr::collect(tbl)
+
+    table_names <- suppressWarnings(extract_all_table_names(tbl$lazy_query))
+
+    # Log each table
+    for (tbl_name in unique(table_names)) {
+      Billomatics::postgres_log_data_selection(
+        con = con,
+        original_input = tbl_name,
+        success = TRUE
+      )
+    }
+
+    return(result)
+
+  }, error = function(e) {
+    # Attempt to extract table names from lazy_query$table_names if it exists
+    table_names <- suppressWarnings(extract_all_table_names(tbl$lazy_query))
+
+    for (tbl_name in unique(table_names)) {
+      Billomatics::postgres_log_data_selection(
+        con = con,
+        original_input = tbl_name,
+        success = FALSE,
+        error_message = conditionMessage(e)
+      )
+    }
+
+    stop(e)
+  })
+}
+
+#' Extract All Table Names from a Lazy Query Object
+#'
+#' Rekursiv alle Tabellen-Namen aus einem `lazy_query`-Objekt extrahieren.
+#'
+#' @param x Das `lazy_query`-Objekt eines `tbl`.
+#' @return Ein Character-Vektor mit eindeutigen Tabellennamen.
+#'
+#' @keywords internal
+extract_all_table_names <- function(x) {
+  result <- list()
+
+  recursive_search(x)
+
+  if (length(result) == 0) {
+    return(as.character(x$x))
+  } else {
+    return(bind_rows(result) %>%
+             unlist(use.names = FALSE) %>%
+             unique() %>%
+             setdiff("name"))
+  }
+}
+
+#' Recursively Search for Table Names in a Nested List
+#'
+#' Durchsucht rekursiv ein List-Objekt nach `table_names` und speichert sie global.
+#'
+#' @param x Eine Liste oder ein verschachteltes Objekt aus `lazy_query`.
+#' @return Kein Rückgabewert – füllt globalen `result`-Vektor.
+#'
+#' @keywords internal
+recursive_search <- function(x) {
+  if (is.list(x)) {
+    if (!is.null(x$table_names)) {
+      result[[length(result) + 1]] <<- x$table_names
+    }
+    lapply(x, recursive_search)
+  }
+}
+
 #' postgres_connect
 #'
-#' Establishes a connection to a PostgreSQL database, either locally or to a production database, based on the environment.
-#' In interactive mode, it connects to a local database. In production, it uses secure credentials and SSL for a secure connection.
+#' Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).
 #'
-#' @param postgres_keys A named list or object containing credentials for production use. The elements should include:
-#'   - `postgres_keys[[1]]`: Password for the database.
-#'   - `postgres_keys[[2]]`: Username for the database.
-#'   - `postgres_keys[[3]]`: Database name.
-#'   - `postgres_keys[[4]]`: Host of the database.
-#'   - `postgres_keys[[5]]`: Port for the database connection.
-#' @param local_pw A password for the local database connection. This is required in interactive mode if not provided.
-#' @param ssl_cert_path Path to the SSL certificate file used for the secure connection in production. Default is set to `"../../metabase-data/postgres/eu-central-1-bundle.pem"`.
-#' @return A `DBI` connection object if the connection is successful. Stops with an error otherwise.
+#' @param local_host Hostname der lokalen Datenbank. Standard ist `"localhost"`.
+#' @param local_port Port der lokalen Datenbank. Standard ist `5432`.
+#' @param local_user Benutzername für die lokale Datenbank. Standard ist `"postgres"`.
+#' @param local_dbname Name der lokalen Datenbank. Standard ist `"studyflix_local"`.
+#' @param postgres_keys Ein benannter Vektor oder eine Liste mit Produktions-Zugangsdaten in folgender Reihenfolge:
+#'   - `postgres_keys[[1]]`: Passwort
+#'   - `postgres_keys[[2]]`: Benutzername
+#'   - `postgres_keys[[3]]`: Name der Datenbank
+#'   - `postgres_keys[[4]]`: Hostname
+#'   - `postgres_keys[[5]]`: Port (als Zahl)
+#' @param local_pw Optionales Passwort für die lokale Datenbankverbindung. Wird in interaktiver Umgebung abgefragt, falls nicht angegeben.
+#' @param ssl_cert_path Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist `"../../metabase-data/postgres/eu-central-1-bundle.pem"`.
+#'
+#' @return Ein `DBIConnection`-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
+#'
 #' @details
-#' - The function determines whether to connect to the local database or a production PostgreSQL database based on the environment (`interactive()` check).
-#' - In interactive mode, the user will be prompted to enter a password for the local database.
-#' - In production mode, secure credentials are retrieved from the `postgres_keys` argument, and SSL is enabled for the connection.
-#' - The function stops with a custom error message if the connection fails.
+#' - In interaktiven Sessions (`interactive() == TRUE`) wird eine Verbindung zur lokalen PostgreSQL-Datenbank aufgebaut.
+#'   - Existiert die angegebene lokale Datenbank nicht, wird sie automatisch erstellt.
+#'   - Falls `local_pw` nicht angegeben ist, wird das Passwort via `getPass::getPass()` sicher abgefragt.
+#' - In nicht-interaktiven Sessions (z. B. auf Servern) wird die Verbindung zur Produktionsdatenbank aufgebaut – mit SSL-Verschlüsselung und übergebener Zertifikatsdatei.
+#' - Verbindungsfehler lösen einen spezifischen Fehler mit erklärender Meldung aus.
 #'
 #' @examples
 #' \dontrun{
-#' # Connect to local PostgreSQL database in interactive mode
-#' connection <- postgres_connect(local_pw = "local_password")
+#' # Interaktive Verbindung zur lokalen Datenbank
+#' con_local <- postgres_connect(local_pw = "dein_passwort")
 #'
-#' # Connect to production PostgreSQL database using credentials
-#' postgres_keys <- list(
-#'   "prod_password",
+#' # Verbindung zur Produktionsdatenbank (nicht interaktiv)
+#' keys <- list(
+#'   "prod_pw",
 #'   "prod_user",
-#'   "prod_dbname",
+#'   "prod_db",
 #'   "prod_host",
 #'   5432
 #' )
-#' connection_prod <- postgres_connect(postgres_keys = postgres_keys)
+#' con_prod <- postgres_connect(postgres_keys = keys)
 #' }
 #'
 #' @export
-postgres_connect <- function(postgres_keys = NULL,
+postgres_connect <- function(local_host = "localhost",
+                             local_port = 5432,
+                             local_user = "postgres",
+                             local_dbname = "studyflix_local",
+                             postgres_keys = NULL,
                              local_pw = NULL,
                              ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
   tryCatch({
@@ -808,15 +860,44 @@ postgres_connect <- function(postgres_keys = NULL,
 
       if (is.null(local_pw)) {
         message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
-        local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+        local_pw <- getPass::getPass("Gib das Passwort für die lokale Datenbank (Standard: Produktnutzer) ein:")
       }
+
+      # Step 1: Connect to the default 'postgres' database
+      admin_con <- tryCatch({
+        DBI::dbConnect(
+          RPostgres::Postgres(),
+          dbname = "postgres",  # default maintenance db
+          host = local_host,
+          port = local_port,
+          user = local_user,
+          password = local_pw
+        )
+      }, error = function(e) {
+        message("❌ Verbindung zum lokalen PostgreSQL-Server fehlgeschlagen.")
+        return(NULL)
+      })
+
+      # Step 2: Check if local_dbname exists
+      db_exists <- DBI::dbGetQuery(admin_con, sprintf(
+        "SELECT 1 FROM pg_database WHERE datname = '%s';", local_dbname
+      ))
+
+      # Step 3: Create the database if it doesn't exist
+      if (nrow(db_exists) == 0) {
+        message(sprintf("📦 Lokale Datenbank '%s' existiert noch nicht. Wird erstellt...", local_dbname))
+        DBI::dbExecute(admin_con, sprintf("CREATE DATABASE \"%s\";", local_dbname))
+      }
+
+      # Step 4: Close admin connection
+      DBI::dbDisconnect(admin_con)
 
       local_con <- DBI::dbConnect(
         drv = RPostgres::Postgres(),
-        dbname = "studyflix_local",
-        host = "localhost",
-        port = 5432,
-        user = "postgres",
+        dbname = local_dbname,
+        host = local_host,
+        port = local_port,
+        user = local_user,
         password = local_pw
       )
 
@@ -895,32 +976,37 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host) {
 
 #' Pull production tables from a remote PostgreSQL database via SSH
 #'
-#' This function establishes an SSH connection to the production environment, retrieves the specified tables
-#' from a PostgreSQL database, and stores them either in an in-memory SQLite database or a local PostgreSQL database.
+#' This internal function establishes an SSH connection to the production environment, retrieves the specified tables
+#' from a PostgreSQL database, and stores them either in an in-memory SQLite database or in a local PostgreSQL instance.
 #'
-#' @param tables A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote PostgreSQL database.If `NULL`, no tables are loaded and the DB connection is returned.
-#' @param target Where to store the retrieved data: either `"memory"` for an in-memory SQLite database or `"local_postgres"` for a local PostgreSQL database. If `NULL`, the default memory is used.
+#' @param tables A character vector of fully qualified table names (e.g., "schema.table") to retrieve from the remote database.
+#'               If `NULL`, no tables are loaded and only the database connection is returned.
+#' @param load_in_memory Logical. If `TRUE`, the retrieved tables are stored in an in-memory SQLite database and returned as such.
+#'                       If `FALSE` (default), the data is written to a local PostgreSQL database.
 #' @param ssh_key_path File path to the private SSH key for connecting to the remote server. If `NULL`, a default path is used.
-#' @param local_dbname Name of the local PostgreSQL database (only used if `target = "local_postgres"` and default: studyflix_local).
+#' @param local_dbname Name of the local PostgreSQL database (used if `load_in_memory = FALSE`, default: "studyflix_local").
 #' @param local_host Hostname of the local PostgreSQL database (default: "localhost").
 #' @param local_port Port of the local PostgreSQL database (default: 5432).
 #' @param local_user Username for the local PostgreSQL database (default: "postgres").
 #' @param local_password Password for the local PostgreSQL database. If `NULL`, the production password is reused.
+#' @param local_password_is_product Logical. If `TRUE`, assumes `local_password` is already the decrypted production key.
 #'
 #' @return A database connection object:
-#' - If `target = "memory"`, returns an SQLite connection object (in-memory).
-#' - If `target = "local_postgres"`, returns a PostgreSQL connection object (local).
+#' \itemize{
+#'   \item If `load_in_memory = TRUE`, returns an in-memory SQLite connection.
+#'   \item If `load_in_memory = FALSE`, returns a connection to the local PostgreSQL database.
+#' }
 #'
-#' @export
+#' @keywords internal
 postgres_pull_production_tables <- function(tables = NULL,
-                                   target = c("memory", "local_postgres"),
-                                   ssh_key_path = NULL,
-                                   local_dbname = "studyflix_local",
-                                   local_host = "localhost",
-                                   local_port = 5432,
-                                   local_user = "postgres",
-                                   local_password = NULL,
-                                   local_password_is_product = TRUE) {
+                                            ssh_key_path = NULL,
+                                            local_dbname = "studyflix_local",
+                                            local_host = "localhost",
+                                            local_port = 5432,
+                                            local_user = "postgres",
+                                            local_password = NULL,
+                                            load_in_memory = FALSE,
+                                            local_password_is_product = FALSE) {
 
   if (!interactive()) {
     warning("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -934,18 +1020,6 @@ postgres_pull_production_tables <- function(tables = NULL,
       install.packages(pkg)
     }
     library(pkg, character.only = TRUE)
-  }
-
-  if (length(target) > 1) {
-    target <- target[1]
-  }
-
-  # Validation of inputs
-  valid_targets <- c("memory", "local_postgres")
-  if (!(target %in% valid_targets)) {
-    warning(sprintf("Ungültiger target-Wert: '%s'. Erlaubt sind nur: %s",
-                    target, paste(valid_targets, collapse = ", ")))
-    return(NULL)
   }
 
   produkt_key <- NULL
@@ -977,7 +1051,7 @@ postgres_pull_production_tables <- function(tables = NULL,
       try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
     })
 
-    if (!is.null(local_password) & local_password_is_product) {
+    if(local_pwd_is_product) {
       produkt_key <- local_password
     } else {
       produkt_key <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
@@ -1077,7 +1151,7 @@ EORSCRIPT
   }
 
   # Ziel: memory
-  if (target == "memory") {
+  if (load_in_memory) {
     message("💾 Lade In-Memory-Datenbank...")
     sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
     for (table in names(tables_data)) {
@@ -1085,67 +1159,25 @@ EORSCRIPT
       DBI::dbWriteTable(sqlite_con, table_name, tables_data[[table]], overwrite = TRUE)
     }
     return(sqlite_con)
-  }
-
-  # Ziel: lokale PostgreSQL
-  if (target == "local_postgres") {
+  } else {
+    # Ziel: lokale PostgreSQL
     message("💾 Lade lokale PostgreSQL-Datenbank...")
 
-    if (is.null(local_password)) {
+    if(is.null(local_password)) {
       if (!is.null(produkt_key)) {
         local_password <- produkt_key
       } else {
-        local_password <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+        local_password <- getPass::getPass("Gib das Passwort für die lokale Datenbank (Standard: Produktnutzer) ein:")
       }
     }
 
-    # Step 1: Connect to the default 'postgres' database
-    admin_con <- tryCatch({
-      DBI::dbConnect(
-        RPostgres::Postgres(),
-        dbname = "postgres",  # default maintenance db
-        host = local_host,
-        port = local_port,
-        user = local_user,
-        password = local_password
-      )
-    }, error = function(e) {
-      message("❌ Verbindung zum lokalen PostgreSQL-Server fehlgeschlagen.")
-      return(NULL)
-    })
-
-    if (is.null(admin_con)) return(NULL)
-
-    # Step 2: Check if local_dbname exists
-    db_exists <- DBI::dbGetQuery(admin_con, sprintf(
-      "SELECT 1 FROM pg_database WHERE datname = '%s';", local_dbname
-    ))
-
-    # Step 3: Create the database if it doesn't exist
-    if (nrow(db_exists) == 0) {
-      message(sprintf("📦 Lokale Datenbank '%s' existiert noch nicht. Wird erstellt...", local_dbname))
-      DBI::dbExecute(admin_con, sprintf("CREATE DATABASE \"%s\";", local_dbname))
-    }
-
-    # Step 4: Close admin connection
-    DBI::dbDisconnect(admin_con)
-
-    # Step 5: Connect to the target database
-    local_con <- tryCatch({
-      DBI::dbConnect(
-        RPostgres::Postgres(),
-        dbname = local_dbname,
-        host = local_host,
-        port = local_port,
-        user = local_user,
-        password = local_password
-      )
-    }, error = function(e) {
-      message("❌ Verbindung zur lokalen PostgreSQL-Datenbank fehlgeschlagen.")
-      return(NULL)
-    })
-
-    if (is.null(local_con)) return(NULL)
+    postgres_connect(
+      local_host = local_host,
+      local_port = local_port,
+      local_user = local_user,
+      local_dbname = local_dbname,
+      local_pw = local_password
+    )
 
     # Step 6: Write tables
     for (table in names(tables_data)) {
@@ -1171,107 +1203,6 @@ EORSCRIPT
   return(NULL)
 }
 
-#' Load Specific Tables from PostgreSQL Database into List of DataFrames by Schema
-#'
-#' Diese Funktion verbindet sich mit einer PostgreSQL-Datenbank und lädt die angegebenen Tabellen
-#' mithilfe der Funktion `postgres_select()`. Die Tabellen werden in einer verschachtelten Liste
-#' organisiert, wobei jede Ebene dem jeweiligen Schema entspricht.
-#'
-#' Die Funktion kann in interaktiven Sitzungen automatisch eine Verbindung zur lokalen Datenbank aufbauen
-#' und – falls gewünscht – fehlende Tabellen aus der Produktionsumgebung lokal synchronisieren.
-#'
-#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
-#'        Beispiel: `c("raw.crm_leads", "analytics.dashboard_metrics")`.
-#' @param conn Ein bestehendes PostgreSQL-Connection-Objekt. Wenn `NULL`, wird eine neue Verbindung
-#'        über `postgres_connect()` hergestellt (basierend auf interaktivem Modus oder `keys_postgres`).
-#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt bei `conn = NULL`
-#'        und außerhalb des interaktiven Modus). Die Liste muss folgende Einträge enthalten:
-#'        `password`, `user`, `dbname`, `host`, `port`.
-#' @param update_available_tables Logisch. Wenn `TRUE`, werden **alle** angegebenen Tabellen vor dem Einlesen
-#'        aus der Produktion gezogen. Wenn `FALSE` (Standard), werden nur Tabellen gezogen, die lokal
-#'        noch **nicht** existieren.
-#' @param ssh_key_path Pfad zum SSH-Schlüssel für die Verbindung zur Produktionsumgebung (wird beim Ziehen der Daten benötigt).
-#'
-#' @return Eine verschachtelte Liste:
-#' - Die äußere Liste ist nach Schemanamen benannt (z. B. `"raw"`).
-#' - Jede Schema-Liste enthält DataFrames der Tabellen innerhalb dieses Schemas.
-#'
-#' @details
-#' - Im interaktiven Modus wird standardmäßig eine Verbindung zur lokalen Datenbank hergestellt.
-#'   Hierzu wird das Passwort abgefragt (sofern `local_pw` nicht direkt übergeben wird).
-#' - Wenn `update_available_tables = FALSE`, prüft die Funktion zunächst, welche Tabellen bereits
-#'   lokal in der Datenbank vorhanden sind. Nur fehlende Tabellen werden aus der Produktionsumgebung gezogen.
-#' - Die Tabelleninhalte werden mithilfe von `postgres_select()` abgerufen.
-#'
-#' @examples
-#' \dontrun{
-#'   # Nur lokal nicht vorhandene Tabellen ziehen und laden
-#'   data_list <- postgres_load_db_tables_to_list(
-#'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
-#'     update_available_tables = FALSE
-#'   )
-#' }
-#'
-#' @export
-postgres_load_db_tables_to_list <- function(
-  tables = NULL,
-  conn = NULL,
-  keys_postgres = NULL,
-  update_available_tables = FALSE,
-  ssh_key_path = NULL
-) {
-
-  if (is.null(conn)) {
-    is_connection_available <- FALSE
-
-    # Passwort abfragen, wenn keine Verbindung übergeben wurde
-    local_pw <- if (interactive()) getPass::getPass("Gib das Passwort für den Produktnutzer ein:") else NULL
-
-    if (is.null(keys_postgres) && is.null(local_pw)) {
-      stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
-    }
-
-    conn <- postgres_connect(keys_postgres, local_pw)
-  } else {
-    is_connection_available <- TRUE
-  }
-
-  if (is.null(tables)) {
-    warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
-    return(NULL)
-  }
-
-  # Produktionsdaten bei Bedarf synchronisieren
-  if (interactive()) {
-    tables_to_pull <- postgres_get_tables_to_pull(tables, conn, update_available_tables)
-    if (length(tables_to_pull) > 0) {
-      message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
-      postgres_pull_production_tables(
-        tables = tables_to_pull,
-        target = "local_postgres",
-        ssh_key_path = ssh_key_path,
-        local_dbname = "studyflix_local",
-        local_host = "localhost",
-        local_port = 5432,
-        local_user = "postgres",
-        local_password = local_pw
-      )
-    } else {
-      message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
-    }
-  }
-
-  schema_list <- postgres_load_tables_to_schema_list(tables, conn)
-
-  if(!is_connection_available) {
-    # Schließe die Verbindung, wenn sie nicht extern bereitgestellt wurde
-    DBI::dbDisconnect(conn)
-  }
-
-  # Rückgabe der Liste von Schemata mit Tabellen als DataFrames
-  return(schema_list)
-}
-
 #' Ermittelt Tabellen, die aus der Produktion gezogen werden müssen
 #'
 #' Diese Hilfsfunktion prüft basierend auf dem Parameter `update_available_tables`,
@@ -1279,20 +1210,20 @@ postgres_load_db_tables_to_list <- function(
 #' Dazu wird die aktuelle Verbindung zur lokalen Datenbank genutzt, um vorhandene Tabellen zu erkennen.
 #'
 #' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
-#' @param conn Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.
+#' @param con Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.
 #' @param update_available_tables Logisch. Wenn `TRUE`, werden alle Tabellen zurückgegeben (vollständiger Refresh).
 #'
 #' @return Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
 #'
 #' @keywords internal
-postgres_get_tables_to_pull <- function(tables, conn, update_available_tables) {
+postgres_get_tables_to_pull <- function(tables, con, update_available_tables) {
   if (update_available_tables) {
     return(tables)
   }
 
   # Tabellen in der lokalen DB abfragen
   existing_tables <- DBI::dbGetQuery(
-    conn,
+    con,
     "
     SELECT table_schema || '.' || table_name AS full_table_name
     FROM information_schema.tables
@@ -1304,115 +1235,82 @@ postgres_get_tables_to_pull <- function(tables, conn, update_available_tables) {
   return(missing_tables)
 }
 
-#' Lädt Tabellen in verschachtelte Liste nach Schema
+#' Verbindung zur lokalen PostgreSQL-Datenbank mit optionaler Tabellensynchronisation
 #'
-#' Diese Hilfsfunktion lädt die angegebenen Tabellen aus der PostgreSQL-Datenbank mithilfe von `postgres_select()`
-#' und speichert sie in einer Liste, gruppiert nach Schema. Jede Tabelle wird als DataFrame abgelegt.
+#' Diese Funktion stellt eine Verbindung zu einer lokalen PostgreSQL-Datenbank her. Optional können angegebene
+#' Tabellen aus der Produktionsumgebung geladen werden – entweder vollständig oder nur, wenn sie lokal noch nicht vorhanden sind.
 #'
-#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
-#' @param conn Eine bestehende Verbindung zur PostgreSQL-Datenbank.
+#' Die Funktion kann sowohl interaktiv (z. B. in RStudio) als auch im Server-Kontext verwendet werden.
 #'
-#' @return Eine verschachtelte Liste mit folgendem Aufbau:
-#'   - Namen der obersten Ebene sind die Schemanamen (z. B. `"raw"`).
-#'   - Jede Schema-Liste enthält benannte Einträge für jede geladene Tabelle als DataFrame.
+#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`, z. B.
+#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. Wenn `NULL`, findet keine Synchronisation statt.
+#' @param con Ein bestehendes PostgreSQL-Verbindungsobjekt. Wenn `NULL`, wird eine neue Verbindung aufgebaut.
+#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn `con = NULL`).
+#'        Erforderliche Felder: `password`, `user`, `dbname`, `host`, `port`.
+#' @param update_available_tables Logisch. Wenn `TRUE`, werden alle angegebenen Tabellen aus der Produktion
+#'        geladen. Wenn `FALSE` (Standard), werden nur Tabellen geladen, die lokal fehlen.
+#' @param ssh_key_path Pfad zum SSH-Schlüssel für den Zugriff auf die Produktionsdatenbank.
+#' @param local_dbname, local_host, local_port, local_user, local_pw Parameter zur Konfiguration der lokalen Datenbankverbindung.
+#' @param load_in_memory Logisch. Wird aktuell nicht genutzt und ist standardmäßig `FALSE`.
 #'
-#' @keywords internal
-postgres_load_tables_to_schema_list <- function(tables, conn) {
-  schema_list <- list()
-
-  for (table in tables) {
-    parts <- strsplit(table, "\\.")[[1]]
-
-    if (length(parts) != 2) {
-      warning("Ungültiges Tabellennamenformat für ", table, ". Verwende 'schema.table'.")
-      next
-    }
-
-    schema <- parts[1]
-    table_name <- parts[2]
-
-    tbl_data <- postgres_select(conn, schema, table_name)
-
-    if (!is.null(tbl_data)) {
-      schema_list[[schema]][[table_name]] <- tbl_data
-    }
-  }
-
-  return(schema_list)
-}
-
-#' Verbindung zur PostgreSQL-Datenbank herstellen und bei Bedarf lokale Tabellen aktualisieren
-#'
-#' Diese Funktion stellt eine Verbindung zu einer PostgreSQL-Datenbank her. Wenn im interaktiven Modus keine bestehende
-#' Verbindung übergeben wird, wird das Passwort für den Produktnutzer abgefragt und eine neue Verbindung aufgebaut.
-#' Es können Tabellen aus der Produktionsumgebung synchronisiert werden, wenn sie in der lokalen Datenbank fehlen.
-#'
-#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`, z. B.
-#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. Wenn keine Tabellen angegeben werden,
-#'        wird keine Synchronisation durchgeführt.
-#' @param conn Ein bestehendes PostgreSQL-Connection-Objekt. Wenn `NULL`, wird eine neue Verbindung aufgebaut.
-#'        Im interaktiven Modus wird das Passwort für den Produktnutzer abgefragt, wenn keine Verbindung übergeben wird.
-#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn `conn = NULL`).
-#'        Die Liste muss folgende Einträge enthalten: `password`, `user`, `dbname`, `host`, `port`.
-#' @param update_available_tables Logisch. Wenn `TRUE`, werden **alle** angegebenen Tabellen vor dem Einlesen
-#'        aus der Produktion gezogen. Wenn `FALSE` (Standard), werden nur Tabellen gezogen, die lokal
-#'        noch **nicht** existieren.
-#' @param ssh_key_path Pfad zum SSH-Schlüssel für die Verbindung zur Produktionsumgebung (wird beim Ziehen der Daten benötigt).
-#'
-#' @return Gibt entweder das bestehende Connection-Objekt zurück (im Server-Modus) oder eine neue Verbindung,
-#'         wenn eine hergestellt wird. Wenn keine Tabellen angegeben sind, wird `NULL` zurückgegeben.
+#' @return Gibt ein Verbindungsobjekt zur lokalen Datenbank zurück, sofern eine neue Verbindung aufgebaut wurde.
+#'         Gibt `NULL` zurück, wenn keine Tabellen angegeben sind und keine neue Verbindung erforderlich ist.
 #'
 #' @details
-#' - Im interaktiven Modus wird eine Verbindung zur lokalen PostgreSQL-Datenbank hergestellt und das Passwort für den Produktnutzer abgefragt.
-#' - Im Server-Modus wird nur eine Connection zurückgegeben, wenn keine übergebene Verbindung vorhanden ist.
-#' - Wenn `update_available_tables = FALSE`, wird geprüft, welche Tabellen lokal fehlen. Nur diese werden aus der Produktionsumgebung gezogen.
-#' - Wenn `update_available_tables = TRUE`, werden alle angegebenen Tabellen aus der Produktion synchronisiert.
-#' - Die Tabellen werden mithilfe der Funktion `postgres_pull_production_tables()` aus der Produktionsumgebung abgerufen.
+#' - Im interaktiven Modus wird bei fehlender Verbindung das Passwort für den lokalen Datenbanknutzer abgefragt.
+#' - Im Server-Modus wird nur eine Verbindung aufgebaut, wenn keine übergeben wurde.
+#' - Wenn Tabellen angegeben sind, wird geprüft, ob sie lokal bereits existieren (außer bei `update_available_tables = TRUE`).
+#' - Fehlende oder zu aktualisierende Tabellen werden automatisch aus der Produktionsumgebung übernommen.
 #'
 #' @examples
 #' \dontrun{
-#'   # Verbinde dich mit der lokalen DB und lade fehlende Tabellen
-#'   conn <- postgres_connect_and_update_local(
+#'   # Verbindung herstellen und nur fehlende Tabellen laden
+#'   con <- postgres_connect_and_update_local(
 #'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
 #'     update_available_tables = FALSE
 #'   )
 #' }
-#'
-#' @seealso [postgres_connect()], [postgres_pull_production_tables()]
-#'
-#' @importFrom getPass getPass
+#
 #' @export
-postgres_connect_and_update_local <- function(
-  tables = NULL,
-  conn = NULL,
-  keys_postgres = NULL,
-  update_available_tables = FALSE,
-  ssh_key_path = NULL
-) {
+postgres_connect_and_update_local <- function(tables = NULL,
+                                              con = NULL,
+                                              keys_postgres = NULL,
+                                              update_available_tables = FALSE,
+                                              ssh_key_path = NULL,
+                                              local_dbname = "studyflix_local",
+                                              local_host = "localhost",
+                                              local_port = 5432,
+                                              local_user = "postgres",
+                                              local_pw = NULL,
+                                              load_in_memory = FALSE) {
 
     is_connection_available <- FALSE
 
     if (interactive()) {
       message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
-      local_pw <- NULL
-      if (is.null(conn)) {
-        local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+      if (is.null(con)) {
+        if (is.null(local_pw)) {
+          local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+          local_password_is_product <- TRUE
+        } else {
+          local_password_is_product <- FALSE
+        }
         if (is.null(local_pw)) {
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
         is_connection_available <- FALSE
-        conn <- postgres_connect(postgres_keys = keys_postgres, local_pw = local_pw)
+        con <- postgres_connect(postgres_keys = keys_postgres, local_pw = local_pw)
       } else {
         is_connection_available <- TRUE
       }
     } else {
-      if (is.null(conn)) {
+      if (is.null(con)) {
         if (is.null(keys_postgres)) {
           stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
         }
         message("ℹ️ Server-Modus erkannt - Gebe nur Connection zurück")
-        conn <- postgres_connect(postgres_keys = keys_postgres)
-        return(conn)
+        con <- postgres_connect(postgres_keys = keys_postgres)
+        return(con)
       }
       message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe nichts zurück.")
       return(NULL)
@@ -1425,22 +1323,23 @@ postgres_connect_and_update_local <- function(
 
   # Produktionsdaten bei Bedarf synchronisieren
   if (interactive()) {
-    tables_to_pull <- postgres_get_tables_to_pull(tables, conn, update_available_tables)
+    tables_to_pull <- postgres_get_tables_to_pull(tables, con, update_available_tables)
     if (length(tables_to_pull) > 0) {
       message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
       postgres_pull_production_tables(
         tables = tables_to_pull,
-        target = "local_postgres",
         ssh_key_path = ssh_key_path,
-        local_dbname = "studyflix_local",
-        local_host = "localhost",
-        local_port = 5432,
-        local_user = "postgres",
-        local_password = local_pw
+        local_dbname = local_dbname,
+        local_host = local_host,
+        local_port = local_port,
+        local_user = local_user,
+        local_password = local_pw,
+        load_in_memory = FALSE,
+        local_password_is_product = local_password_is_product
       )
     } else {
       message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
     }
   }
-  return(conn)
+  return(con)
 }
