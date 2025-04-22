@@ -1051,7 +1051,7 @@ postgres_pull_production_tables <- function(tables = NULL,
       try(ssh::ssh_disconnect(ssh_session), silent = TRUE)
     })
 
-    if(local_pwd_is_product) {
+    if(local_password_is_product) {
       produkt_key <- local_password
     } else {
       produkt_key <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
