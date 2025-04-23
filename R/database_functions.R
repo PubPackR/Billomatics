@@ -1299,7 +1299,11 @@ postgres_connect_and_update_local <- function(tables = NULL,
         }
         is_connection_available <- FALSE
         con <- postgres_connect(postgres_keys = keys_postgres,
-                                local_pw = local_pw,)
+                                local_pw = local_pw,
+                                local_host = local_host,
+                                local_port = local_port,
+                                local_user = local_user,
+                                local_dbname = local_dbname)
       } else {
         is_connection_available <- TRUE
       }
