@@ -1019,7 +1019,7 @@ postgres_pull_production_tables <- function(tables = NULL,
     if (!requireNamespace(pkg, quietly = TRUE)) {
       install.packages(pkg)
     }
-    library(pkg, character.only = TRUE)
+    suppressPackageStartupMessages(library(pkg, character.only = TRUE))
   }
 
   produkt_key <- NULL
@@ -1080,6 +1080,31 @@ EORSCRIPT
     for (table in tables) {
       message(paste("📥 Versuche Tabelle zu laden:", table))
 
+      split <- strsplit(table, "\\.")[[1]]
+      schema <- split[1]
+      table_name <- split[2]
+
+      # Load Data Types
+      # Query to get column names and their data types
+      data_type_query <- sprintf("
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = '%s'
+        AND table_schema = '%s'; -- Dynamically specify the schema
+      ", table_name, schema)
+
+      data_type_query <- sprintf("
+        PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"%s\"
+      ", postgres_keys[1], postgres_keys[3], postgres_keys[2],
+         postgres_keys[4], postgres_keys[5], data_type_query)
+
+      # Execute the data types query
+      result_data_types <- ssh::ssh_exec_internal(ssh_session, data_type_query)
+      data_types <- rawToChar(result_data_types$stdout)
+      column_info_df <- parse_column_data_types(data_types)
+
+      #Load Data
+
       cmd <- sprintf(
         'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
         postgres_keys[1], postgres_keys[3], postgres_keys[2],
@@ -1107,14 +1132,7 @@ EORSCRIPT
 
       df <- tryCatch({
         tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE)
-
-        # Convert "t"/"f" columns to logical if appropriate
-        tmp_df <- lapply(tmp_df, function(col) {
-          if (all(na.omit(col) %in% c("t", "f", ""))) {
-            return(col == "t")
-          }
-          return(col)
-        })
+        tmp_df <- apply_column_types(tmp_df, column_info_df)
 
         df <- as.data.frame(tmp_df, stringsAsFactors = FALSE)
         df
@@ -1185,7 +1203,10 @@ EORSCRIPT
       schema <- split[1]
       table_name <- split[2]
 
+      DBI::dbExecute(local_con, "SET client_min_messages TO WARNING;")
       DBI::dbExecute(local_con, sprintf('CREATE SCHEMA IF NOT EXISTS "%s";', schema))
+      DBI::dbExecute(local_con, "SET client_min_messages TO NOTICE;")
+
       message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
 
       DBI::dbWriteTable(
@@ -1201,6 +1222,54 @@ EORSCRIPT
   }
 
   return(NULL)
+}
+
+parse_column_data_types <- function(raw_output_string) {
+  # Split the string into lines
+  lines <- unlist(strsplit(raw_output_string, "\n"))
+
+  # Find lines that look like column definitions (contain a "|")
+  data_lines <- grep("\\|", lines, value = TRUE)
+
+  # Remove the header and separator
+  data_lines <- data_lines[-c(1)]
+
+  # Remove footer lines like "(7 rows)"
+  data_lines <- data_lines[!grepl("^\\(", data_lines)]
+
+  # Split and trim
+  parsed <- do.call(rbind, lapply(data_lines, function(line) {
+    parts <- strsplit(line, "\\|")[[1]]
+    data.frame(
+      column_name = trimws(parts[1]),
+      data_type = trimws(parts[2]),
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  return(parsed)
+}
+
+apply_column_types <- function(df, type_info) {
+  for (i in seq_len(nrow(type_info))) {
+    col <- type_info$column_name[i]
+    type <- type_info$data_type[i]
+
+    if (!col %in% names(df)) next
+
+    df[[col]] <- switch(type,
+      "text" = as.character(df[[col]]),
+      "integer" = as.integer(df[[col]]),
+      "boolean" = ifelse(df[[col]] %in% c("t", "f"), df[[col]] == "t", NA),
+      "timestamp without time zone" = as.POSIXct(df[[col]], tz = "UTC", tryFormats = c(
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d"
+      )),
+      df[[col]]  # fallback
+    )
+  }
+  return(df)
 }
 
 #' Ermittelt Tabellen, die aus der Produktion gezogen werden müssen
