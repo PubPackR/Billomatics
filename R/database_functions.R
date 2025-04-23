@@ -1171,7 +1171,7 @@ EORSCRIPT
       }
     }
 
-    postgres_connect(
+    local_con <- postgres_connect(
       local_host = local_host,
       local_port = local_port,
       local_user = local_user,
