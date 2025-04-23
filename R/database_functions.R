@@ -1288,18 +1288,18 @@ postgres_connect_and_update_local <- function(tables = NULL,
 
     if (interactive()) {
       message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
+      local_password_is_product <- FALSE
       if (is.null(con)) {
         if (is.null(local_pw)) {
           local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
           local_password_is_product <- TRUE
-        } else {
-          local_password_is_product <- FALSE
         }
         if (is.null(local_pw)) {
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
         is_connection_available <- FALSE
-        con <- postgres_connect(postgres_keys = keys_postgres, local_pw = local_pw)
+        con <- postgres_connect(postgres_keys = keys_postgres,
+                                local_pw = local_pw,)
       } else {
         is_connection_available <- TRUE
       }
