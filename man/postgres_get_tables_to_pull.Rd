@@ -4,20 +4,20 @@
 \alias{postgres_get_tables_to_pull}
 \title{Ermittelt Tabellen, die aus der Produktion gezogen werden müssen}
 \usage{
-postgres_get_tables_to_pull(tables, con, update_available_tables)
+postgres_get_tables_to_pull(tables, con, update_local_tables)
 }
 \arguments{
 \item{tables}{Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format \code{"schema.tabelle"}.}
 
 \item{con}{Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.}
 
-\item{update_available_tables}{Logisch. Wenn \code{TRUE}, werden alle Tabellen zurückgegeben (vollständiger Refresh).}
+\item{update_local_tables}{Logisch. Wenn \code{TRUE}, werden alle Tabellen zurückgegeben (vollständiger Refresh).}
 }
 \value{
 Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
 }
 \description{
-Diese Hilfsfunktion prüft basierend auf dem Parameter \code{update_available_tables},
+Diese Hilfsfunktion prüft basierend auf dem Parameter \code{update_local_tables},
 ob alle oder nur fehlende Tabellen aus der Produktionsdatenbank geholt werden sollen.
 Dazu wird die aktuelle Verbindung zur lokalen Datenbank genutzt, um vorhandene Tabellen zu erkennen.
 }

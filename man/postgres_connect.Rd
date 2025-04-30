@@ -2,71 +2,71 @@
 % Please edit documentation in R/database_functions.R
 \name{postgres_connect}
 \alias{postgres_connect}
-\title{postgres_connect}
+\title{Connect to Local PostgreSQL Database with Optional Table Synchronization}
 \usage{
 postgres_connect(
+  postgres_keys = NULL,
+  ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
+  needed_tables = NULL,
+  con = NULL,
+  update_local_tables = FALSE,
+  ssh_key_path = NULL,
+  local_dbname = "studyflix_local",
   local_host = "localhost",
   local_port = 5432,
   local_user = "postgres",
-  local_dbname = "studyflix_local",
-  postgres_keys = NULL,
   local_pw = NULL,
-  ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem"
+  load_in_memory = FALSE,
+  local_password_is_product = FALSE
 )
 }
 \arguments{
-\item{local_host}{Hostname der lokalen Datenbank. Standard ist \code{"localhost"}.}
+\item{postgres_keys}{A list of credentials for the production database (required if \code{con = NULL} in server mode).
+Required fields: \code{password}, \code{user}, \code{dbname}, \code{host}, \code{port}.}
 
-\item{local_port}{Port der lokalen Datenbank. Standard ist \code{5432}.}
+\item{ssl_cert_path}{Path to the SSL certificate file for the database connection.}
 
-\item{local_user}{Benutzername für die lokale Datenbank. Standard ist \code{"postgres"}.}
+\item{needed_tables}{A character vector of fully qualified table names in the format \code{"schema.table"}, e.g.,
+\code{c("raw.crm_leads", "analytics.dashboard_metrics")}. If \code{NULL}, no synchronization is performed.}
 
-\item{local_dbname}{Name der lokalen Datenbank. Standard ist \code{"studyflix_local"}.}
+\item{con}{An existing PostgreSQL connection object. If \code{NULL}, a new connection will be established.}
 
-\item{postgres_keys}{Ein benannter Vektor oder eine Liste mit Produktions-Zugangsdaten in folgender Reihenfolge:
-\itemize{
-\item \code{postgres_keys[[1]]}: Passwort
-\item \code{postgres_keys[[2]]}: Benutzername
-\item \code{postgres_keys[[3]]}: Name der Datenbank
-\item \code{postgres_keys[[4]]}: Hostname
-\item \code{postgres_keys[[5]]}: Port (als Zahl)
-}}
+\item{update_local_tables}{Logical. If \code{TRUE}, all specified tables will be pulled from production.
+If \code{FALSE} (default), only missing local tables will be downloaded.}
 
-\item{local_pw}{Optionales Passwort für die lokale Datenbankverbindung. Wird in interaktiver Umgebung abgefragt, falls nicht angegeben.}
+\item{ssh_key_path}{Path to the SSH key used to access the production database.}
 
-\item{ssl_cert_path}{Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist \code{"../../metabase-data/postgres/eu-central-1-bundle.pem"}.}
+\item{local_dbname, }{local_host, local_port, local_user, local_pw Parameters for configuring the local database connection.}
+
+\item{load_in_memory}{Logical. Currently not used. Default is \code{FALSE}.}
+
+\item{local_password_is_product}{Logical. Indicates whether the local password is the same as the production password
+(only relevant for SSH-based data transfer).}
 }
 \value{
-Ein \code{DBIConnection}-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
+Returns a connection object to the local database if a new connection is established.
+If a connection is passed in via \code{con}, it is returned unchanged.
 }
 \description{
-Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).
+This function establishes a connection to a local PostgreSQL database. Optionally, it can load specified tables
+from the production environment—either always or only if they are not yet available locally.
 }
 \details{
+The function can be used interactively (e.g., in RStudio) or in a server context.
 \itemize{
-\item In interaktiven Sessions (\code{interactive() == TRUE}) wird eine Verbindung zur lokalen PostgreSQL-Datenbank aufgebaut.
-\itemize{
-\item Existiert die angegebene lokale Datenbank nicht, wird sie automatisch erstellt.
-\item Falls \code{local_pw} nicht angegeben ist, wird das Passwort via \code{getPass::getPass()} sicher abgefragt.
-}
-\item In nicht-interaktiven Sessions (z. B. auf Servern) wird die Verbindung zur Produktionsdatenbank aufgebaut – mit SSL-Verschlüsselung und übergebener Zertifikatsdatei.
-\item Verbindungsfehler lösen einen spezifischen Fehler mit erklärender Meldung aus.
+\item In interactive mode, if no connection is passed, the user will be prompted to enter the local database password.
+\item In server mode, a connection will only be established if \code{con} is \code{NULL}.
+\item If tables are specified, the function checks whether they already exist locally (unless \code{update_local_tables = TRUE}).
+\item Missing or outdated tables will be automatically synchronized from the production environment.
 }
 }
 \examples{
 \dontrun{
-# Interaktive Verbindung zur lokalen Datenbank
-con_local <- postgres_connect(local_pw = "dein_passwort")
-
-# Verbindung zur Produktionsdatenbank (nicht interaktiv)
-keys <- list(
-  "prod_pw",
-  "prod_user",
-  "prod_db",
-  "prod_host",
-  5432
-)
-con_prod <- postgres_connect(postgres_keys = keys)
+  # Connect and only download missing tables
+  con <- postgres_connect(
+    needed_tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
+    update_local_tables = FALSE
+  )
 }
 
 }

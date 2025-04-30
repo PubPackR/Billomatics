@@ -15,25 +15,49 @@ postgres_upsert_data(
 )
 }
 \arguments{
-\item{con}{Eine aktive DB-Verbindung (z.B. mit \code{DBI::dbConnect()} erstellt).}
+\item{con}{An active database connection (e.g., created with \code{DBI::dbConnect()}).}
 
-\item{schema}{Schema in der Datenbank (z.B. "raw").}
+\item{schema}{The schema name in the database (e.g., "raw").}
 
-\item{table}{Tabellenname (z.B. "my_table" oder "raw.my_table").}
+\item{table}{The table name (e.g., "my_table" or "raw.my_table").}
 
-\item{data}{Ein \code{data.frame}, das eingefügt oder aktualisiert werden soll.}
+\item{data}{A \code{data.frame} containing the data to be inserted or updated.}
 
-\item{match_cols}{Zeichenvektor mit Spaltennamen, die als Konfliktschlüssel dienen.}
+\item{match_cols}{Character vector of column names used as conflict keys.}
 
-\item{delete_missing}{Logical. Wenn \code{TRUE}, werden alle nicht mehr im DataFrame enthaltenen Einträge gelöscht (basierend auf Konfliktspalten).}
+\item{delete_missing}{Logical. If \code{TRUE}, rows that are no longer present in the data frame
+will be deleted (based on the conflict keys).}
 
-\item{returning_cols}{Optionaler Zeichenvektor mit Spalten, die nach dem Upsert zurückgegeben werden sollen.}
+\item{returning_cols}{Optional character vector of columns to return after the UPSERT.}
 }
 \value{
-Ein \code{data.frame} mit den zurückgegebenen Spalten (falls \code{returning_cols} gesetzt wurde), sonst \code{invisible(NULL)}.
+A \code{data.frame} with the returned columns (if \code{returning_cols} is set), otherwise \code{invisible(NULL)}.
 }
 \description{
-Diese Funktion führt ein UPSERT (Insert or Update) in eine PostgreSQL-Datenbank durch.
-Optional können nicht mehr vorhandene Zeilen gelöscht werden, und automatisch generierte
-IDs (z.B. serial) werden bei Bedarf zurückgegeben.
+Performs an UPSERT (insert or update) operation into a PostgreSQL table.
+Optionally, rows that no longer exist in the provided data frame can be deleted,
+and automatically generated IDs (e.g., serial) can be returned if requested.
+}
+\details{
+\itemize{
+\item If \code{match_cols} is not specified, the function looks for a typical ID column (e.g., "id").
+\item Columns in \code{data} that do not exist in the target table are ignored with a warning.
+\item Only columns other than \code{created_at}, \code{updated_at}, and \code{match_cols} are updated.
+\item A temporary table is created and used to perform the UPSERT.
+\item If \code{delete_missing = TRUE}, all entries not found in the current data based on \code{match_cols} will be deleted.
+}
+}
+\examples{
+\dontrun{
+  postgres_upsert_data(
+    con = my_connection,
+    schema = "raw",
+    table = "my_table",
+    data = my_dataframe,
+    match_cols = c("id"),
+    delete_missing = TRUE,
+    returning_cols = c("id", "updated_at")
+  )
+}
+
 }

@@ -39,19 +39,40 @@ custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
 
 #' postgres_upsert_data
 #'
-#' Diese Funktion führt ein UPSERT (Insert or Update) in eine PostgreSQL-Datenbank durch.
-#' Optional können nicht mehr vorhandene Zeilen gelöscht werden, und automatisch generierte
-#' IDs (z.B. serial) werden bei Bedarf zurückgegeben.
+#' Performs an UPSERT (insert or update) operation into a PostgreSQL table.
+#' Optionally, rows that no longer exist in the provided data frame can be deleted,
+#' and automatically generated IDs (e.g., serial) can be returned if requested.
 #'
-#' @param con Eine aktive DB-Verbindung (z.B. mit `DBI::dbConnect()` erstellt).
-#' @param schema Schema in der Datenbank (z.B. "raw").
-#' @param table Tabellenname (z.B. "my_table" oder "raw.my_table").
-#' @param data Ein `data.frame`, das eingefügt oder aktualisiert werden soll.
-#' @param match_cols Zeichenvektor mit Spaltennamen, die als Konfliktschlüssel dienen.
-#' @param delete_missing Logical. Wenn `TRUE`, werden alle nicht mehr im DataFrame enthaltenen Einträge gelöscht (basierend auf Konfliktspalten).
-#' @param returning_cols Optionaler Zeichenvektor mit Spalten, die nach dem Upsert zurückgegeben werden sollen.
+#' @param con An active database connection (e.g., created with `DBI::dbConnect()`).
+#' @param schema The schema name in the database (e.g., "raw").
+#' @param table The table name (e.g., "my_table" or "raw.my_table").
+#' @param data A `data.frame` containing the data to be inserted or updated.
+#' @param match_cols Character vector of column names used as conflict keys.
+#' @param delete_missing Logical. If `TRUE`, rows that are no longer present in the data frame
+#'        will be deleted (based on the conflict keys).
+#' @param returning_cols Optional character vector of columns to return after the UPSERT.
 #'
-#' @return Ein `data.frame` mit den zurückgegebenen Spalten (falls `returning_cols` gesetzt wurde), sonst `invisible(NULL)`.
+#' @return A `data.frame` with the returned columns (if `returning_cols` is set), otherwise `invisible(NULL)`.
+#'
+#' @details
+#' - If `match_cols` is not specified, the function looks for a typical ID column (e.g., "id").
+#' - Columns in `data` that do not exist in the target table are ignored with a warning.
+#' - Only columns other than `created_at`, `updated_at`, and `match_cols` are updated.
+#' - A temporary table is created and used to perform the UPSERT.
+#' - If `delete_missing = TRUE`, all entries not found in the current data based on `match_cols` will be deleted.
+#'
+#' @examples
+#' \dontrun{
+#'   postgres_upsert_data(
+#'     con = my_connection,
+#'     schema = "raw",
+#'     table = "my_table",
+#'     data = my_dataframe,
+#'     match_cols = c("id"),
+#'     delete_missing = TRUE,
+#'     returning_cols = c("id", "updated_at")
+#'   )
+#' }
 #'
 #' @export
 postgres_upsert_data <- function(con, schema, table, data,
@@ -466,202 +487,87 @@ collect_and_log <- function(tbl, con = get("con", envir = globalenv())) {
   })
 }
 
-#' postgres_connect
+#' Connect to Local PostgreSQL Database with Optional Table Synchronization
 #'
-#' Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).
+#' This function establishes a connection to a local PostgreSQL database. Optionally, it can load specified tables
+#' from the production environment—either always or only if they are not yet available locally.
 #'
-#' @param local_host Hostname der lokalen Datenbank. Standard ist `"localhost"`.
-#' @param local_port Port der lokalen Datenbank. Standard ist `5432`.
-#' @param local_user Benutzername für die lokale Datenbank. Standard ist `"postgres"`.
-#' @param local_dbname Name der lokalen Datenbank. Standard ist `"studyflix_local"`.
-#' @param postgres_keys Ein benannter Vektor oder eine Liste mit Produktions-Zugangsdaten in folgender Reihenfolge:
-#'   - `postgres_keys[[1]]`: Passwort
-#'   - `postgres_keys[[2]]`: Benutzername
-#'   - `postgres_keys[[3]]`: Name der Datenbank
-#'   - `postgres_keys[[4]]`: Hostname
-#'   - `postgres_keys[[5]]`: Port (als Zahl)
-#' @param local_pw Optionales Passwort für die lokale Datenbankverbindung. Wird in interaktiver Umgebung abgefragt, falls nicht angegeben.
-#' @param ssl_cert_path Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist `"../../metabase-data/postgres/eu-central-1-bundle.pem"`.
+#' The function can be used interactively (e.g., in RStudio) or in a server context.
 #'
-#' @return Ein `DBIConnection`-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
+#' @param needed_tables A character vector of fully qualified table names in the format `"schema.table"`, e.g.,
+#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. If `NULL`, no synchronization is performed.
+#' @param con An existing PostgreSQL connection object. If `NULL`, a new connection will be established.
+#' @param postgres_keys A list of credentials for the production database (required if `con = NULL` in server mode).
+#'        Required fields: `password`, `user`, `dbname`, `host`, `port`.
+#' @param update_local_tables Logical. If `TRUE`, all specified tables will be pulled from production.
+#'        If `FALSE` (default), only missing local tables will be downloaded.
+#' @param ssh_key_path Path to the SSH key used to access the production database.
+#' @param ssl_cert_path Path to the SSL certificate file for the database connection.
+#' @param local_dbname, local_host, local_port, local_user, local_pw Parameters for configuring the local database connection.
+#' @param local_password_is_product Logical. Indicates whether the local password is the same as the production password
+#'        (only relevant for SSH-based data transfer).
+#' @param load_in_memory Logical. Currently not used. Default is `FALSE`.
+#'
+#' @return Returns a connection object to the local database if a new connection is established.
+#'         If a connection is passed in via `con`, it is returned unchanged.
 #'
 #' @details
-#' - In interaktiven Sessions (`interactive() == TRUE`) wird eine Verbindung zur lokalen PostgreSQL-Datenbank aufgebaut.
-#'   - Existiert die angegebene lokale Datenbank nicht, wird sie automatisch erstellt.
-#'   - Falls `local_pw` nicht angegeben ist, wird das Passwort via `getPass::getPass()` sicher abgefragt.
-#' - In nicht-interaktiven Sessions (z. B. auf Servern) wird die Verbindung zur Produktionsdatenbank aufgebaut – mit SSL-Verschlüsselung und übergebener Zertifikatsdatei.
-#' - Verbindungsfehler lösen einen spezifischen Fehler mit erklärender Meldung aus.
+#' - In interactive mode, if no connection is passed, the user will be prompted to enter the local database password.
+#' - In server mode, a connection will only be established if `con` is `NULL`.
+#' - If tables are specified, the function checks whether they already exist locally (unless `update_local_tables = TRUE`).
+#' - Missing or outdated tables will be automatically synchronized from the production environment.
 #'
 #' @examples
 #' \dontrun{
-#' # Interaktive Verbindung zur lokalen Datenbank
-#' con_local <- postgres_connect(local_pw = "dein_passwort")
-#'
-#' # Verbindung zur Produktionsdatenbank (nicht interaktiv)
-#' keys <- list(
-#'   "prod_pw",
-#'   "prod_user",
-#'   "prod_db",
-#'   "prod_host",
-#'   5432
-#' )
-#' con_prod <- postgres_connect(postgres_keys = keys)
-#' }
-#'
-#' @export
-postgres_connect <- function(local_host = "localhost",
-                             local_port = 5432,
-                             local_user = "postgres",
-                             local_dbname = "studyflix_local",
-                             postgres_keys = NULL,
-                             local_pw = NULL,
-                             ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
-  tryCatch({
-    if (interactive()) {
-
-      if (is.null(local_pw)) {
-        message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
-        local_pw <- getPass::getPass("Gib das Passwort für die lokale Datenbank (Standard: Produktnutzer) ein:")
-      }
-
-      # Step 1: Connect to the default 'postgres' database
-      admin_con <- tryCatch({
-        DBI::dbConnect(
-          RPostgres::Postgres(),
-          dbname = "postgres",  # default maintenance db
-          host = local_host,
-          port = local_port,
-          user = local_user,
-          password = local_pw
-        )
-      }, error = function(e) {
-        message("❌ Verbindung zum lokalen PostgreSQL-Server fehlgeschlagen.")
-        return(NULL)
-      })
-
-      # Step 2: Check if local_dbname exists
-      db_exists <- DBI::dbGetQuery(admin_con, sprintf(
-        "SELECT 1 FROM pg_database WHERE datname = '%s';", local_dbname
-      ))
-
-      # Step 3: Create the database if it doesn't exist
-      if (nrow(db_exists) == 0) {
-        message(sprintf("📦 Lokale Datenbank '%s' existiert noch nicht. Wird erstellt...", local_dbname))
-        DBI::dbExecute(admin_con, sprintf("CREATE DATABASE \"%s\";", local_dbname))
-      }
-
-      # Step 4: Close admin connection
-      DBI::dbDisconnect(admin_con)
-
-      local_con <- DBI::dbConnect(
-        drv = RPostgres::Postgres(),
-        dbname = local_dbname,
-        host = local_host,
-        port = local_port,
-        user = local_user,
-        password = local_pw
-      )
-
-      rm(local_pw)
-
-      message("✅ Erfolgreich mit der lokalen Datenbank verbunden (studyflix_local)")
-      return(local_con)
-    } else {
-      # 🌐 Produktionsverbindung außerhalb von interactive()
-      con <- DBI::dbConnect(
-        drv = RPostgres::Postgres(),
-        password = postgres_keys[[1]],
-        user = postgres_keys[[2]],
-        dbname = postgres_keys[[3]],
-        host = postgres_keys[[4]],
-        port = as.integer(postgres_keys[[5]]),
-        sslmode = "verify-full",
-        sslrootcert = ssl_cert_path
-      )
-      message(sprintf("✅ Erfolgreich verbunden mit PostgreSQL-DB '%s' auf Host '%s'",
-                      postgres_keys[[3]], postgres_keys[[4]]))
-      return(con)
-    }
-  }, error = function(e) {
-    stop(sprintf("❌ Verbindung zur PostgreSQL-Datenbank fehlgeschlagen: %s", e$message))
-  })
-}
-
-#' Verbindung zur lokalen PostgreSQL-Datenbank mit optionaler Tabellensynchronisation
-#'
-#' Diese Funktion stellt eine Verbindung zu einer lokalen PostgreSQL-Datenbank her. Optional können angegebene
-#' Tabellen aus der Produktionsumgebung geladen werden – entweder vollständig oder nur, wenn sie lokal noch nicht vorhanden sind.
-#'
-#' Die Funktion kann sowohl interaktiv (z. B. in RStudio) als auch im Server-Kontext verwendet werden.
-#'
-#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`, z. B.
-#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. Wenn `NULL`, findet keine Synchronisation statt.
-#' @param con Ein bestehendes PostgreSQL-Verbindungsobjekt. Wenn `NULL`, wird eine neue Verbindung aufgebaut.
-#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn `con = NULL`).
-#'        Erforderliche Felder: `password`, `user`, `dbname`, `host`, `port`.
-#' @param update_available_tables Logisch. Wenn `TRUE`, werden alle angegebenen Tabellen aus der Produktion
-#'        geladen. Wenn `FALSE` (Standard), werden nur Tabellen geladen, die lokal fehlen.
-#' @param ssh_key_path Pfad zum SSH-Schlüssel für den Zugriff auf die Produktionsdatenbank.
-#' @param local_dbname, local_host, local_port, local_user, local_pw Parameter zur Konfiguration der lokalen Datenbankverbindung.
-#' @param load_in_memory Logisch. Wird aktuell nicht genutzt und ist standardmäßig `FALSE`.
-#'
-#' @return Gibt ein Verbindungsobjekt zur lokalen Datenbank zurück, sofern eine neue Verbindung aufgebaut wurde.
-#'         Gibt `NULL` zurück, wenn keine Tabellen angegeben sind und keine neue Verbindung erforderlich ist.
-#'
-#' @details
-#' - Im interaktiven Modus wird bei fehlender Verbindung das Passwort für den lokalen Datenbanknutzer abgefragt.
-#' - Im Server-Modus wird nur eine Verbindung aufgebaut, wenn keine übergeben wurde.
-#' - Wenn Tabellen angegeben sind, wird geprüft, ob sie lokal bereits existieren (außer bei `update_available_tables = TRUE`).
-#' - Fehlende oder zu aktualisierende Tabellen werden automatisch aus der Produktionsumgebung übernommen.
-#'
-#' @examples
-#' \dontrun{
-#'   # Verbindung herstellen und nur fehlende Tabellen laden
-#'   con <- postgres_connect_and_update_local(
-#'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
-#'     update_available_tables = FALSE
+#'   # Connect and only download missing tables
+#'   con <- postgres_connect(
+#'     needed_tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
+#'     update_local_tables = FALSE
 #'   )
 #' }
-#
+#'
 #' @export
-postgres_connect_and_update_local <- function(tables = NULL,
-                                              con = NULL,
-                                              keys_postgres = NULL,
-                                              update_available_tables = FALSE,
-                                              ssh_key_path = NULL,
-                                              local_dbname = "studyflix_local",
-                                              local_host = "localhost",
-                                              local_port = 5432,
-                                              local_user = "postgres",
-                                              local_pw = NULL,
-                                              load_in_memory = FALSE,
-                                              local_password_is_product = FALSE) {
+postgres_connect <- function(postgres_keys = NULL,
+                             ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
+                             needed_tables = NULL,
+                             con = NULL,
+                             update_local_tables = FALSE,
+                             ssh_key_path = NULL,
+                             local_dbname = "studyflix_local",
+                             local_host = "localhost",
+                             local_port = 5432,
+                             local_user = "postgres",
+                             local_pw = NULL,
+                             load_in_memory = FALSE,
+                             local_password_is_product = FALSE) {
+
 
     if (interactive()) {
       message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
       if (is.null(con)) {
-        if (is.null(local_pw)) {
+        if (is.null(local_pw) | (local_pw == "")) {
           local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
           local_password_is_product <- TRUE # Wenn kein Passwort initial übergeben wird, dann ist es der Produktnutzer
         }
         if (is.null(local_pw)) {
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
-        con <- postgres_connect(postgres_keys = keys_postgres,
+        con <- postgres_connect_intern_function(postgres_keys = postgres_keys,
                                 local_pw = local_pw,
                                 local_host = local_host,
                                 local_port = local_port,
                                 local_user = local_user,
-                                local_dbname = local_dbname)
+                                local_dbname = local_dbname,
+                                ssl_cert_path = ssl_cert_path)
       }
 
     } else {
       message("ℹ️ Server-Modus erkannt - Gebe nur Connection zurück")
       if (is.null(con)) {
-        if (is.null(keys_postgres)) {
+        if (is.null(postgres_keys)) {
           stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
         }
-        con <- postgres_connect(postgres_keys = keys_postgres)
+        con <- postgres_connect_intern_function(postgres_keys = postgres_keys)
         return(con)
       }
       message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe diese zurück.")
@@ -669,7 +575,7 @@ postgres_connect_and_update_local <- function(tables = NULL,
     }
 
   # Wenn keine Tabellen angegeben sind, gebe nur die Verbindung zurück
-  if (is.null(tables)) {
+  if (is.null(needed_tables)) {
     warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
     return(con)
   }
@@ -677,18 +583,18 @@ postgres_connect_and_update_local <- function(tables = NULL,
   # Produktionsdaten bei Bedarf synchronisieren
   if (interactive()) {
     # Bestimme zu downloadende Tabellen
-    tables_to_pull <- postgres_get_tables_to_pull(tables, con, update_available_tables)
+    tables_to_pull <- postgres_get_tables_to_pull(needed_tables, con, update_local_tables)
     if (length(tables_to_pull) > 0) {
       message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
       postgres_pull_production_tables(
-        tables = tables_to_pull,
+        needed_tables = tables_to_pull,
         ssh_key_path = ssh_key_path,
         local_dbname = local_dbname,
         local_host = local_host,
         local_port = local_port,
         local_user = local_user,
         local_password = local_pw,
-        load_in_memory = FALSE,
+        load_in_memory = load_in_memory,
         local_password_is_product = local_password_is_product
       )
     } else {
@@ -985,7 +891,7 @@ EORSCRIPT
       }
     }
 
-    local_con <- postgres_connect(
+    local_con <- postgres_connect_intern_function(
       local_host = local_host,
       local_port = local_port,
       local_user = local_user,
@@ -1694,19 +1600,19 @@ apply_column_types <- function(df, type_info) {
 
 #' Ermittelt Tabellen, die aus der Produktion gezogen werden müssen
 #'
-#' Diese Hilfsfunktion prüft basierend auf dem Parameter `update_available_tables`,
+#' Diese Hilfsfunktion prüft basierend auf dem Parameter `update_local_tables`,
 #' ob alle oder nur fehlende Tabellen aus der Produktionsdatenbank geholt werden sollen.
 #' Dazu wird die aktuelle Verbindung zur lokalen Datenbank genutzt, um vorhandene Tabellen zu erkennen.
 #'
 #' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
 #' @param con Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.
-#' @param update_available_tables Logisch. Wenn `TRUE`, werden alle Tabellen zurückgegeben (vollständiger Refresh).
+#' @param update_local_tables Logisch. Wenn `TRUE`, werden alle Tabellen zurückgegeben (vollständiger Refresh).
 #'
 #' @return Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
 #'
 #' @keywords internal
-postgres_get_tables_to_pull <- function(tables, con, update_available_tables) {
-  if (update_available_tables) {
+postgres_get_tables_to_pull <- function(tables, con, update_local_tables) {
+  if (update_local_tables) {
     return(tables)
   }
 
@@ -1722,5 +1628,126 @@ postgres_get_tables_to_pull <- function(tables, con, update_available_tables) {
 
   missing_tables <- tables[!tables %in% existing_tables]
   return(missing_tables)
+}
+
+#' postgres_connect_intern_function
+#'
+#' Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).
+#'
+#' @param local_host Hostname der lokalen Datenbank. Standard ist `"localhost"`.
+#' @param local_port Port der lokalen Datenbank. Standard ist `5432`.
+#' @param local_user Benutzername für die lokale Datenbank. Standard ist `"postgres"`.
+#' @param local_dbname Name der lokalen Datenbank. Standard ist `"studyflix_local"`.
+#' @param postgres_keys Ein benannter Vektor oder eine Liste mit Produktions-Zugangsdaten in folgender Reihenfolge:
+#'   - `postgres_keys[[1]]`: Passwort
+#'   - `postgres_keys[[2]]`: Benutzername
+#'   - `postgres_keys[[3]]`: Name der Datenbank
+#'   - `postgres_keys[[4]]`: Hostname
+#'   - `postgres_keys[[5]]`: Port (als Zahl)
+#' @param local_pw Optionales Passwort für die lokale Datenbankverbindung. Wird in interaktiver Umgebung abgefragt, falls nicht angegeben.
+#' @param ssl_cert_path Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist `"../../metabase-data/postgres/eu-central-1-bundle.pem"`.
+#'
+#' @return Ein `DBIConnection`-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
+#'
+#' @details
+#' - In interaktiven Sessions (`interactive() == TRUE`) wird eine Verbindung zur lokalen PostgreSQL-Datenbank aufgebaut.
+#'   - Existiert die angegebene lokale Datenbank nicht, wird sie automatisch erstellt.
+#'   - Falls `local_pw` nicht angegeben ist, wird das Passwort via `getPass::getPass()` sicher abgefragt.
+#' - In nicht-interaktiven Sessions (z. B. auf Servern) wird die Verbindung zur Produktionsdatenbank aufgebaut – mit SSL-Verschlüsselung und übergebener Zertifikatsdatei.
+#' - Verbindungsfehler lösen einen spezifischen Fehler mit erklärender Meldung aus.
+#'
+#' @examples
+#' \dontrun{
+#' # Interaktive Verbindung zur lokalen Datenbank
+#' con_local <- postgres_connect_intern_function(local_pw = "dein_passwort")
+#'
+#' # Verbindung zur Produktionsdatenbank (nicht interaktiv)
+#' keys <- list(
+#'   "prod_pw",
+#'   "prod_user",
+#'   "prod_db",
+#'   "prod_host",
+#'   5432
+#' )
+#' con_prod <- postgres_connect_intern_function(postgres_keys = keys)
+#' }
+#'
+#' @keywords internal
+postgres_connect_intern_function <- function(local_host = "localhost",
+                             local_port = 5432,
+                             local_user = "postgres",
+                             local_dbname = "studyflix_local",
+                             postgres_keys = NULL,
+                             local_pw = NULL,
+                             ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
+  tryCatch({
+    if (interactive()) {
+
+      if (is.null(local_pw)) {
+        message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
+        local_pw <- getPass::getPass("Gib das Passwort für die lokale Datenbank (Standard: Produktnutzer) ein:")
+      }
+
+      # Step 1: Connect to the default 'postgres' database
+      admin_con <- tryCatch({
+        DBI::dbConnect(
+          RPostgres::Postgres(),
+          dbname = "postgres",  # default maintenance db
+          host = local_host,
+          port = local_port,
+          user = local_user,
+          password = local_pw
+        )
+      }, error = function(e) {
+        message("❌ Verbindung zum lokalen PostgreSQL-Server fehlgeschlagen.")
+        return(NULL)
+      })
+
+      # Step 2: Check if local_dbname exists
+      db_exists <- DBI::dbGetQuery(admin_con, sprintf(
+        "SELECT 1 FROM pg_database WHERE datname = '%s';", local_dbname
+      ))
+
+      # Step 3: Create the database if it doesn't exist
+      if (nrow(db_exists) == 0) {
+        message(sprintf("📦 Lokale Datenbank '%s' existiert noch nicht. Wird erstellt...", local_dbname))
+        DBI::dbExecute(admin_con, sprintf("CREATE DATABASE \"%s\";", local_dbname))
+      }
+
+      # Step 4: Close admin connection
+      DBI::dbDisconnect(admin_con)
+
+      local_con <- DBI::dbConnect(
+        drv = RPostgres::Postgres(),
+        dbname = local_dbname,
+        host = local_host,
+        port = local_port,
+        user = local_user,
+        password = local_pw
+      )
+
+      rm(local_pw)
+
+      message("✅ Erfolgreich mit der lokalen Datenbank verbunden (studyflix_local)")
+      return(local_con)
+    } else {
+      # 🌐 Produktionsverbindung außerhalb von interactive()
+      con <- DBI::dbConnect(
+        drv = RPostgres::Postgres(),
+        password = postgres_keys[[1]],
+        user = postgres_keys[[2]],
+        dbname = postgres_keys[[3]],
+        host = postgres_keys[[4]],
+        port = as.integer(postgres_keys[[5]]),
+        sslmode = "verify-full",
+        sslrootcert = ssl_cert_path
+      )
+      message(sprintf("✅ Erfolgreich verbunden mit PostgreSQL-DB '%s' auf Host '%s'",
+                      postgres_keys[[3]], postgres_keys[[4]]))
+      return(con)
+    }
+  }, error = function(e) {
+    stop(sprintf("❌ Verbindung zur PostgreSQL-Datenbank fehlgeschlagen: %s", e$message))
+  })
 }
 
