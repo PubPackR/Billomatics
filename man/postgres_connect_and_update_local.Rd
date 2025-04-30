@@ -15,7 +15,8 @@ postgres_connect_and_update_local(
   local_port = 5432,
   local_user = "postgres",
   local_pw = NULL,
-  load_in_memory = FALSE
+  load_in_memory = FALSE,
+  local_password_is_product = FALSE
 )
 }
 \arguments{

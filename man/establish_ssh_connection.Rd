@@ -40,3 +40,4 @@ verwendet, dessen Pfad übergeben wird. Die zugehörige Passphrase wird interakt
 \seealso{
 \code{\link[ssh:ssh]{ssh::ssh_connect()}}
 }
+\keyword{internal}

@@ -39,200 +39,143 @@ custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
 
 #' postgres_upsert_data
 #'
-#' This function performs an upsert (insert or update) operation to a PostgreSQL database. It first writes the data to a temporary table,
-#' and then performs an `INSERT INTO ... ON CONFLICT ... DO UPDATE` operation, which inserts new rows and updates existing rows based
-#' on a conflict with specified columns.
+#' Diese Funktion führt ein UPSERT (Insert or Update) in eine PostgreSQL-Datenbank durch.
+#' Optional können nicht mehr vorhandene Zeilen gelöscht werden, und automatisch generierte
+#' IDs (z.B. serial) werden bei Bedarf zurückgegeben.
 #'
-#' @param connection An active database connection object (created with DBI).
-#' @param schema The schema in which the table exists in the database.
-#' @param table The name of the table in the database. The schema can either be provided separately or as part of the table name
-#' (in the format `schema.table`).
-#' @param data A data.frame containing the data to be inserted or updated in the database.
-#' @param conflict_cols A character vector specifying one or more columns that should be checked for conflicts (defaults to "id").
-#' @return A numeric value indicating the number of affected rows (inserted or updated).
-#' @details
-#' - The function will first attempt to create a temporary table in the database using the data's column names.
-#' - Then, it will attempt to perform the upsert operation using an `INSERT INTO ... ON CONFLICT ... DO UPDATE` SQL statement.
-#' - In case of failure, an error message will be printed, and the function will return 0.
-#' - The function also logs the time taken to perform the operation, providing insight into the performance for large datasets.
+#' @param con Eine aktive DB-Verbindung (z.B. mit `DBI::dbConnect()` erstellt).
+#' @param schema Schema in der Datenbank (z.B. "raw").
+#' @param table Tabellenname (z.B. "my_table" oder "raw.my_table").
+#' @param data Ein `data.frame`, das eingefügt oder aktualisiert werden soll.
+#' @param match_cols Zeichenvektor mit Spaltennamen, die als Konfliktschlüssel dienen.
+#' @param delete_missing Logical. Wenn `TRUE`, werden alle nicht mehr im DataFrame enthaltenen Einträge gelöscht (basierend auf Konfliktspalten).
+#' @param returning_cols Optionaler Zeichenvektor mit Spalten, die nach dem Upsert zurückgegeben werden sollen.
 #'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' data <- data.frame(id = c(1, 2), name = c("Alice", "Bob"))
-#' postgres_upsert_data(connection, "public", "my_table", data)
-#' }
+#' @return Ein `data.frame` mit den zurückgegebenen Spalten (falls `returning_cols` gesetzt wurde), sonst `invisible(NULL)`.
 #'
 #' @export
-postgres_upsert_data <- function(connection, schema, table, data, conflict_cols = "id") {
+postgres_upsert_data <- function(con, schema, table, data,
+                                 match_cols = NULL,
+                                 delete_missing = FALSE,
+                                 returning_cols = NULL) {
 
-  # Check if the connection is valid
-  if (DBI::dbIsValid(connection) == FALSE) {
-    stop("Invalid database connection.")
+  # Überprüfen, ob das Argument 'data' ein DataFrame ist
+  if (!is.data.frame(data)) {
+    stop("Das Argument 'data' muss ein Data Frame sein.")
   }
 
-  # Extract schema and table if combined in `table`
-  if (grepl("\\.", table)) {
-    parts <- strsplit(table, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema <- parts[1]
-      table <- parts[2]
-    } else {
-      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
-    }
-  } else if (is.null(schema)) {
-    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
+  # Wenn 'data' keine Zeilen enthält, gibt es keine Änderungen
+  if (nrow(data) == 0) {
+    message("Hinweis: 'data' enthält keine Zeilen – es wurden keine Änderungen vorgenommen.")
+    return(data)
   }
 
-  # Temporäre Tabelle erstellen (Name mit "temp_"-Prefix)
-  temp_table <- paste0("temp_", table)
+  # Tabelle vollständig qualifizieren
+  full_table <- DBI::dbQuoteIdentifier(con, DBI::Id(schema = schema, table = table))
 
-  # Sicherstellen, dass die temporäre Tabelle auch bei einem Fehler gelöscht wird
+  # Nur Spalten beibehalten, die auch in der Zieltabelle existieren
+  colnames_data <- colnames(data)
+  table_columns <- DBI::dbListFields(con, DBI::Id(schema = schema, table = table))
+  missing_cols <- setdiff(colnames_data, table_columns)
+  if (length(missing_cols) > 0) {
+    warning("Folgende Spalten sind nicht in der Zieltabelle vorhanden und werden ignoriert: ",
+            paste(missing_cols, collapse = ", "))
+  }
+  data <- data[, intersect(colnames_data, table_columns), drop = FALSE]
+  colnames_data <- setdiff(colnames(data), c("updated_at"))  # Aktualisieren, da sich data geändert hat
+
+  # Spalten, die geupdatet werden sollen (ohne created_at und match_cols)
+  update_cols <- setdiff(colnames_data, c("created_at", "updated_at", match_cols))
+
+  # Wenn keine 'match_cols' angegeben sind, prüfen, ob es eine typische ID-Spalte gibt
+  if (is.null(match_cols)) {
+    match_cols <- intersect(colnames_data, c("id"))
+    if (length(match_cols) == 0) stop("Keine 'match_cols' angegeben und keine typische ID-Spalte gefunden.")
+  }
+
+  # Temporäre Tabelle erstellen, um die Daten zu übertragen
+  temp_table <- paste0("temp_upsert_", as.integer(Sys.time()))
+  DBI::dbWriteTable(con, temp_table, data, temporary = TRUE)
+
+  # Update-Klausel erstellen
+  update_clause <- if (length(update_cols) > 0) {
+    paste0(update_cols, " = EXCLUDED.", update_cols, collapse = ",\n  ")
+  } else {
+    ""
+  }
+
+  # Konfliktbehandlung (DO UPDATE oder DO NOTHING)
+  conflict_action <- if (length(update_cols) > 0) {
+    glue::glue("DO UPDATE SET\n  {update_clause}")
+  } else {
+    warning("Keine Spalten zum Aktualisieren vorhanden. Es wird 'DO NOTHING' verwendet.")
+    "DO NOTHING"
+  }
+
+  # Rückgabeklausel erstellen, falls angegeben
+  returning_clause <- if (!is.null(returning_cols)) {
+    paste("RETURNING", paste(returning_cols, collapse = ", "))
+  } else {
+    ""
+  }
+
+  # Die endgültige SQL-Abfrage zusammenstellen
+  query <- glue::glue("
+    INSERT INTO {full_table} ({paste(colnames_data, collapse = ', ')})
+    SELECT {paste(colnames_data, collapse = ', ')}
+    FROM {DBI::dbQuoteIdentifier(con, temp_table)}
+    ON CONFLICT ({paste(match_cols, collapse = ', ')})
+    {conflict_action}
+    {returning_clause};
+  ")
+
+  # Ausführen der Abfrage
   tryCatch({
-    # Bulk-Insert anstelle von dbWriteTable
-    # Temporäre Tabelle erstellen
-    dbExecute(connection, paste0("CREATE TEMPORARY TABLE ", temp_table, " (",
-                                 paste(names(data), collapse = ", "), ")"))
-
-    # Daten in die temporäre Tabelle einfügen
-    dbWriteTable(connection, temp_table, data, append = TRUE, row.names = FALSE)
-
-    # Spaltennamen aus dem DataFrame extrahieren
-    cols <- colnames(data)
-    cols_str <- paste(cols, collapse = ", ")
-    update_str <- paste(paste0(cols, " = EXCLUDED.", cols), collapse = ", ")
-
-    # Konflikt-Spalten als Platzhalter einfügen
-    conflict_cols_str <- paste(conflict_cols, collapse = ", ")
-
-    # Upsert-Statement (INSERT mit ON CONFLICT)
-    query <- sprintf(
-      "INSERT INTO %s.%s (%s)\n    SELECT %s FROM %s\n    ON CONFLICT (%s) DO UPDATE \n    SET %s",
-      schema, table, cols_str, cols_str, temp_table, conflict_cols_str, update_str
-    )
-
-    # Query ausführen und Zeit messen
-    start_time <- Sys.time()
-    dbExecute(connection, query)
-    end_time <- Sys.time()
-
-    # Query ausführen
-    DBI::dbExecute(connection, query)
-
-    # Erfolgsnachricht mit Ausführungszeit
-    message(paste("Upsert erfolgreich! Gesamtanzahl der Zeilen:", affected_rows,
-                  "- Dauer:", round(difftime(end_time, start_time, units = "secs"), 2), "Sekunden"))
-
-    message(paste("Upsert erfolgreich! Gesamtanzahl der Zeilen:", affected_rows))
-
-    # Erfolgreiche Rückgabe
-    return(affected_rows = affected_rows)
+    if (nzchar(returning_clause)) {
+      res <- DBI::dbSendQuery(con, query)
+      result <- DBI::dbFetch(res)
+      DBI::dbClearResult(res)
+    } else {
+      DBI::dbExecute(con, query)
+    }
   }, error = function(e) {
-    # Fehlerbehandlung: Fehler ausgeben und temporäre Tabelle löschen
-    message("Fehler beim Upsert: ", e$message)
-    return(affected_rows = 0)
-  }, finally = {
-    # Temporäre Tabelle löschen (unabhängig davon, ob ein Fehler aufgetreten ist)
-    DBI::dbExecute(connection, paste0("DROP TABLE IF EXISTS ", temp_table))
-  })
-}
-
-#' postgres_rename_table
-#'
-#' Renames an existing table in a PostgreSQL database, and optionally moves it to a different schema.
-#' If the old and new table names are in different schemas, the table will be moved to the new schema and renamed.
-#'
-#' @param con The database connection object, created using DBI.
-#' @param schema The schema where the old table is located. If not provided in `old_name`, this argument is required.
-#' @param old_name The current name of the table (can be in the format `schema.table`).
-#' @param new_name The new name for the table (can be in the format `schema.table`).
-#' @return A logical value indicating success (`TRUE`) or failure (`FALSE`). Additionally, a message will be printed
-#' indicating whether the renaming was successful or if there was an error.
-#' @details
-#' - If the `old_name` or `new_name` includes both schema and table (i.e., `schema.table` format), the schema is extracted automatically.
-#' - The function checks if the old table exists and ensures that the new table name is not already in use.
-#' - If the old and new table names are in different schemas, the function will rename and move the table across schemas.
-#' - If the old and new table names are in the same schema, the function will only rename the table.
-#'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' postgres_rename_table(connection, "public", "old_table_name", "new_table_name")
-#' }
-#'
-#' @export
-postgres_rename_table <- function(con, schema, old_name, new_name) {
-
-  # Extract schema and table if provided in old_name
-  if (grepl("\\.", old_name)) {
-    parts <- strsplit(old_name, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema_old <- parts[1]
-      old_name <- parts[2]
-    } else {
-      stop("Invalid format for `old_name`. Use 'schema.table' or provide `schema` separately.")
-    }
-  } else if (!is.null(schema)) {
-    schema_old <- schema
-  } else {
-    stop("Schema must be provided either in `old_name` or via the `schema` argument.")
-  }
-
-  # Extract schema and table if provided in new_name
-  if (grepl("\\.", new_name)) {
-    parts <- strsplit(new_name, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema_new <- parts[1]
-      new_name <- parts[2]
-    } else {
-      stop("Invalid format for `new_name`. Use 'schema.table' or only table name.")
-    }
-  } else {
-    schema_new <- schema_old
-  }
-
-  # Ensure the old table exists
-  exists_query <- sprintf("SELECT to_regclass('%s.%s');", schema_old, old_name)
-  exists_result <- DBI::dbGetQuery(con, exists_query)
-
-  if (is.null(exists_result[[1]])) {
-    stop(sprintf("Error: Table '%s.%s' does not exist.", schema_old, old_name))
-  }
-
-  # Ensure the new table name doesn't already exist
-  exists_new_query <- sprintf("SELECT to_regclass('%s.%s');", schema_new, new_name)
-  exists_new_result <- DBI::dbGetQuery(con, exists_new_query)
-
-  if (!is.null(exists_new_result[[1]])) {
-    stop(sprintf("Error: Table '%s.%s' already exists.", schema_new, new_name))
-  }
-
-  # Perform rename or move+rename if schemas differ
-  tryCatch({
-    if (schema_old == schema_new) {
-      # Just rename within same schema
-      query <- sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema_old, old_name, new_name)
-    } else {
-      # Rename and move across schemas
-      temp_rename <- paste0("temp_", as.integer(Sys.time()))
-      queries <- c(
-        sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema_old, old_name, temp_rename),
-        sprintf("ALTER TABLE %s.%s SET SCHEMA %s;", schema_old, temp_rename, schema_new),
-        sprintf("ALTER TABLE %s.%s RENAME TO %s;", schema_new, temp_rename, new_name)
+    if (grepl("no unique or exclusion constraint matching the ON CONFLICT specification",
+              e$message)) {
+      stop(
+        "Fehler beim Upsert: Für die angegebenen 'match_cols' existiert kein UNIQUE- oder PRIMARY KEY-Constraint.\n",
+        "Lösung: Lege einen eindeutigen Index auf diese Spalten an, z.B. mit:\n\n",
+        glue::glue(
+          "  CREATE UNIQUE INDEX ON {schema}.{table}({paste(match_cols, collapse = ', ')});\n"
+        )
       )
-      query <- paste(queries, collapse = " ")
+    } else {
+      stop("Fehler beim Upsert: ", e$message)
     }
-
-    DBI::dbExecute(con, query)
-    message(sprintf("✅ Table '%s.%s' renamed to '%s.%s'", schema_old, old_name, schema_new, new_name))
-    return(TRUE)
-  }, error = function(e) {
-    message("❌ Error renaming table: ", e$message)
-    return(FALSE)
   })
+
+  # Temporäre Tabelle entfernen
+  DBI::dbRemoveTable(con, temp_table)
+
+  # Optional: Löschen von nicht mehr vorhandenen Einträgen
+  if (delete_missing) {
+    quoted_match_cols <- paste(match_cols, collapse = ", ")
+    existing_keys <- unique(data[match_cols])
+    quoted_vals <- apply(existing_keys, 1, function(row) {
+      paste0("(", paste(DBI::dbQuoteLiteral(con, row), collapse = ", "), ")")
+    })
+    key_string <- paste(quoted_vals, collapse = ", ")
+
+    delete_query <- glue::glue("
+      DELETE FROM {full_table}
+      WHERE ({quoted_match_cols}) NOT IN ({key_string});
+    ")
+    DBI::dbExecute(con, delete_query)
+  }
+
+  # Das Ergebnis (die zurückgegebenen Spalten) zurückgeben
+  return(result)
 }
+
 
 #' postgres_add_metadata
 #'
@@ -331,248 +274,6 @@ postgres_read_metadata <- function(con, key) {
   }
 
   return(result)
-}
-
-
-#' postgres_add_column
-#'
-#' Adds a new column to an existing table in PostgreSQL.
-#' This function checks if the column already exists, and if not, it adds the specified column to the table with the given type.
-#'
-#' @param con The database connection object, created using DBI.
-#' @param schema The schema where the table is located.
-#' @param table The name of the table to which the column will be added.
-#' @param column_name The name of the new column to add.
-#' @param column_type The data type of the new column (e.g., "text", "integer", "boolean").
-#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
-#' @details
-#' - The function first checks if the specified column already exists in the given table and schema.
-#' - If the column does not exist, it constructs and executes an `ALTER TABLE` query to add the new column.
-#' - If the column already exists, the function raises an error and halts the operation.
-#'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' postgres_add_column(connection, "raw", "my_table", "new_column", "text")
-#' }
-#'
-#' @export
-postgres_add_column <- function(con, schema, table, column_name, column_type) {
-
-  # Extract schema and table if combined in `table`
-  if (grepl("\\.", table)) {
-    parts <- strsplit(table, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema <- parts[1]
-      table <- parts[2]
-    } else {
-      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
-    }
-  } else if (is.null(schema)) {
-    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
-  }
-
-  # Check if the column already exists in the table
-  check_query <- sprintf("
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = '%s' AND table_name = '%s' AND column_name = '%s';
-  ", schema, table, column_name)
-
-  column_exists <- DBI::dbGetQuery(con, check_query)
-
-  if (nrow(column_exists) > 0) {
-    stop(sprintf("Error: Column '%s' already exists in table '%s.%s'.", column_name, schema, table))
-  }
-
-  # Construct the query to add the new column
-  query <- sprintf("
-    ALTER TABLE %s.%s ADD COLUMN %s %s;
-  ", schema, table, column_name, column_type)
-
-  # Try to execute the query
-  tryCatch({
-    DBI::dbExecute(con, query)
-    message(sprintf("Column '%s' of type '%s' has been successfully added to '%s.%s'.", column_name, column_type, schema, table))
-    return(TRUE)  # Return TRUE on success
-  }, error = function(e) {
-    message("Error adding column: ", e$message)
-    return(FALSE)  # Return FALSE on failure
-  })
-}
-
-
-#' postgres_change_column_type
-#'
-#' Changes the data type of an existing column in a PostgreSQL table.
-#' This function allows altering the data type of a specific column in an existing table.
-#' If the column doesn't exist, an error is raised.
-#'
-#' @param con The database connection object, created using DBI.
-#' @param schema The schema where the table is located.
-#' @param table The name of the table containing the column.
-#' @param column_name The name of the column whose data type will be changed.
-#' @param new_column_type The new data type for the column (e.g., "text", "integer", "boolean").
-#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
-#' @details
-#' - The function first checks if the specified column exists in the table and schema.
-#' - If the column exists, it constructs and executes an `ALTER TABLE` query to change the column's data type.
-#' - If the column does not exist, the function raises an error and halts the operation.
-#'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' postgres_change_column_type(connection, "raw", "my_table", "my_column", "text")
-#' }
-#'
-#' @export
-postgres_change_column_type <- function(con, schema, table, column_name, new_column_type) {
-
-  # Extract schema and table if combined in `table`
-  if (grepl("\\.", table)) {
-    parts <- strsplit(table, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema <- parts[1]
-      table <- parts[2]
-    } else {
-      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
-    }
-  } else if (is.null(schema)) {
-    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
-  }
-
-  # Check if the column exists in the table
-  check_query <- sprintf("
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = '%s' AND table_name = '%s' AND column_name = '%s';
-  ", schema, table, column_name)
-
-  column_exists <- DBI::dbGetQuery(con, check_query)
-
-  if (nrow(column_exists) == 0) {
-    stop(sprintf("Error: Column '%s' does not exist in table '%s.%s'.", column_name, schema, table))
-  }
-
-  # Construct the query to change the column type
-  query <- sprintf("
-    ALTER TABLE %s.%s ALTER COLUMN %s SET DATA TYPE %s;
-  ", schema, table, column_name, new_column_type)
-
-  # Try to execute the query
-  tryCatch({
-    DBI::dbExecute(con, query)
-    message(sprintf("Column '%s' in table '%s.%s' has been successfully changed to type '%s'.", column_name, schema, table, new_column_type))
-    return(TRUE)  # Return TRUE on success
-  }, error = function(e) {
-    message("Error changing column type: ", e$message)
-    return(FALSE)  # Return FALSE on failure
-  })
-}
-
-#' postgres_create_table
-#'
-#' Creates a new table in a PostgreSQL database.
-#' This function allows creating a new table with specified column names and data types in a given schema.
-#'
-#' @param con The database connection object, created using DBI.
-#' @param schema The schema where the table will be created.
-#' @param table The name of the table to be created.
-#' @param columns A named vector where names are column names and values are data types (e.g., c("column1" = "integer", "column2" = "text")).
-#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
-#' @details
-#' - The function first checks if the schema is provided either via the `schema` argument or embedded in the `table` argument as 'schema.table'.
-#' - The table creation SQL query is dynamically constructed from the provided column names and data types.
-#' - If the table creation is successful, a success message is shown, and the function returns `TRUE`.
-#' - If any error occurs during table creation, an error message is shown, and the function returns `FALSE`.
-#'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' postgres_create_table(connection, "raw", "new_table", c("id" = "integer", "name" = "text", "created_at" = "timestamp"))
-#' }
-#'
-#' @export
-postgres_create_table <- function(con, schema, table, columns) {
-  column_definitions <- paste(names(columns), columns, collapse = ", ")
-
-  # Extract schema and table if combined in `table`
-  if (grepl("\\.", table)) {
-    parts <- strsplit(table, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema <- parts[1]
-      table <- parts[2]
-    } else {
-      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
-    }
-  } else if (is.null(schema)) {
-    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
-  }
-
-  query <- sprintf("CREATE TABLE %s.%s (%s);", schema, table, column_definitions)
-
-  tryCatch({
-    DBI::dbExecute(con, query)
-    message(sprintf("Table '%s.%s' has been successfully created.", schema, table))
-    return(TRUE)
-  }, error = function(e) {
-    message("Error creating table: ", e$message)
-    return(FALSE)
-  })
-}
-
-#' postgres_drop_table
-#'
-#' Drops a table from a PostgreSQL database.
-#' This function allows dropping an existing table from the specified schema in the database.
-#'
-#' @param con The database connection object, created using DBI.
-#' @param schema The schema where the table is located.
-#' @param table The name of the table to be dropped.
-#' @return A feedback message in the console indicating success or failure. Returns TRUE on success, FALSE on failure.
-#' @details
-#' - The function first checks if the schema is provided either via the `schema` argument or embedded in the `table` argument as 'schema.table'.
-#' - The SQL query to drop the table is constructed and executed.
-#' - If the table exists, it will be dropped. If it doesn't exist, no error will occur due to the `IF EXISTS` clause in the SQL statement.
-#' - If the operation is successful, a success message is shown, and the function returns `TRUE`.
-#' - If any error occurs during table deletion, an error message is shown, and the function returns `FALSE`.
-#'
-#' @examples
-#' \dontrun{
-#' # Example usage:
-#' connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-#' postgres_drop_table(connection, "raw", "old_table")
-#' }
-#'
-#' @export
-postgres_drop_table <- function(con, schema, table) {
-
-  # Extract schema and table if combined in `table`
-  if (grepl("\\.", table)) {
-    parts <- strsplit(table, "\\.")[[1]]
-    if (length(parts) == 2) {
-      schema <- parts[1]
-      table <- parts[2]
-    } else {
-      stop("Invalid table format. Use 'schema.table' or specify schema separately.")
-    }
-  } else if (is.null(schema)) {
-    stop("Schema must be provided either via `schema` argument or in `table` as 'schema.table'.")
-  }
-
-  query <- sprintf("DROP TABLE IF EXISTS %s.%s;", schema, table)
-
-  tryCatch({
-    DBI::dbExecute(con, query)
-    message(sprintf("Table '%s.%s' has been successfully dropped.", schema, table))
-    return(TRUE)
-  }, error = function(e) {
-    message("Error dropping table: ", e$message)
-    return(FALSE)
-  })
 }
 
 #' postgres_select
@@ -765,46 +466,6 @@ collect_and_log <- function(tbl, con = get("con", envir = globalenv())) {
   })
 }
 
-#' Extract All Table Names from a Lazy Query Object
-#'
-#' Rekursiv alle Tabellen-Namen aus einem `lazy_query`-Objekt extrahieren.
-#'
-#' @param x Das `lazy_query`-Objekt eines `tbl`.
-#' @return Ein Character-Vektor mit eindeutigen Tabellennamen.
-#'
-#' @keywords internal
-extract_all_table_names <- function(x) {
-  result <- list()
-
-  recursive_search(x)
-
-  if (length(result) == 0) {
-    return(as.character(x$x))
-  } else {
-    return(bind_rows(result) %>%
-             unlist(use.names = FALSE) %>%
-             unique() %>%
-             setdiff("name"))
-  }
-}
-
-#' Recursively Search for Table Names in a Nested List
-#'
-#' Durchsucht rekursiv ein List-Objekt nach `table_names` und speichert sie global.
-#'
-#' @param x Eine Liste oder ein verschachteltes Objekt aus `lazy_query`.
-#' @return Kein Rückgabewert – füllt globalen `result`-Vektor.
-#'
-#' @keywords internal
-recursive_search <- function(x) {
-  if (is.list(x)) {
-    if (!is.null(x$table_names)) {
-      result[[length(result) + 1]] <<- x$table_names
-    }
-    lapply(x, recursive_search)
-  }
-}
-
 #' postgres_connect
 #'
 #' Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).
@@ -926,6 +587,160 @@ postgres_connect <- function(local_host = "localhost",
   })
 }
 
+#' Verbindung zur lokalen PostgreSQL-Datenbank mit optionaler Tabellensynchronisation
+#'
+#' Diese Funktion stellt eine Verbindung zu einer lokalen PostgreSQL-Datenbank her. Optional können angegebene
+#' Tabellen aus der Produktionsumgebung geladen werden – entweder vollständig oder nur, wenn sie lokal noch nicht vorhanden sind.
+#'
+#' Die Funktion kann sowohl interaktiv (z. B. in RStudio) als auch im Server-Kontext verwendet werden.
+#'
+#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`, z. B.
+#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. Wenn `NULL`, findet keine Synchronisation statt.
+#' @param con Ein bestehendes PostgreSQL-Verbindungsobjekt. Wenn `NULL`, wird eine neue Verbindung aufgebaut.
+#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn `con = NULL`).
+#'        Erforderliche Felder: `password`, `user`, `dbname`, `host`, `port`.
+#' @param update_available_tables Logisch. Wenn `TRUE`, werden alle angegebenen Tabellen aus der Produktion
+#'        geladen. Wenn `FALSE` (Standard), werden nur Tabellen geladen, die lokal fehlen.
+#' @param ssh_key_path Pfad zum SSH-Schlüssel für den Zugriff auf die Produktionsdatenbank.
+#' @param local_dbname, local_host, local_port, local_user, local_pw Parameter zur Konfiguration der lokalen Datenbankverbindung.
+#' @param load_in_memory Logisch. Wird aktuell nicht genutzt und ist standardmäßig `FALSE`.
+#'
+#' @return Gibt ein Verbindungsobjekt zur lokalen Datenbank zurück, sofern eine neue Verbindung aufgebaut wurde.
+#'         Gibt `NULL` zurück, wenn keine Tabellen angegeben sind und keine neue Verbindung erforderlich ist.
+#'
+#' @details
+#' - Im interaktiven Modus wird bei fehlender Verbindung das Passwort für den lokalen Datenbanknutzer abgefragt.
+#' - Im Server-Modus wird nur eine Verbindung aufgebaut, wenn keine übergeben wurde.
+#' - Wenn Tabellen angegeben sind, wird geprüft, ob sie lokal bereits existieren (außer bei `update_available_tables = TRUE`).
+#' - Fehlende oder zu aktualisierende Tabellen werden automatisch aus der Produktionsumgebung übernommen.
+#'
+#' @examples
+#' \dontrun{
+#'   # Verbindung herstellen und nur fehlende Tabellen laden
+#'   con <- postgres_connect_and_update_local(
+#'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
+#'     update_available_tables = FALSE
+#'   )
+#' }
+#
+#' @export
+postgres_connect_and_update_local <- function(tables = NULL,
+                                              con = NULL,
+                                              keys_postgres = NULL,
+                                              update_available_tables = FALSE,
+                                              ssh_key_path = NULL,
+                                              local_dbname = "studyflix_local",
+                                              local_host = "localhost",
+                                              local_port = 5432,
+                                              local_user = "postgres",
+                                              local_pw = NULL,
+                                              load_in_memory = FALSE,
+                                              local_password_is_product = FALSE) {
+
+    if (interactive()) {
+      message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
+      if (is.null(con)) {
+        if (is.null(local_pw)) {
+          local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
+          local_password_is_product <- TRUE # Wenn kein Passwort initial übergeben wird, dann ist es der Produktnutzer
+        }
+        if (is.null(local_pw)) {
+          stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
+        }
+        con <- postgres_connect(postgres_keys = keys_postgres,
+                                local_pw = local_pw,
+                                local_host = local_host,
+                                local_port = local_port,
+                                local_user = local_user,
+                                local_dbname = local_dbname)
+      }
+
+    } else {
+      message("ℹ️ Server-Modus erkannt - Gebe nur Connection zurück")
+      if (is.null(con)) {
+        if (is.null(keys_postgres)) {
+          stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
+        }
+        con <- postgres_connect(postgres_keys = keys_postgres)
+        return(con)
+      }
+      message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe diese zurück.")
+      return(con)
+    }
+
+  # Wenn keine Tabellen angegeben sind, gebe nur die Verbindung zurück
+  if (is.null(tables)) {
+    warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
+    return(con)
+  }
+
+  # Produktionsdaten bei Bedarf synchronisieren
+  if (interactive()) {
+    # Bestimme zu downloadende Tabellen
+    tables_to_pull <- postgres_get_tables_to_pull(tables, con, update_available_tables)
+    if (length(tables_to_pull) > 0) {
+      message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
+      postgres_pull_production_tables(
+        tables = tables_to_pull,
+        ssh_key_path = ssh_key_path,
+        local_dbname = local_dbname,
+        local_host = local_host,
+        local_port = local_port,
+        local_user = local_user,
+        local_password = local_pw,
+        load_in_memory = FALSE,
+        local_password_is_product = local_password_is_product
+      )
+    } else {
+      message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
+    }
+  }
+  return(con)
+}
+
+################################################################################-
+# ----- Internal Functions -----
+
+#' Extract All Table Names from a Lazy Query Object
+#'
+#' Rekursiv alle Tabellen-Namen aus einem `lazy_query`-Objekt extrahieren.
+#'
+#' @param x Das `lazy_query`-Objekt eines `tbl`.
+#' @return Ein Character-Vektor mit eindeutigen Tabellennamen.
+#'
+#' @keywords internal
+extract_all_table_names <- function(x) {
+  result <- list()
+
+  recursive_search(x)
+
+  if (length(result) == 0) {
+    return(as.character(x$x))
+  } else {
+    return(bind_rows(result) %>%
+             unlist(use.names = FALSE) %>%
+             unique() %>%
+             setdiff("name"))
+  }
+}
+
+#' Recursively Search for Table Names in a Nested List
+#'
+#' Durchsucht rekursiv ein List-Objekt nach `table_names` und speichert sie global.
+#'
+#' @param x Eine Liste oder ein verschachteltes Objekt aus `lazy_query`.
+#' @return Kein Rückgabewert – füllt globalen `result`-Vektor.
+#'
+#' @keywords internal
+recursive_search <- function(x) {
+  if (is.list(x)) {
+    if (!is.null(x$table_names)) {
+      result[[length(result) + 1]] <<- x$table_names
+    }
+    lapply(x, recursive_search)
+  }
+}
+
 #' Aufbau einer SSH-Verbindung mit Keyfile und Passphrase
 #'
 #' Diese Funktion stellt eine SSH-Verbindung zu einem Remote-Host her. Dabei wird ein privater SSH-Schlüssel
@@ -954,7 +769,7 @@ postgres_connect <- function(local_host = "localhost",
 #' @seealso [ssh::ssh_connect()]
 #'
 #' @importFrom getPass getPass
-#' @export
+#' @keywords internal
 establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host) {
   if (!file.exists(ssh_key_path)) {
     stop("Die angegebene SSH-Key-Datei existiert nicht: ", ssh_key_path)
@@ -1076,34 +891,8 @@ EORSCRIPT
     result <- ssh::ssh_exec_internal(ssh_session, cmd)
     postgres_keys <- strsplit(rawToChar(result$stdout), ",")[[1]]
 
-    # Tabellen herunterladen
     for (table in tables) {
       message(paste("📥 Versuche Tabelle zu laden:", table))
-
-      split <- strsplit(table, "\\.")[[1]]
-      schema <- split[1]
-      table_name <- split[2]
-
-      # Load Data Types
-      # Query to get column names and their data types
-      data_type_query <- sprintf("
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = '%s'
-        AND table_schema = '%s'; -- Dynamically specify the schema
-      ", table_name, schema)
-
-      data_type_query <- sprintf("
-        PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"%s\"
-      ", postgres_keys[1], postgres_keys[3], postgres_keys[2],
-         postgres_keys[4], postgres_keys[5], data_type_query)
-
-      # Execute the data types query
-      result_data_types <- ssh::ssh_exec_internal(ssh_session, data_type_query)
-      data_types <- rawToChar(result_data_types$stdout)
-      column_info_df <- parse_column_data_types(data_types)
-
-      #Load Data
 
       cmd <- sprintf(
         'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
@@ -1130,9 +919,11 @@ EORSCRIPT
         next
       }
 
+      metadata <- get_table_metadata(table, ssh_session, postgres_keys)
+
       df <- tryCatch({
         tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE)
-        tmp_df <- apply_column_types(tmp_df, column_info_df)
+        tmp_df <- apply_column_types(tmp_df, metadata$data_types)
 
         df <- as.data.frame(tmp_df, stringsAsFactors = FALSE)
         df
@@ -1147,10 +938,15 @@ EORSCRIPT
       })
 
       if (!is.null(df)) {
-        tables_data[[table]] <- df
+        tables_data[[table]] <- list(
+          data = df,
+          metadata = metadata
+        )
         message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
       }
     }
+
+    functions <- get_all_functions(ssh_session, postgres_keys)
 
     if (length(failed_tables) > 0) {
       warning(sprintf(
@@ -1174,7 +970,7 @@ EORSCRIPT
     sqlite_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
     for (table in names(tables_data)) {
       table_name <- gsub("\\.", ".", table)
-      DBI::dbWriteTable(sqlite_con, table_name, tables_data[[table]], overwrite = TRUE)
+      DBI::dbWriteTable(conn = sqlite_con, name = table_name, value = tables_data[[table]], overwrite = TRUE)
     }
     return(sqlite_con)
   } else {
@@ -1197,8 +993,13 @@ EORSCRIPT
       local_pw = local_password
     )
 
+    load_functions_to_new_db(
+      con = local_con,
+      function_string = functions
+    )
+
     # Step 6: Write tables
-    for (table in names(tables_data)) {
+    for (table in tables) {
       split <- strsplit(table, "\\.")[[1]]
       schema <- split[1]
       table_name <- split[2]
@@ -1209,19 +1010,633 @@ EORSCRIPT
 
       message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
 
-      DBI::dbWriteTable(
-        conn = local_con,
-        name = DBI::Id(schema = schema, table = table_name),
-        value = tables_data[[table]],
-        overwrite = TRUE
-      )
+      tables_names <- tables
+      index_available_tables <- which(tables_names == table)[1]
+      available_tables <- tables_names[1:(index_available_tables - 1)]
+
+      write_table_with_metadata(con = local_con, schema = schema, table_name = table_name, table_data_with_meta = tables_data[[table]], available_tables = available_tables)
 
     }
-
     return(local_con)
   }
 
   return(NULL)
+}
+
+write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables) {
+
+  sql <- DBI::SQL  # macht die Funktion sql() verfügbar für glue_sql()
+
+  drop_table_query <- sprintf("
+    DROP TABLE IF EXISTS %s.%s CASCADE;
+  ", schema, table_name)
+  dbExecute(con, drop_table_query)
+
+  # Write data first
+  DBI::dbWriteTable(
+    conn = con,
+    name = DBI::Id(schema = schema, table = table_name),
+    value = table_data_with_meta$data,
+    overwrite = TRUE
+  )
+
+  # Collect metadata
+  meta <- table_data_with_meta$metadata
+
+  # Build full table ID
+  tbl_id <- DBI::Id(schema = schema, table = table_name)
+
+  schema_quoted <- DBI::dbQuoteIdentifier(con, schema)
+  table_name_quoted <- DBI::dbQuoteIdentifier(con, table_name)
+
+  # PRIMARY KEY
+  if (!is.null(meta$primary_keys) && nrow(meta$primary_keys) > 0) {
+    # Tabelle und Spalten korrekt zitieren
+    columns <- meta$primary_keys$column
+    columns <- columns[-1]  # Entfernen des ersten Elements, falls nötig
+    for (col in columns) {
+      # Spaltennamen mit dbQuoteIdentifier zitieren
+      pk_cols <- DBI::dbQuoteIdentifier(con, col)
+
+      # Erstellen der SQL-Abfrage mit glue_sql
+      query <- glue::glue_sql(
+        "ALTER TABLE {schema_quoted}.{table_name_quoted} ADD PRIMARY KEY ({pk_cols})",
+        .con = con
+      )
+
+      # Ausführen der Abfrage
+      tryCatch({
+        DBI::dbExecute(con, query)
+      }, error = function(e) {
+        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+        cat(sprintf("Fehler beim Erstellen eines Primary Keys: %s\n", e$message))
+      })
+    }
+  }
+
+
+  if (!is.null(meta$unique_constraints) && nrow(meta$unique_constraints) > 0) {
+    uc <- meta$unique_constraints
+
+    # Gruppiere nach constraint_name
+    uc_grouped <- split(uc, uc$constraint_name)
+
+    for (constraint_name in names(uc_grouped)) {
+      group <- uc_grouped[[constraint_name]]
+
+      # Zitiere Spaltennamen
+      quoted_cols <- paste(DBI::dbQuoteIdentifier(con, group$column_name), collapse = ", ")
+
+      # Zitiere Constraint-Name
+      quoted_constraint_name <- DBI::dbQuoteIdentifier(con, constraint_name)
+
+      # Zitiere Schema und Tabelle
+      schema_quoted <- DBI::dbQuoteIdentifier(con, schema)
+      table_name_quoted <- DBI::dbQuoteIdentifier(con, table_name)
+
+      # Baue SQL mit glue_sql
+      query <- glue::glue_sql(
+        "ALTER TABLE {schema_quoted}.{table_name_quoted}
+         ADD CONSTRAINT {quoted_constraint_name}
+         UNIQUE ({sql(quoted_cols)})",
+        .con = con
+      )
+
+      tryCatch({
+        DBI::dbExecute(con, query)
+      }, error = function(e) {
+        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+        cat(sprintf("Fehler beim Erstellen eines Unique Constraints: %s\n", e$message))
+      })
+    }
+  }
+
+  # FOREIGN KEYS
+  if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
+    for (i in seq_len(nrow(meta$foreign_keys))) {
+      fk <- meta$foreign_keys[i, ]
+      ref_table <- fk$referenced_table
+      ref_schema <- fk$referenced_schema
+      # Only apply FK if referenced table is available
+      if (paste0(ref_schema, ".", ref_table) %in% available_tables) {
+        query <- glue::glue_sql(
+          "ALTER TABLE {schema_quoted}.{table_name_quoted}
+           ADD CONSTRAINT fk_{sql(table_name)}_{sql(fk$constraint_column)}
+           FOREIGN KEY ({`fk$constraint_column`*}) REFERENCES {`ref_schema`}.{`ref_table`} ({`fk$referenced_column`*})",
+          .con = con
+        )
+        DBI::dbExecute(con, query)
+      } else {
+        warning(glue::glue("Skipping FK on {table_name}.{fk$constraint_column} → {ref_table}.{fk$referenced_column}, because {`ref_schema`}.{`ref_table`} was not downloaded before."))
+      }
+    }
+  }
+
+  # NOT NULL
+  if (!is.null(meta$not_null_columns) && nrow(meta$not_null_columns) > 0) {
+    columns <- meta$not_null_columns$column
+    columns <- columns[-1]  # Entfernen des ersten Elements, falls nötig
+    for (col in columns) {
+      # Spaltennamen mit dbQuoteIdentifier zitieren
+      not_null_cols <- DBI::dbQuoteIdentifier(con, as.character(col))
+
+      # Erstellen der SQL-Abfrage mit glue_sql
+      query <- glue::glue_sql(
+        "ALTER TABLE {schema_quoted}.{table_name_quoted} ALTER COLUMN {not_null_cols} SET NOT NULL",
+        .con = con
+      )
+
+      # Ausführen der Abfrage
+      tryCatch({
+        DBI::dbExecute(con, query)
+      }, error = function(e) {
+        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+        cat(sprintf("Fehler beim Erstellen eines Not Null Constrains: %s\n", e$message))
+      })
+    }
+  }
+
+  # DEFAULT VALUES
+  if (!is.null(meta$default_values) && nrow(meta$default_values) > 0) {
+    for (i in seq_len(nrow(meta$default_values))) {
+      col <- meta$default_values$column_name[i]
+      default <- meta$default_values$column_default[i]
+
+      # Falls notwendig, Hochkommas um Sequenznamen setzen
+      if (grepl("^nextval\\(", default)) {
+        sequence_name <- sub("^nextval\\((.*)::regclass\\)$", "\\1", default)
+        sequence_name <- gsub("'", "", sequence_name)
+        column_name <- gsub(paste0(schema, ".", table_name, "_"), "", sequence_name)
+        column_name <- gsub("_seq", "", column_name)
+
+        # Abfrage, um den Maximalwert der Spalte zu finden
+        max_value_query <- sprintf("
+          SELECT MAX(%s) AS max_value
+          FROM %s.%s;
+        ", column_name, schema, table_name)
+        max_value_result <- dbGetQuery(con, max_value_query)
+        max_value <- dplyr::coalesce(max_value_result$max_value, as.integer64(1))
+
+        sequence_creation_query <- sprintf("
+          CREATE SEQUENCE IF NOT EXISTS %s
+          OWNED BY %s.%s.%s;
+        ", sequence_name, schema, table_name, column_name)
+
+        tryCatch({
+          DBI::dbExecute(con, sequence_creation_query)
+        }, error = function(e) {
+          # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+          cat(sprintf("Fehler beim Erstellen einer Sequenz: %s\n", e$message))
+        })
+
+        # Setze den Sequenzwert auf den Maximalwert der Spalte
+        set_sequence_query <- sprintf("
+          SELECT setval('%s', %s, TRUE);
+        ", sequence_name, max_value)
+
+        tryCatch({
+          DBI::dbExecute(con, set_sequence_query)
+        }, error = function(e) {
+          # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+          cat(sprintf("Fehler beim Definieren einer Sequenz: %s\n", e$message))
+        })
+
+      }
+        # Spalten- und Tabellennamen quoten
+        col_quoted <- DBI::dbQuoteIdentifier(con, col)
+
+        #sub default string-part starting with first : with ")"
+        default <- gsub(":[^)]+", "", default)
+
+        # Default-Wert roh in SQL einfügen (kein quoting!)
+        query <- glue::glue_sql(
+          "ALTER TABLE {schema_quoted}.{table_name_quoted} ALTER COLUMN {col_quoted} SET DEFAULT {sql(default)}",
+          .con = con
+        )
+
+        tryCatch({
+          DBI::dbExecute(con, query)
+        }, error = function(e) {
+          # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+          cat(sprintf("Fehler beim Erstellen eines  DEFAULT Values: %s\n", e$message))
+        })
+    }
+  }
+
+  # INDEXES
+  if (!is.null(meta$indexes) && nrow(meta$indexes) > 0) {
+    for (i in seq_len(nrow(meta$indexes))) {
+      index_sql <- meta$indexes$indexdef[i]
+
+      # Ausführen der CREATE INDEX-Anweisung
+      if (!grepl("UNIQUE", index_sql)) {
+        tryCatch({
+          DBI::dbExecute(con, query)
+        }, error = function(e) {
+          # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+          cat(sprintf("Fehler beim Erstellen eines UNIQUE Values: %s\n", e$message))
+        })
+      }
+    }
+  }
+
+  # TABLE COMMENT
+  if (!is.null(meta$table_comment) && nrow(meta$table_comment) > 1) {
+    comment <- meta$table_comment[[1]][2]
+
+    query <- glue::glue_sql(
+      "COMMENT ON TABLE {schema_quoted}.{table_name_quoted} IS {comment};",
+      .con = con
+    )
+    tryCatch({
+      DBI::dbExecute(con, query)
+    }, error = function(e) {
+      # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+      cat(sprintf(
+        "Fehler beim Erstellen eines Table Comments: %s\n",
+        e$message
+      ))
+    })
+  }
+
+  # COLUMN COMMENTS
+  if (!is.null(meta$column_comments) && nrow(meta$column_comments) > 0) {
+    for (i in seq_len(nrow(meta$column_comments))) {
+      column <- DBI::dbQuoteIdentifier(con, meta$column_comments$column_name[i])
+      comment <- meta$column_comments$column_comment[i]
+
+      # Kommentar kann NULL sein
+      if (!is.na(comment)) {
+
+        query <- glue::glue_sql(
+          "COMMENT ON COLUMN {schema_quoted}.{table_name_quoted}.{column} IS {comment};",
+          .con = con
+        )
+
+        tryCatch({
+          DBI::dbExecute(con, query)
+        }, error = function(e) {
+          # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+          cat(sprintf("Fehler beim Erstellen eines Column Comments: %s\n", e$message))
+        })
+      }
+    }
+  }
+
+  # CHECK CONSTRAINTS
+  if (!is.null(meta$check_constraints) && nrow(meta$check_constraints) > 0) {
+    for (i in seq_len(nrow(meta$check_constraints))) {
+      constraint_name <- DBI::dbQuoteIdentifier(con, meta$check_constraints$constraint_name[i])
+      condition <- meta$check_constraints$check_condition[i]
+
+      query <- glue::glue_sql(
+        "ALTER TABLE {schema_quoted}.{table_name_quoted} ADD CONSTRAINT {`constraint_name`} CHECK ({sql(condition)});",
+        .con = con
+      )
+
+      tryCatch({
+        DBI::dbExecute(con, query)
+      }, error = function(e) {
+        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+        cat(sprintf("Fehler beim Erstellen eines CHECK Constraints: %s\n", e$message))
+      })
+    }
+  }
+
+  # TRIGGERS
+  if (!is.null(meta$triggers) && nrow(meta$triggers) > 0) {
+    for (i in seq_len(nrow(meta$triggers))) {
+      trigger_name <- DBI::dbQuoteIdentifier(con, meta$triggers$trigger_name[i])
+      timing <- meta$triggers$timing[i]  # BEFORE, AFTER, etc.
+      event <- meta$triggers$event[i]    # INSERT, UPDATE, DELETE
+      definition <- meta$triggers$definition[i]  # ganze Prozedur z. B. "EXECUTE FUNCTION ..."
+
+      # Zusammensetzen der SQL-Abfrage
+      query <- glue::glue_sql(
+        "CREATE TRIGGER {sql(meta$triggers$trigger_name[i])} {sql(timing)} {sql(event)} ON {schema_quoted}.{table_name_quoted}
+         FOR EACH ROW {SQL(definition)};",
+        .con = con
+      )
+
+      tryCatch({
+        DBI::dbExecute(con, query)
+      }, error = function(e) {
+        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+        cat(sprintf("Fehler beim Erstellen eines Triggers: %s\n", e$message))
+      })
+    }
+  }
+  return(NULL)
+}
+
+categorize_sql_string <- function(input_string) {
+  # Define known SQL functions and keywords
+  sql_functions <- c("CURRENT_TIMESTAMP", "NOW()", "COUNT", "SUM", "AVG", "MAX", "MIN")
+
+  # Check if the string is a known SQL function or keyword
+  if (input_string %in% sql_functions) {
+    return(list(type = "SQL Function/Keyword", needs_quotes = FALSE))
+  }
+
+  # Check if the string is a numeric value
+  if (grepl("\\(", input_string)) {
+    return(list(type = "Function", needs_quotes = FALSE))
+  }
+
+  # Check if the string is a numeric value
+  if (grepl("^\\d+(\\.\\d+)?$", input_string)) {
+    return(list(type = "Numeric Value", needs_quotes = FALSE))
+  }
+
+  # Check if the string represents a date/time value
+  if (grepl("^\\d{4}-\\d{2}-\\d{2}$", input_string) || grepl("^\\d{2}:\\d{2}:\\d{2}$", input_string)) {
+    return(list(type = "Date/Time Value", needs_quotes = TRUE))
+  }
+
+  # Default to string literal for general text
+  return(list(type = "String Literal", needs_quotes = TRUE))
+}
+
+get_all_functions <- function(ssh_session, postgres_keys) {
+
+  # Abfrage, um alle definierten Funktionen abzurufen
+  query <- "
+  SELECT
+      n.nspname AS schema_name,
+      p.proname AS function_name,
+      pg_catalog.pg_get_function_result(p.oid) AS return_type,
+      pg_catalog.pg_get_function_arguments(p.oid) AS arguments,
+      pg_catalog.pg_get_functiondef(p.oid) AS function_code
+  FROM
+      pg_catalog.pg_proc p
+  LEFT JOIN
+      pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+  WHERE
+      pg_catalog.pg_function_is_visible(p.oid)
+      AND n.nspname <> 'pg_catalog'
+      AND n.nspname <> 'information_schema'
+  ORDER BY
+      n.nspname, p.proname;
+  "
+
+  data_result <- execute_psql_query(query, ssh_session, postgres_keys)
+
+  # Gibt das DataFrame mit den Funktionen zurück
+  return(data_result)
+}
+
+load_functions_to_new_db <- function(function_string, con) {
+
+  functions_df <- function_string
+
+  for (i in 1:nrow(functions_df)) {
+    # Hole die Funktionsdefinition
+    function_name <- trimws(functions_df$function_name[i])
+
+    # Wenn die Funktion nicht leer ist, beginne die Definition
+    if (nchar(function_name) > 0) {
+      function_code <- functions_df$function_code[i]
+
+      # Konstruiere die vollständige Funktionsdefinition
+      while (i < nrow(functions_df) && functions_df$function_name[i + 1] == "") {
+        function_code <- paste(function_code, functions_df$function_code[i + 1])
+        i <- i + 1
+      }
+
+      # Entferne das '+' am Ende der Zeilen
+      function_code <- gsub("\\s*\\+\\s*", "\n", function_code)
+
+      # Führe die Funktionsdefinition aus
+      tryCatch({
+        dbExecute(con, function_code)
+        cat(sprintf("Function loaded: %s.%s\n", functions_df$schema_name[i], function_name))
+      }, error = function(e) {
+        cat(sprintf("Error loading function %s: %s\n", function_name, e$message))
+      })
+    }
+  }
+}
+
+parse_pg_meta <- function(text_output) {
+  lines <- unlist(strsplit(text_output, "\n"))
+  lines <- lines[!grepl("^\\(\\d+ rows?\\)", lines)]         # remove row count
+  lines <- lines[!grepl("^-+\\+", lines)]                    # remove divider line
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines)]                              # remove empty lines
+
+  if (length(lines) < 2) return(data.frame())                # no header or data
+
+  header_line <- lines[1]
+  data_lines <- lines[-1]
+
+  header <- trimws(unlist(strsplit(header_line, "\\|")))
+
+  if (length(data_lines) == 0) {
+    # return empty data.frame with column names
+    return(as.data.frame(setNames(replicate(length(header), character(0), simplify = FALSE), header)))
+  }
+
+  # Convert to data frame
+  df <- read.table(text = paste(data_lines, collapse = "\n"), quote = "", sep = "|", strip.white = TRUE, stringsAsFactors = FALSE, header = FALSE)
+  names(df) <- header
+  return(df)
+}
+
+
+# Function to execute a psql query over SSH and retrieve the result
+execute_psql_query <- function(query, ssh_session, postgres_keys) {
+  # Build the psql command with provided credentials
+  psql_command <- sprintf("PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"%s\"",
+                          postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], query)
+
+  # Execute the query over SSH
+  result <- ssh::ssh_exec_internal(ssh_session, psql_command)
+
+  # Return the result as a character string
+  data_result <- rawToChar(result$stdout)
+
+  result <- parse_pg_meta(data_result)
+  return(result)
+}
+
+# Function to retrieve all essential metadata from a table
+get_table_metadata <- function(table, ssh_session, postgres_keys) {
+
+  split <- strsplit(table, "\\.")[[1]]
+  schema <- split[1]
+  table_name <- split[2]
+
+  # Error Handling
+  tryCatch({
+    # Data Types
+    data_type_query <- sprintf("
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_name = '%s' AND table_schema = '%s';", table_name, schema)
+    data_types <- execute_psql_query(data_type_query, ssh_session, postgres_keys)
+
+    # Abfrage nur für Primary Keys
+    pk_query <- sprintf("
+      SELECT column_name
+      FROM information_schema.key_column_usage
+      WHERE table_name = '%s'
+        AND table_schema = '%s'
+        AND constraint_name LIKE '%%_pkey';", table_name, schema)
+    primary_keys <- execute_psql_query(pk_query, ssh_session, postgres_keys)
+
+    # Foreign Keys
+    fk_query <- sprintf(
+      "
+SELECT
+    tc.constraint_name,
+    tc.table_schema AS constraint_schema,
+    tc.table_name AS constraint_table,
+    kcu.column_name AS constraint_column,
+    ccu.table_schema AS referenced_schema,
+    ccu.table_name AS referenced_table,
+    ccu.column_name AS referenced_column
+FROM
+    information_schema.table_constraints AS tc
+JOIN
+    information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+        AND tc.table_name = kcu.table_name
+JOIN
+    information_schema.referential_constraints AS rc
+        ON tc.constraint_name = rc.constraint_name
+        AND tc.table_schema = rc.constraint_schema
+JOIN
+    information_schema.key_column_usage AS ccu
+        ON rc.unique_constraint_name = ccu.constraint_name
+        AND rc.unique_constraint_schema = ccu.constraint_schema
+        AND kcu.ordinal_position = ccu.ordinal_position
+WHERE
+    tc.constraint_type = 'FOREIGN KEY'
+    AND tc.table_name = '%s'
+    AND tc.table_schema = '%s';
+      ",
+      table_name,
+      schema
+    )
+    foreign_keys <- execute_psql_query(fk_query, ssh_session, postgres_keys)
+
+    # Unique Constraints
+    unique_query <- sprintf("
+  SELECT
+    tc.constraint_name,
+    kcu.column_name
+  FROM
+    information_schema.table_constraints tc
+  JOIN
+    information_schema.key_column_usage kcu
+  ON
+    tc.constraint_name = kcu.constraint_name
+  WHERE
+    tc.table_schema = '%s' AND
+    tc.table_name = '%s' AND
+    tc.constraint_type = 'UNIQUE'
+  ORDER BY
+    tc.constraint_name, kcu.ordinal_position;
+", schema, table_name)
+    unique_constraints <- execute_psql_query(unique_query, ssh_session, postgres_keys)
+
+    # Not Null Constraints
+    not_null_query <- sprintf("
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = '%s' AND table_schema = '%s' AND is_nullable = 'NO';", table_name, schema)
+    not_null_columns <- execute_psql_query(not_null_query, ssh_session, postgres_keys)
+
+    # Check Constraints
+    check_query <- sprintf("
+      SELECT
+        con.conname AS constraint_name,
+        pg_get_expr(con.conbin, con.conrelid) AS check_condition
+      FROM
+        pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+      WHERE
+        con.contype = 'c'
+        AND rel.relname = '%s'
+        AND nsp.nspname = '%s';
+    ", table_name, schema)
+    check_constraints <- execute_psql_query(check_query, ssh_session, postgres_keys)
+
+    # Default Values
+    default_query <- sprintf("
+      SELECT column_name, column_default
+      FROM information_schema.columns
+      WHERE table_name = '%s' AND table_schema = '%s' AND column_default IS NOT NULL;", table_name, schema)
+    default_values <- execute_psql_query(default_query, ssh_session, postgres_keys)
+
+    # Indexes
+    index_query <- sprintf("
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE tablename = '%s' AND schemaname = '%s';", table_name, schema)
+    indexes <- execute_psql_query(index_query, ssh_session, postgres_keys)
+
+    # Table Comments
+    table_comment_query <- sprintf("
+      SELECT obj_description(oid)
+      FROM pg_class
+      WHERE relname = '%s';", table_name)
+    table_comment <- execute_psql_query(table_comment_query, ssh_session, postgres_keys)
+
+    # Get all triggers for a given table
+    trigger_query <- sprintf("
+      SELECT
+        trigger_name,
+        event_manipulation AS event,
+        action_timing AS timing,
+        action_statement AS definition
+      FROM information_schema.triggers
+      WHERE event_object_table = '%s'
+        AND event_object_schema = '%s';", table_name, schema)
+
+    trigger_info <- execute_psql_query(trigger_query, ssh_session, postgres_keys)
+
+    # Column Comments
+    column_comment_query <- sprintf("
+      SELECT
+      a.attname AS column_name,
+      d.description AS column_comment
+      FROM
+      pg_catalog.pg_attribute a
+      JOIN
+      pg_catalog.pg_class c ON a.attrelid = c.oid
+      JOIN
+      pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+      LEFT JOIN
+      pg_catalog.pg_description d ON d.objoid = a.attrelid AND d.objsubid = a.attnum
+      WHERE
+      c.relname = '%s'
+      AND n.nspname = '%s'
+      AND a.attnum > 0
+      AND NOT a.attisdropped;", table_name, schema)
+    column_comments <- execute_psql_query(column_comment_query, ssh_session, postgres_keys)
+
+    # Combine all information into a list for easy access
+    return(list(
+      data_types = data_types,
+      primary_keys = primary_keys,
+      foreign_keys = foreign_keys,
+      unique_constraints = unique_constraints,
+      not_null_columns = not_null_columns,
+      check_constraints = check_constraints,
+      default_values = default_values,
+      indexes = indexes,
+      table_comment = table_comment,
+      triggers = trigger_info,
+      column_comments = column_comments
+    ))
+
+  }, error = function(e) {
+    message("Fehler bei der Abfrage: ", e$message)
+    return(NULL)
+  })
 }
 
 parse_column_data_types <- function(raw_output_string) {
@@ -1252,21 +1667,26 @@ parse_column_data_types <- function(raw_output_string) {
 
 apply_column_types <- function(df, type_info) {
   for (i in seq_len(nrow(type_info))) {
+
     col <- type_info$column_name[i]
     type <- type_info$data_type[i]
 
     if (!col %in% names(df)) next
 
+    raw_values <- df[[col]]
+    raw_values[raw_values %in% c("", "NULL", "NA", "NaN")] <- NA
+
     df[[col]] <- switch(type,
-      "text" = as.character(df[[col]]),
-      "integer" = as.integer(df[[col]]),
-      "boolean" = ifelse(df[[col]] %in% c("t", "f"), df[[col]] == "t", NA),
-      "timestamp without time zone" = as.POSIXct(df[[col]], tz = "UTC", tryFormats = c(
+      "text" = as.character(raw_values),
+      "integer" = as.integer(raw_values),
+      "bigint" = as.integer64(raw_values),
+      "boolean" = ifelse(raw_values %in% c("t", "f"), raw_values == "t", NA),
+      "timestamp without time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d"
       )),
-      df[[col]]  # fallback
+      raw_values  # fallback
     )
   }
   return(df)
@@ -1304,115 +1724,3 @@ postgres_get_tables_to_pull <- function(tables, con, update_available_tables) {
   return(missing_tables)
 }
 
-#' Verbindung zur lokalen PostgreSQL-Datenbank mit optionaler Tabellensynchronisation
-#'
-#' Diese Funktion stellt eine Verbindung zu einer lokalen PostgreSQL-Datenbank her. Optional können angegebene
-#' Tabellen aus der Produktionsumgebung geladen werden – entweder vollständig oder nur, wenn sie lokal noch nicht vorhanden sind.
-#'
-#' Die Funktion kann sowohl interaktiv (z. B. in RStudio) als auch im Server-Kontext verwendet werden.
-#'
-#' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`, z. B.
-#'        `c("raw.crm_leads", "analytics.dashboard_metrics")`. Wenn `NULL`, findet keine Synchronisation statt.
-#' @param con Ein bestehendes PostgreSQL-Verbindungsobjekt. Wenn `NULL`, wird eine neue Verbindung aufgebaut.
-#' @param keys_postgres Eine Liste mit Zugangsdaten zur Produktionsdatenbank (benötigt, wenn `con = NULL`).
-#'        Erforderliche Felder: `password`, `user`, `dbname`, `host`, `port`.
-#' @param update_available_tables Logisch. Wenn `TRUE`, werden alle angegebenen Tabellen aus der Produktion
-#'        geladen. Wenn `FALSE` (Standard), werden nur Tabellen geladen, die lokal fehlen.
-#' @param ssh_key_path Pfad zum SSH-Schlüssel für den Zugriff auf die Produktionsdatenbank.
-#' @param local_dbname, local_host, local_port, local_user, local_pw Parameter zur Konfiguration der lokalen Datenbankverbindung.
-#' @param load_in_memory Logisch. Wird aktuell nicht genutzt und ist standardmäßig `FALSE`.
-#'
-#' @return Gibt ein Verbindungsobjekt zur lokalen Datenbank zurück, sofern eine neue Verbindung aufgebaut wurde.
-#'         Gibt `NULL` zurück, wenn keine Tabellen angegeben sind und keine neue Verbindung erforderlich ist.
-#'
-#' @details
-#' - Im interaktiven Modus wird bei fehlender Verbindung das Passwort für den lokalen Datenbanknutzer abgefragt.
-#' - Im Server-Modus wird nur eine Verbindung aufgebaut, wenn keine übergeben wurde.
-#' - Wenn Tabellen angegeben sind, wird geprüft, ob sie lokal bereits existieren (außer bei `update_available_tables = TRUE`).
-#' - Fehlende oder zu aktualisierende Tabellen werden automatisch aus der Produktionsumgebung übernommen.
-#'
-#' @examples
-#' \dontrun{
-#'   # Verbindung herstellen und nur fehlende Tabellen laden
-#'   con <- postgres_connect_and_update_local(
-#'     tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
-#'     update_available_tables = FALSE
-#'   )
-#' }
-#
-#' @export
-postgres_connect_and_update_local <- function(tables = NULL,
-                                              con = NULL,
-                                              keys_postgres = NULL,
-                                              update_available_tables = FALSE,
-                                              ssh_key_path = NULL,
-                                              local_dbname = "studyflix_local",
-                                              local_host = "localhost",
-                                              local_port = 5432,
-                                              local_user = "postgres",
-                                              local_pw = NULL,
-                                              load_in_memory = FALSE) {
-
-    is_connection_available <- FALSE
-
-    if (interactive()) {
-      message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
-      local_password_is_product <- FALSE
-      if (is.null(con)) {
-        if (is.null(local_pw)) {
-          local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
-          local_password_is_product <- TRUE
-        }
-        if (is.null(local_pw)) {
-          stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
-        }
-        is_connection_available <- FALSE
-        con <- postgres_connect(postgres_keys = keys_postgres,
-                                local_pw = local_pw,
-                                local_host = local_host,
-                                local_port = local_port,
-                                local_user = local_user,
-                                local_dbname = local_dbname)
-      } else {
-        is_connection_available <- TRUE
-      }
-    } else {
-      if (is.null(con)) {
-        if (is.null(keys_postgres)) {
-          stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
-        }
-        message("ℹ️ Server-Modus erkannt - Gebe nur Connection zurück")
-        con <- postgres_connect(postgres_keys = keys_postgres)
-        return(con)
-      }
-      message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe nichts zurück.")
-      return(NULL)
-    }
-
-  if (is.null(tables)) {
-    warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
-    return(NULL)
-  }
-
-  # Produktionsdaten bei Bedarf synchronisieren
-  if (interactive()) {
-    tables_to_pull <- postgres_get_tables_to_pull(tables, con, update_available_tables)
-    if (length(tables_to_pull) > 0) {
-      message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
-      postgres_pull_production_tables(
-        tables = tables_to_pull,
-        ssh_key_path = ssh_key_path,
-        local_dbname = local_dbname,
-        local_host = local_host,
-        local_port = local_port,
-        local_user = local_user,
-        local_password = local_pw,
-        load_in_memory = FALSE,
-        local_password_is_product = local_password_is_product
-      )
-    } else {
-      message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
-    }
-  }
-  return(con)
-}

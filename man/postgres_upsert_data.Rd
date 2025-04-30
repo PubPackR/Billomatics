@@ -4,42 +4,36 @@
 \alias{postgres_upsert_data}
 \title{postgres_upsert_data}
 \usage{
-postgres_upsert_data(connection, schema, table, data, conflict_cols = "id")
+postgres_upsert_data(
+  con,
+  schema,
+  table,
+  data,
+  match_cols = NULL,
+  delete_missing = FALSE,
+  returning_cols = NULL
+)
 }
 \arguments{
-\item{connection}{An active database connection object (created with DBI).}
+\item{con}{Eine aktive DB-Verbindung (z.B. mit \code{DBI::dbConnect()} erstellt).}
 
-\item{schema}{The schema in which the table exists in the database.}
+\item{schema}{Schema in der Datenbank (z.B. "raw").}
 
-\item{table}{The name of the table in the database. The schema can either be provided separately or as part of the table name
-(in the format \code{schema.table}).}
+\item{table}{Tabellenname (z.B. "my_table" oder "raw.my_table").}
 
-\item{data}{A data.frame containing the data to be inserted or updated in the database.}
+\item{data}{Ein \code{data.frame}, das eingefügt oder aktualisiert werden soll.}
 
-\item{conflict_cols}{A character vector specifying one or more columns that should be checked for conflicts (defaults to "id").}
+\item{match_cols}{Zeichenvektor mit Spaltennamen, die als Konfliktschlüssel dienen.}
+
+\item{delete_missing}{Logical. Wenn \code{TRUE}, werden alle nicht mehr im DataFrame enthaltenen Einträge gelöscht (basierend auf Konfliktspalten).}
+
+\item{returning_cols}{Optionaler Zeichenvektor mit Spalten, die nach dem Upsert zurückgegeben werden sollen.}
 }
 \value{
-A numeric value indicating the number of affected rows (inserted or updated).
+Ein \code{data.frame} mit den zurückgegebenen Spalten (falls \code{returning_cols} gesetzt wurde), sonst \code{invisible(NULL)}.
 }
 \description{
-This function performs an upsert (insert or update) operation to a PostgreSQL database. It first writes the data to a temporary table,
-and then performs an \verb{INSERT INTO ... ON CONFLICT ... DO UPDATE} operation, which inserts new rows and updates existing rows based
-on a conflict with specified columns.
-}
-\details{
-\itemize{
-\item The function will first attempt to create a temporary table in the database using the data's column names.
-\item Then, it will attempt to perform the upsert operation using an \verb{INSERT INTO ... ON CONFLICT ... DO UPDATE} SQL statement.
-\item In case of failure, an error message will be printed, and the function will return 0.
-\item The function also logs the time taken to perform the operation, providing insight into the performance for large datasets.
-}
-}
-\examples{
-\dontrun{
-# Example usage:
-connection <- DBI::dbConnect(RPostgres::Postgres(), dbname = "my_database")
-data <- data.frame(id = c(1, 2), name = c("Alice", "Bob"))
-postgres_upsert_data(connection, "public", "my_table", data)
-}
-
+Diese Funktion führt ein UPSERT (Insert or Update) in eine PostgreSQL-Datenbank durch.
+Optional können nicht mehr vorhandene Zeilen gelöscht werden, und automatisch generierte
+IDs (z.B. serial) werden bei Bedarf zurückgegeben.
 }
