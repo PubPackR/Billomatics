@@ -1,7 +1,3 @@
-library(DBI)
-library(glue)
-library(RPostgres)
-
 #' Setup Standard Triggers in a PostgreSQL Table
 #'
 #' Creates and attaches standard triggers to a PostgreSQL table using a DBI connection.

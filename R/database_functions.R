@@ -27,7 +27,7 @@ custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
         data <- base64enc::base64decode(value)
         iv <- data[1:16]
         encrypted_data <- data[-(1:16)]
-        decrypted <- aes_cbc_decrypt(encrypted_data, key = charToRaw(key), iv = iv)
+        decrypted <- openssl::aes_cbc_decrypt(encrypted_data, key = charToRaw(key), iv = iv)
         rawToChar(decrypted)
       } else {
         NA
@@ -545,7 +545,7 @@ postgres_connect <- function(postgres_keys = NULL,
     if (interactive()) {
       message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
       if (is.null(con)) {
-        if (is.null(local_pw) | (local_pw == "")) {
+        if (is.null(local_pw)) {
           local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
           local_password_is_product <- TRUE # Wenn kein Passwort initial übergeben wird, dann ist es der Produktnutzer
         }
@@ -587,7 +587,7 @@ postgres_connect <- function(postgres_keys = NULL,
     if (length(tables_to_pull) > 0) {
       message("⬇️ Ziehe Tabellen aus Produktion: ", paste(tables_to_pull, collapse = ", "))
       postgres_pull_production_tables(
-        needed_tables = tables_to_pull,
+        tables = tables_to_pull,
         ssh_key_path = ssh_key_path,
         local_dbname = local_dbname,
         local_host = local_host,
@@ -936,7 +936,7 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
   drop_table_query <- sprintf("
     DROP TABLE IF EXISTS %s.%s CASCADE;
   ", schema, table_name)
-  dbExecute(con, drop_table_query)
+  DBI::dbExecute(con, drop_table_query)
 
   # Write data first
   DBI::dbWriteTable(
@@ -1080,8 +1080,8 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
           SELECT MAX(%s) AS max_value
           FROM %s.%s;
         ", column_name, schema, table_name)
-        max_value_result <- dbGetQuery(con, max_value_query)
-        max_value <- dplyr::coalesce(max_value_result$max_value, as.integer64(1))
+        max_value_result <- DBI::dbGetQuery(con, max_value_query)
+        max_value <- dplyr::coalesce(max_value_result$max_value, bit64::as.integer64(1))
 
         sequence_creation_query <- sprintf("
           CREATE SEQUENCE IF NOT EXISTS %s
@@ -1585,7 +1585,7 @@ apply_column_types <- function(df, type_info) {
     df[[col]] <- switch(type,
       "text" = as.character(raw_values),
       "integer" = as.integer(raw_values),
-      "bigint" = as.integer64(raw_values),
+      "bigint" = bit64::as.integer64(raw_values),
       "boolean" = ifelse(raw_values %in% c("t", "f"), raw_values == "t", NA),
       "timestamp without time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
         "%Y-%m-%d %H:%M:%S",
