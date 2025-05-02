@@ -25,13 +25,13 @@
 #' )
 #' }
 #' @export
-postgres_setup_standard_triggers <- function(con, schema, table, soft_delete = FALSE, update_timestamp = FALSE) {
+postgres_setup_standard_triggers <- function(con, schema, table, soft_delete = FALSE, update_timestamp = TRUE) {
   full_table <- DBI::dbQuoteIdentifier(con, DBI::Id(schema = schema, table = table))
 
   if(update_timestamp){
 
     # Create or replace update_timestamp function
-    dbExecute(con, "
+    DBI::dbExecute(con, "
       CREATE OR REPLACE FUNCTION update_timestamp() RETURNS trigger AS $$
       BEGIN
           -- Überprüfen, ob sich der Wert von 'first_name' oder 'name' geändert hat
@@ -49,10 +49,10 @@ postgres_setup_standard_triggers <- function(con, schema, table, soft_delete = F
       ")
 
     # Drop and create updated_at trigger
-    dbExecute(con, glue::glue("
+    DBI::dbExecute(con, glue::glue("
       DROP TRIGGER IF EXISTS trigger_set_updated_at ON {full_table};"))
 
-    dbExecute(con, glue::glue("
+    DBI::dbExecute(con, glue::glue("
       CREATE TRIGGER trigger_set_updated_at
       BEFORE UPDATE ON {full_table}
       FOR EACH ROW
@@ -64,7 +64,7 @@ postgres_setup_standard_triggers <- function(con, schema, table, soft_delete = F
   if(soft_delete){
 
     # Create or replace soft_delete function
-    dbExecute(con, glue::glue("
+    DBI::dbExecute(con, glue::glue("
       CREATE OR REPLACE FUNCTION soft_delete()
       RETURNS trigger AS $$
       BEGIN
@@ -81,10 +81,10 @@ postgres_setup_standard_triggers <- function(con, schema, table, soft_delete = F
     "))
 
     # Drop and create soft_delete trigger
-    dbExecute(con, glue::glue("
+    DBI::dbExecute(con, glue::glue("
       DROP TRIGGER IF EXISTS trigger_soft_delete ON {full_table};"))
 
-    dbExecute(con, glue::glue("
+    DBI::dbExecute(con, glue::glue("
       CREATE TRIGGER trigger_soft_delete
       BEFORE DELETE ON {full_table}
       FOR EACH ROW

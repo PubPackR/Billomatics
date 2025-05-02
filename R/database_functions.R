@@ -93,8 +93,6 @@ postgres_upsert_data <- function(con, schema, table, data,
 
   # Tabelle vollständig qualifizieren
   full_table <- DBI::dbQuoteIdentifier(con, DBI::Id(schema = schema, table = table))
-
-  # Nur Spalten beibehalten, die auch in der Zieltabelle existieren
   colnames_data <- colnames(data)
   table_columns <- DBI::dbListFields(con, DBI::Id(schema = schema, table = table))
   missing_cols <- setdiff(colnames_data, table_columns)
@@ -133,42 +131,25 @@ postgres_upsert_data <- function(con, schema, table, data,
     "DO NOTHING"
   }
 
-  # Rückgabeklausel erstellen, falls angegeben
-  returning_clause <- if (!is.null(returning_cols)) {
-    paste("RETURNING", paste(returning_cols, collapse = ", "))
-  } else {
-    ""
-  }
-
   # Die endgültige SQL-Abfrage zusammenstellen
   query <- glue::glue("
     INSERT INTO {full_table} ({paste(colnames_data, collapse = ', ')})
     SELECT {paste(colnames_data, collapse = ', ')}
     FROM {DBI::dbQuoteIdentifier(con, temp_table)}
     ON CONFLICT ({paste(match_cols, collapse = ', ')})
-    {conflict_action}
-    {returning_clause};
+    {conflict_action};
   ")
 
   # Ausführen der Abfrage
   tryCatch({
-    if (nzchar(returning_clause)) {
-      res <- DBI::dbSendQuery(con, query)
-      result <- DBI::dbFetch(res)
-      DBI::dbClearResult(res)
-    } else {
-      DBI::dbExecute(con, query)
-    }
+    DBI::dbExecute(con, query)
   }, error = function(e) {
     if (grepl("no unique or exclusion constraint matching the ON CONFLICT specification",
               e$message)) {
       stop(
         "Fehler beim Upsert: Für die angegebenen 'match_cols' existiert kein UNIQUE- oder PRIMARY KEY-Constraint.\n",
-        "Lösung: Lege einen eindeutigen Index auf diese Spalten an, z.B. mit:\n\n",
-        glue::glue(
-          "  CREATE UNIQUE INDEX ON {schema}.{table}({paste(match_cols, collapse = ', ')});\n"
+        glue::glue("  CREATE UNIQUE INDEX ON {schema}.{table}({paste(match_cols, collapse = ', ')});\n")
         )
-      )
     } else {
       stop("Fehler beim Upsert: ", e$message)
     }
@@ -193,8 +174,24 @@ postgres_upsert_data <- function(con, schema, table, data,
     DBI::dbExecute(con, delete_query)
   }
 
+  # Rückgabe-Abfrage nach match_cols (optional)
+  if (!is.null(returning_cols)) {
+    quoted_match_cols <- paste(match_cols, collapse = ", ")
+    keys <- unique(data[match_cols])
+    where_clause <- paste(apply(keys, 1, function(row) {
+      paste0("(", paste0(match_cols, " = ", DBI::dbQuoteLiteral(con, row), collapse = " AND "), ")")
+    }), collapse = " OR ")
+
+    select_query <- glue::glue("
+      SELECT {paste(returning_cols, collapse = ', ')}
+      FROM {full_table}
+      WHERE {where_clause};
+    ")
+    return(DBI::dbGetQuery(con, select_query))
+  }
+
   # Das Ergebnis (die zurückgegebenen Spalten) zurückgeben
-  return(result)
+  return(invisible(NULL))
 }
 
 
@@ -933,10 +930,14 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
 
   sql <- DBI::SQL  # macht die Funktion sql() verfügbar für glue_sql()
 
-  drop_table_query <- sprintf("
-    DROP TABLE IF EXISTS %s.%s CASCADE;
-  ", schema, table_name)
-  DBI::dbExecute(con, drop_table_query)
+  drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
+  res <- DBI::dbExecute(con, drop_table_query)
+
+  if (res == 0) {
+    message(glue::glue("Note: Table {schema}.{table_name} did not exist."))
+  } else {
+    message(glue::glue("Table {schema}.{table_name} was successfully dropped."))
+  }
 
   # Write data first
   DBI::dbWriteTable(
@@ -1033,7 +1034,7 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
         )
         DBI::dbExecute(con, query)
       } else {
-        warning(glue::glue("Skipping FK on {table_name}.{fk$constraint_column} → {ref_table}.{fk$referenced_column}, because {`ref_schema`}.{`ref_table`} was not downloaded before."))
+        warning(glue::glue("Skipping Foreign Key on {table_name}.{fk$constraint_column} → {ref_table}.{fk$referenced_column}, because {`ref_schema`}.{`ref_table`} was not initialised before {table_name}. Pls reconsider the order of the Tables."))
       }
     }
   }
@@ -1314,7 +1315,7 @@ load_functions_to_new_db <- function(function_string, con) {
 
       # Führe die Funktionsdefinition aus
       tryCatch({
-        dbExecute(con, function_code)
+        DBI::dbExecute(con, function_code)
         cat(sprintf("Function loaded: %s.%s\n", functions_df$schema_name[i], function_name))
       }, error = function(e) {
         cat(sprintf("Error loading function %s: %s\n", function_name, e$message))
@@ -1584,15 +1585,43 @@ apply_column_types <- function(df, type_info) {
 
     df[[col]] <- switch(type,
       "text" = as.character(raw_values),
+      "varchar" = as.character(raw_values),
+      "char" = as.character(raw_values),
       "integer" = as.integer(raw_values),
+      "int4" = as.integer(raw_values),
       "bigint" = bit64::as.integer64(raw_values),
-      "boolean" = ifelse(raw_values %in% c("t", "f"), raw_values == "t", NA),
+      "int8" = bit64::as.integer64(raw_values),
+      "smallint" = as.integer(raw_values),
+      "int2" = as.integer(raw_values),
+      "numeric" = as.numeric(raw_values),
+      "decimal" = as.numeric(raw_values),
+      "real" = as.numeric(raw_values),
+      "float4" = as.numeric(raw_values),
+      "double precision" = as.numeric(raw_values),
+      "float8" = as.numeric(raw_values),
+      "boolean" = ifelse(raw_values %in% c("t", "f", "true", "false", "TRUE", "FALSE"),
+                         tolower(raw_values) %in% c("t", "true"), NA),
       "timestamp without time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d"
       )),
-      raw_values  # fallback
+      "timestamp with time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
+        "%Y-%m-%d %H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S"
+      )),
+      "date" = as.Date(raw_values),
+      "time without time zone" = hms::as_hms(raw_values),
+      "json" = raw_values,  # optional: jsonlite::fromJSON(raw_values)
+      "jsonb" = raw_values,
+      "uuid" = as.character(raw_values),
+      "bytea" = raw_values,  # falls gewünscht: base64decode oder raw
+      {
+        warning(glue::glue("Unbekannter Datentyp: {type}, wird als character behandelt."))
+        as.character(raw_values)
+      }
     )
   }
   return(df)
