@@ -160,33 +160,38 @@ postgres_upsert_data <- function(con, schema, table, data,
 
   # Optional: Löschen von nicht mehr vorhandenen Einträgen
   if (delete_missing) {
-    quoted_match_cols <- paste(match_cols, collapse = ", ")
-    existing_keys <- unique(data[match_cols])
-    quoted_vals <- apply(existing_keys, 1, function(row) {
-      paste0("(", paste(DBI::dbQuoteLiteral(con, row), collapse = ", "), ")")
-    })
-    key_string <- paste(quoted_vals, collapse = ", ")
+    temp_table <- paste0("temp_delete_", as.integer(Sys.time()))
+
+    # Temporäre Tabelle erstellen und befüllen
+    DBI::dbWriteTable(con, temp_table, unique(data[match_cols]), temporary = TRUE, overwrite = TRUE)
+
+    # Bedingung für den JOIN bauen
+    join_condition <- paste(
+      sprintf("t.%s = temp.%s", match_cols, match_cols),
+      collapse = " AND "
+    )
 
     delete_query <- glue::glue("
-      DELETE FROM {full_table}
-      WHERE ({quoted_match_cols}) NOT IN ({key_string});
+      DELETE FROM {full_table} AS t
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM {`temp_table`} AS temp
+        WHERE {join_condition}
+      );
     ")
+
     DBI::dbExecute(con, delete_query)
   }
 
   # Rückgabe-Abfrage nach match_cols (optional)
   if (!is.null(returning_cols)) {
-    quoted_match_cols <- paste(match_cols, collapse = ", ")
-    keys <- unique(data[match_cols])
-    where_clause <- paste(apply(keys, 1, function(row) {
-      paste0("(", paste0(match_cols, " = ", DBI::dbQuoteLiteral(con, row), collapse = " AND "), ")")
-    }), collapse = " OR ")
 
+    # SQL-Query ohne WHERE-Klausel
     select_query <- glue::glue("
       SELECT {paste(returning_cols, collapse = ', ')}
-      FROM {full_table}
-      WHERE {where_clause};
+      FROM {full_table};
     ")
+
     return(DBI::dbGetQuery(con, select_query))
   }
 

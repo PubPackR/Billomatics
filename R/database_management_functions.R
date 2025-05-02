@@ -34,16 +34,10 @@ postgres_setup_standard_triggers <- function(con, schema, table, soft_delete = F
     DBI::dbExecute(con, "
       CREATE OR REPLACE FUNCTION update_timestamp() RETURNS trigger AS $$
       BEGIN
-          -- Überprüfen, ob sich der Wert von 'first_name' oder 'name' geändert hat
-          IF NEW.first_name IS DISTINCT FROM OLD.first_name OR NEW.name IS DISTINCT FROM OLD.name THEN
-              -- Logging der Trigger-Aktivierung (optional)
-              RAISE NOTICE 'Trigger update_timestamp fired for row: %', NEW.id;
-
-              -- Setze das 'updated_at'-Feld nur, wenn eine Änderung stattgefunden hat
-              NEW.updated_at = CURRENT_TIMESTAMP;
-          END IF;
-
-          RETURN NEW;
+        IF NEW IS DISTINCT FROM OLD THEN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+        END IF;
+        RETURN NEW;
       END;
       $$ LANGUAGE plpgsql;
       ")
