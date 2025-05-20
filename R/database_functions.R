@@ -961,6 +961,28 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
   schema_quoted <- DBI::dbQuoteIdentifier(con, schema)
   table_name_quoted <- DBI::dbQuoteIdentifier(con, table_name)
 
+  # Beispiel: identity_columns ist ein data.frame mit Spalten, die Identity bekommen sollen
+  if (!is.null(meta$identity_keys) && nrow(meta$identity_keys) > 0) {
+    for (i in seq_len(nrow(meta$identity_keys))) {
+      col <- meta$identity_keys[i, ]
+      col_name <- col$column_name
+      # Drop the existing column
+      drop_query <- glue::glue_sql(
+        "ALTER TABLE {schema_quoted}.{table_name_quoted} DROP COLUMN {`col_name`*};",
+        .con = con
+      )
+      DBI::dbExecute(con, drop_query)
+
+      # Add column with IDENTITY
+      add_query <- glue::glue_sql(
+        "ALTER TABLE {schema_quoted}.{table_name_quoted}
+         ADD COLUMN {`col_name`*} bigint GENERATED ALWAYS AS IDENTITY;",
+        .con = con
+      )
+      DBI::dbExecute(con, add_query)
+    }
+  }
+
   # PRIMARY KEY
   if (!is.null(meta$primary_keys) && nrow(meta$primary_keys) > 0) {
     # Tabelle und Spalten korrekt zitieren
@@ -1396,6 +1418,17 @@ get_table_metadata <- function(table, ssh_session, postgres_keys) {
         AND constraint_name LIKE '%%_pkey';", table_name, schema)
     primary_keys <- execute_psql_query(pk_query, ssh_session, postgres_keys)
 
+    # Abfrage nur für Identities
+    identity_query <- sprintf("
+    SELECT
+      column_name,
+      identity_generation
+    FROM information_schema.columns
+    WHERE table_schema = '%s'
+      AND table_name = '%s'
+      AND identity_generation IS NOT NULL;", schema, table_name)
+    identity_keys <- execute_psql_query(identity_query, ssh_session, postgres_keys)
+
     # Foreign Keys
     fk_query <- sprintf(
       "
@@ -1534,6 +1567,7 @@ WHERE
     return(list(
       data_types = data_types,
       primary_keys = primary_keys,
+      identity_keys = identity_keys,
       foreign_keys = foreign_keys,
       unique_constraints = unique_constraints,
       not_null_columns = not_null_columns,
