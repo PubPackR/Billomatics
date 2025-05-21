@@ -255,7 +255,7 @@ get_central_station_cal_events <- function (api_key, pages = 1000) {
   cal_events <- cal_events %>%
     tidyr::unnest(cal_event) %>%
     tidyr::unnest("people",names_sep = "_") %>%
-    dplyr::select(id, attachable_id, name, location, description, created_at, updated_at, starts_at, ends_at, people_id)
+    dplyr::select(id, attachable_id, name, location, description, created_at, updated_at, starts_at, ends_at, people_id, updated_by_user_id)
 }
 
 
