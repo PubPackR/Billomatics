@@ -372,9 +372,6 @@ get_laufzeiten_information <- function (df)
 
 
   df <- df %>%
-    ## fix wrong dates
-    mutate(Start = fix_invalid_dmy_vec(Start),
-           Ende = fix_invalid_dmy_vec(Ende)) %>%
     group_by(id) %>%
     summarise(
       Laufzeit_Start = min(dmy(Start), na.rm = TRUE),
