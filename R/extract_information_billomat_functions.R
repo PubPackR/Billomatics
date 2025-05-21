@@ -215,23 +215,27 @@ read_KeysFromDescription <- function (df, sep = sep)
 #' @importFrom lubridate make_date days_in_month
 #' @importFrom stringr str_sub
 #' @export
-fix_invalid_ymd_vec <- function(date_strs) {
-  # Extract year, month, day
-  year <- as.integer(str_sub(date_strs, 1, 4))
-  month <- as.integer(str_sub(date_strs, 6, 7))
-  day <- as.integer(str_sub(date_strs, 9, 10))
+fix_invalid_dmy_vec <- function(date_strs) {
+  # Split each date string by "."
+  split_parts <- strsplit(date_strs, "\\.")
 
-  # Clamp months to valid range
+  # Extract day, month, year as integers
+  day   <- as.integer(sapply(split_parts, `[`, 1))
+  month <- as.integer(sapply(split_parts, `[`, 2))
+  year  <- as.integer(sapply(split_parts, `[`, 3))
+
+  # Handle invalid month values
   month <- pmin(pmax(month, 1), 12)
 
-  # Get last valid day of the month
+  # Determine the last valid day of each month
   last_day <- days_in_month(make_date(year, month, 1))
 
   # Clamp days to valid range
   day <- pmin(pmax(day, 1), last_day)
 
+
   # Return corrected dates
-  make_date(year, month, day)
+ paste0(day,".",month,".",year)
 }
 
 #' extract the information from each note and put it in a long table
@@ -360,14 +364,17 @@ get_laufzeiten_information <- function (df)
       Leistungsbeginn = stringr::str_extract_all(Leistungsbeginn, "[0-9]*\\.[0-9]*\\.[0-9]*"),
       Leistungsende = stringr::str_extract_all(Leistungsende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
 
-      Start = fix_invalid_ymd_vec(Leistungsbeginn),
-      Ende = fix_invalid_ymd_vec(Leistungsende)
+      Start = Leistungsbeginn,
+      Ende = Leistungsende
     )
   } # to coalesce the cases where both leistungszeitraum and start and end were given, we need another filter
 
 
 
   df <- df %>%
+    ## fix wrong dates
+    mutate(Start = fix_invalid_dmy_vec(Start),
+           Ende = fix_invalid_dmy_vec(Ende)) %>%
     group_by(id) %>%
     summarise(
       Laufzeit_Start = min(dmy(Start), na.rm = TRUE),
