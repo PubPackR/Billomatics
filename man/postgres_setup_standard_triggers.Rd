@@ -9,7 +9,7 @@ postgres_setup_standard_triggers(
   schema,
   table,
   soft_delete = FALSE,
-  update_timestamp = FALSE
+  update_timestamp = TRUE
 )
 }
 \arguments{

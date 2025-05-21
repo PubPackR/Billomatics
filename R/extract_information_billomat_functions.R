@@ -198,6 +198,42 @@ read_KeysFromDescription <- function (df, sep = sep)
 }
 
 
+#' Fix Invalid Dates in "yyyy-mm-dd" Format
+#'
+#' This function takes a character vector of dates in "yyyy-mm-dd" format and
+#' corrects invalid dates by adjusting the day to the last valid day of the month.
+#' For example, "2025-02-29" becomes "2025-02-28" since 2025 is not a leap year.
+#'
+#' @param date_strs A character vector of dates in the "yyyy-mm-dd" format.
+#'
+#' @return A vector of valid `Date` objects.
+#'
+#' @examples
+#' fix_invalid_ymd_vec(c("2025-02-29", "2024-11-31", "2025-05-15"))
+#' # Returns: "2025-02-28", "2024-11-30", "2025-05-15"
+#'
+#' @importFrom lubridate make_date days_in_month
+#' @importFrom stringr str_sub
+#' @export
+fix_invalid_ymd_vec <- function(date_strs) {
+  # Extract year, month, day
+  year <- as.integer(str_sub(date_strs, 1, 4))
+  month <- as.integer(str_sub(date_strs, 6, 7))
+  day <- as.integer(str_sub(date_strs, 9, 10))
+
+  # Clamp months to valid range
+  month <- pmin(pmax(month, 1), 12)
+
+  # Get last valid day of the month
+  last_day <- days_in_month(make_date(year, month, 1))
+
+  # Clamp days to valid range
+  day <- pmin(pmax(day, 1), last_day)
+
+  # Return corrected dates
+  make_date(year, month, day)
+}
+
 #' extract the information from each note and put it in a long table
 #' create the final dataframe from the provided data -- important, names must match
 #' the data provided is split with a separate symbol
@@ -319,12 +355,13 @@ get_laufzeiten_information <- function (df)
     }
     # when there is no start and ende then I have to make this column
     df <- df %>% mutate(
+
       # to only keep the dates and remove all text information
       Leistungsbeginn = stringr::str_extract_all(Leistungsbeginn, "[0-9]*\\.[0-9]*\\.[0-9]*"),
       Leistungsende = stringr::str_extract_all(Leistungsende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
 
-      Start = Leistungsbeginn,
-      Ende = Leistungsende
+      Start = fix_invalid_ymd_vec(Leistungsbeginn),
+      Ende = fix_invalid_ymd_vec(Leistungsende)
     )
   } # to coalesce the cases where both leistungszeitraum and start and end were given, we need another filter
 
