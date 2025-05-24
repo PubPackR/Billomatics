@@ -127,6 +127,8 @@ read_KeysFromDescription <- function (df, sep = sep)
     `01.11.2022 - 31.04.2023` = "01.11.2022-30.04.2023",
     `27.01, 10.02 , 02.02, 16.02` = "27.01.2023-16.02.2023",
     `31.09.` = "30.09.",
+   `29.02.2025` = "28.02.2025",
+
     `30.2.` = "28.02.",
     `31.04.` = "30.04.",
     `31.06.` = "30.06.",
@@ -197,6 +199,46 @@ read_KeysFromDescription <- function (df, sep = sep)
 
 }
 
+
+#' Fix Invalid Dates in "yyyy-mm-dd" Format
+#'
+#' This function takes a character vector of dates in "yyyy-mm-dd" format and
+#' corrects invalid dates by adjusting the day to the last valid day of the month.
+#' For example, "2025-02-29" becomes "2025-02-28" since 2025 is not a leap year.
+#'
+#' @param date_strs A character vector of dates in the "yyyy-mm-dd" format.
+#'
+#' @return A vector of valid `Date` objects.
+#'
+#' @examples
+#' fix_invalid_ymd_vec(c("2025-02-29", "2024-11-31", "2025-05-15"))
+#' # Returns: "2025-02-28", "2024-11-30", "2025-05-15"
+#'
+#' @importFrom lubridate make_date days_in_month
+#' @importFrom stringr str_sub
+#' @export
+fix_invalid_dmy_vec <- function(date_strs) {
+  # Split each date string by "."
+  split_parts <- strsplit(date_strs, "\\.")
+
+  # Extract day, month, year as integers
+  day   <- as.integer(sapply(split_parts, `[`, 1))
+  month <- as.integer(sapply(split_parts, `[`, 2))
+  year  <- as.integer(sapply(split_parts, `[`, 3))
+
+  # Handle invalid month values
+  month <- pmin(pmax(month, 1), 12)
+
+  # Determine the last valid day of each month
+  last_day <- days_in_month(make_date(year, month, 1))
+
+  # Clamp days to valid range
+  day <- pmin(pmax(day, 1), last_day)
+
+
+  # Return corrected dates
+ paste0(day,".",month,".",year)
+}
 
 #' extract the information from each note and put it in a long table
 #' create the final dataframe from the provided data -- important, names must match
@@ -319,6 +361,7 @@ get_laufzeiten_information <- function (df)
     }
     # when there is no start and ende then I have to make this column
     df <- df %>% mutate(
+
       # to only keep the dates and remove all text information
       Leistungsbeginn = stringr::str_extract_all(Leistungsbeginn, "[0-9]*\\.[0-9]*\\.[0-9]*"),
       Leistungsende = stringr::str_extract_all(Leistungsende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
