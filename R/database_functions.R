@@ -101,7 +101,7 @@ postgres_upsert_data <- function(con, schema, table, data,
             paste(missing_cols, collapse = ", "))
   }
   data <- data[, intersect(colnames_data, table_columns), drop = FALSE]
-  colnames_data <- setdiff(colnames(data), c("updated_at"))  # Aktualisieren, da sich data geändert hat
+  colnames_data <- setdiff(colnames(data), c("id", "updated_at"))  # Aktualisieren, da sich data geändert hat
 
   # Spalten, die geupdatet werden sollen (ohne created_at und match_cols)
   update_cols <- setdiff(colnames_data, c("created_at", "updated_at", match_cols))
