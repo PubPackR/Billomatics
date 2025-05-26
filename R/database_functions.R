@@ -923,12 +923,51 @@ EORSCRIPT
       available_tables <- tables_names[1:(index_available_tables - 1)]
 
       write_table_with_metadata(con = local_con, schema = schema, table_name = table_name, table_data_with_meta = tables_data[[table]], available_tables = available_tables)
+      postgres_restart_identities(con = local_con)
 
     }
     return(local_con)
   }
 
   return(NULL)
+}
+
+postgres_restart_identities <- function(con) {
+
+  # Alle Tabellen mit Identity-Spalte 'id' aus allen Schemas holen
+  qry <- "
+    SELECT table_schema, table_name
+    FROM information_schema.columns
+    WHERE column_name = 'id'
+      AND is_identity = 'YES'
+      AND table_schema NOT IN ('pg_catalog', 'information_schema')
+  "
+
+  tables <- DBI::dbGetQuery(con, qry)
+  if (nrow(tables) == 0) {
+    message("Keine Identity-Spalten 'id' gefunden.")
+    return(invisible(NULL))
+  }
+
+  for (i in seq_len(nrow(tables))) {
+    schema <- tables$table_schema[i]
+    table <- tables$table_name[i]
+
+    max_id_qry <- sprintf("SELECT MAX(id) FROM %s.%s", DBI::dbQuoteIdentifier(con, schema), DBI::dbQuoteIdentifier(con, table))
+    max_id <- DBI::dbGetQuery(con, max_id_qry)[[1]]
+
+    if (is.na(max_id)) max_id <- 0
+
+    alter_qry <- sprintf("ALTER TABLE %s.%s ALTER COLUMN id RESTART WITH %s",
+                        DBI::dbQuoteIdentifier(con, schema),
+                        DBI::dbQuoteIdentifier(con, table),
+                        as.character(max_id + 1))
+
+    DBI::dbExecute(con, alter_qry)
+    #message(sprintf("Identity 'id' in %s.%s auf %s gesetzt", schema, table, as.character(max_id + 1)))
+  }
+
+  invisible(NULL)
 }
 
 write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables) {
