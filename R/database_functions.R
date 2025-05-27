@@ -97,7 +97,7 @@ postgres_upsert_data <- function(con, schema, table, data,
   table_columns <- DBI::dbListFields(con, DBI::Id(schema = schema, table = table))
   missing_cols <- setdiff(colnames_data, table_columns)
   if (length(missing_cols) > 0) {
-    warning("Folgende Spalten sind nicht in der Zieltabelle vorhanden und werden ignoriert: ",
+    message("Folgende Spalten sind nicht in der Zieltabelle vorhanden und werden ignoriert: ",
             paste(missing_cols, collapse = ", "))
   }
   data <- data[, intersect(colnames_data, table_columns), drop = FALSE]
@@ -127,7 +127,7 @@ postgres_upsert_data <- function(con, schema, table, data,
   conflict_action <- if (length(update_cols) > 0) {
     glue::glue("DO UPDATE SET\n  {update_clause}")
   } else {
-    warning("Keine Spalten zum Aktualisieren vorhanden. Es wird 'DO NOTHING' verwendet.")
+    message("Keine Spalten zum Aktualisieren vorhanden. Es wird 'DO NOTHING' verwendet. (Nur Unique-Spalten)")
     "DO NOTHING"
   }
 
@@ -578,7 +578,7 @@ postgres_connect <- function(postgres_keys = NULL,
 
   # Wenn keine Tabellen angegeben sind, gebe nur die Verbindung zurück
   if (is.null(needed_tables)) {
-    warning("Keine Tabellen angegeben. Es werden keine Daten geladen.")
+    message("Keine Tabellen angegeben. Es werden keine Daten geladen.")
     return(con)
   }
 
@@ -732,7 +732,7 @@ postgres_pull_production_tables <- function(tables = NULL,
                                             local_password_is_product = FALSE) {
 
   if (!interactive()) {
-    warning("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
+    message("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
     return(NA)
   }
 
@@ -974,20 +974,16 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
 
   sql <- DBI::SQL  # macht die Funktion sql() verfügbar für glue_sql()
 
+  DBI::dbExecute(local_con, "SET client_min_messages TO WARNING;")
   drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
   res <- DBI::dbExecute(con, drop_table_query)
-
-  if (res == 0) {
-    message(glue::glue("Note: Table {schema}.{table_name} did not exist."))
-  } else {
-    message(glue::glue("Table {schema}.{table_name} was successfully dropped."))
-  }
+  DBI::dbExecute(local_con, "SET client_min_messages TO NOTICE;")
 
   # Write data first
   DBI::dbWriteTable(
     conn = con,
     name = DBI::Id(schema = schema, table = table_name),
-    value = table_data_with_meta$data,
+    value = table_data_with_meta$data[0, ],
     overwrite = TRUE
   )
 
@@ -1100,7 +1096,11 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
         )
         DBI::dbExecute(con, query)
       } else {
-        warning(glue::glue("Skipping Foreign Key on {table_name}.{fk$constraint_column} → {ref_table}.{fk$referenced_column}, because {`ref_schema`}.{`ref_table`} was not initialised before {table_name}. Pls reconsider the order of the Tables."))
+          message(
+            glue::glue(
+              "Foreign key not created: {table_name} → {ref_table}. Please load {ref_table} before {table_name}."
+            )
+          )
       }
     }
   }
@@ -1150,10 +1150,12 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
         max_value_result <- DBI::dbGetQuery(con, max_value_query)
         max_value <- dplyr::coalesce(max_value_result$max_value, bit64::as.integer64(1))
 
+        DBI::dbExecute(local_con, "SET client_min_messages TO WARNING;")
         sequence_creation_query <- sprintf("
           CREATE SEQUENCE IF NOT EXISTS %s
           OWNED BY %s.%s.%s;
         ", sequence_name, schema, table_name, column_name)
+        DBI::dbExecute(local_con, "SET client_min_messages TO NOTICE;")
 
         tryCatch({
           DBI::dbExecute(con, sequence_creation_query)
@@ -1299,6 +1301,14 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
       })
     }
   }
+
+  # Write data
+  DBI::dbAppendTable(
+    conn = con,
+    name = DBI::Id(schema = schema, table = table_name),
+    value = table_data_with_meta$data
+  )
+
   return(NULL)
 }
 
@@ -1697,7 +1707,7 @@ apply_column_types <- function(df, type_info) {
       "uuid" = as.character(raw_values),
       "bytea" = raw_values,  # falls gewünscht: base64decode oder raw
       {
-        warning(glue::glue("Unbekannter Datentyp: {type}, wird als character behandelt."))
+        message(glue::glue("Unbekannter Datentyp: {type}, wird als character behandelt."))
         as.character(raw_values)
       }
     )
