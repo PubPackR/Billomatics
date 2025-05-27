@@ -780,7 +780,21 @@ postgres_pull_production_tables <- function(tables = NULL,
       produkt_key <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
     }
 
-    decrypt_key <- shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
+    decrypt_key <- tryCatch({
+      shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
+    }, error = function(e) {
+      decrypt_key <- tryCatch({
+        shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key)
+      }, error = function(e) {
+        stop(
+          paste(
+            "Fehler beim Auslesen der Keys-DB. Mögliche Fehlerquellen: falsche Produkt-PW, falsche Shinymanager-Version, veraltete Keys-DB.",
+            "\nUrsprüngliche Fehlermeldung:",
+            e$message
+          )
+        )
+      })
+    })
 
     # get the postgres_keys
     cmd <- sprintf("
@@ -974,10 +988,10 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
 
   sql <- DBI::SQL  # macht die Funktion sql() verfügbar für glue_sql()
 
-  DBI::dbExecute(local_con, "SET client_min_messages TO WARNING;")
+  DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
   drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
   res <- DBI::dbExecute(con, drop_table_query)
-  DBI::dbExecute(local_con, "SET client_min_messages TO NOTICE;")
+  DBI::dbExecute(con, "SET client_min_messages TO NOTICE;")
 
   # Write data first
   DBI::dbWriteTable(
@@ -1150,12 +1164,12 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
         max_value_result <- DBI::dbGetQuery(con, max_value_query)
         max_value <- dplyr::coalesce(max_value_result$max_value, bit64::as.integer64(1))
 
-        DBI::dbExecute(local_con, "SET client_min_messages TO WARNING;")
+        DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
         sequence_creation_query <- sprintf("
           CREATE SEQUENCE IF NOT EXISTS %s
           OWNED BY %s.%s.%s;
         ", sequence_name, schema, table_name, column_name)
-        DBI::dbExecute(local_con, "SET client_min_messages TO NOTICE;")
+        DBI::dbExecute(con, "SET client_min_messages TO NOTICE;")
 
         tryCatch({
           DBI::dbExecute(con, sequence_creation_query)
