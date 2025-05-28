@@ -28,7 +28,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     bonusDB = authentication_bonus_db,
     BigQuery = authentication_Google_BigQuery,
     cleverreach = authentication_cleverreach,
-    postgresql = authentication_postgresql
+    postgresql = authentication_postgresql,
+    gemini = authentication_gemini
   )
 
   keys <- list()
@@ -397,4 +398,26 @@ authentication_postgresql <- function(args) {
       strsplit(", "))[[1]]
 
     c(credentials, server_info)
+}
+
+#' authentication_gemini
+#'
+#' This function handles the key decryption for the Gemini API authentication.
+#' It supports manual decryption key input as well as FlowForce arguments.
+#'
+#' @param args Additional input parameter, only needed through FlowForce Job
+#' @return Gemini API Key as String
+#'
+#' @export
+authentication_gemini <-  function(args) {
+
+  encrypted_api_key <- readLines("../../keys/gemini_key.txt")
+
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Gemini eingeben: ")
+  } else{
+    decrypt_key <- args
+  }
+
+  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
