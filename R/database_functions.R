@@ -813,6 +813,10 @@ EORSCRIPT
     result <- ssh::ssh_exec_internal(ssh_session, cmd)
     postgres_keys <- strsplit(rawToChar(result$stdout), ",")[[1]]
 
+    list_table_views <- test_view_or_table(ssh_session, postgres_keys, tables)
+    tables <- list_table_views$is_table
+    views <- list_table_views$is_view
+
     for (table in tables) {
       message(paste("📥 Versuche Tabelle zu laden:", table))
 
@@ -868,6 +872,7 @@ EORSCRIPT
       }
     }
 
+    view_definitions <- get_requested_views(ssh_session, postgres_keys, views)
     functions <- get_all_functions(ssh_session, postgres_keys)
 
     if (length(failed_tables) > 0) {
@@ -940,10 +945,53 @@ EORSCRIPT
       postgres_restart_identities(con = local_con)
 
     }
+
+    load_view_definitions_to_new_db(
+      con = local_con,
+      view_definitions = view_definitions
+    )
+
     return(local_con)
   }
 
   return(NULL)
+}
+
+test_view_or_table <- function(ssh_session, postgres_keys, tables) {
+
+  is_table <- c()
+  is_view <- c()
+
+  for (table in tables) {
+    split <- strsplit(table, "\\.")[[1]]
+    schema <- split[1]
+    table_name <- split[2]
+
+    cmd <- sprintf(
+      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "SELECT table_type FROM information_schema.tables WHERE table_schema = \'%s\' AND table_name = \'%s\';"',
+      postgres_keys[1],
+      postgres_keys[3],
+      postgres_keys[2],
+      postgres_keys[4],
+      postgres_keys[5],
+      schema,
+      table_name
+    )
+    result <- ssh::ssh_exec_internal(ssh_session, cmd)
+    output <- trimws(rawToChar(result$stdout))
+
+    if(tolower(output) == "view") {
+      is_view <- c(is_view, table)
+    } else {
+      is_table <- c(is_table, table)
+    }
+
+  }
+
+  return(list(
+    is_table = is_table,
+    is_view = is_view
+  ))
 }
 
 postgres_restart_identities <- function(con) {
@@ -1354,6 +1402,39 @@ categorize_sql_string <- function(input_string) {
   return(list(type = "String Literal", needs_quotes = TRUE))
 }
 
+get_requested_views <- function(ssh_session, postgres_keys, views) {
+
+  view_definitions <- list()
+
+  for (view in views) {
+    split <- strsplit(view, "\\.")[[1]]
+    schema <- split[1]
+    view_name <- split[2]
+
+    message(paste("📥 Versuche View zu laden:", view))
+
+    view_full_name <- sprintf('"%s"."%s"', schema, view_name)
+    cmd <- sprintf(
+      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "SELECT pg_get_viewdef(\'%s\'::regclass, true);"',
+      postgres_keys[1], postgres_keys[3], postgres_keys[2],
+      postgres_keys[4], postgres_keys[5],
+      view_full_name
+    )
+
+    result <- ssh::ssh_exec_internal(ssh_session, cmd)
+    definition <- trimws(rawToChar(result$stdout))
+
+    if (nchar(definition) > 0) {
+      sql <- sprintf('CREATE OR REPLACE VIEW "%s"."%s" AS %s;', schema, view_name, definition)
+      view_definitions <- c(view_definitions, sql)
+    }
+
+  }
+
+  return(view_definitions)
+
+}
+
 get_all_functions <- function(ssh_session, postgres_keys) {
 
   # Abfrage, um alle definierten Funktionen abzurufen
@@ -1380,6 +1461,30 @@ get_all_functions <- function(ssh_session, postgres_keys) {
 
   # Gibt das DataFrame mit den Funktionen zurück
   return(data_result)
+}
+
+load_view_definitions_to_new_db <- function(view_definitions, con) {
+  for (view_sql in view_definitions) {
+
+    # Bessere Regex: Greife nur den View-Namen zwischen CREATE ... VIEW "schema"."view"
+    view_name <- sub('.*?CREATE OR REPLACE VIEW\\s+"([^"]+)"\\."([^"]+)"\\s+AS.*',
+                     '\\1.\\2', view_sql, ignore.case = TRUE)
+
+    tryCatch({
+      DBI::dbExecute(con, view_sql)
+      message(sprintf("✅ View '%s' erfolgreich erstellt.", view_name))
+    }, error = function(e) {
+      # Prüfen auf Fehlermeldung "relation ... does not exist"
+      if (grepl("relation \"([^\"]+)\" does not exist", e$message, ignore.case = TRUE)) {
+        fehlende_tabelle <- sub(".*relation \"([^\"]+)\" does not exist.*", "\\1", e$message, ignore.case = TRUE)
+        message(sprintf("❌ Fehler beim Erstellen der View '%s':", view_name))
+        message(sprintf("   Die Tabelle '%s' fehlt in der lokalen DB. Bitte stelle sicher, dass diese Tabelle zuerst mit heruntergeladen und geladen wird.", fehlende_tabelle))
+      } else {
+        message(sprintf("❌ Fehler beim Erstellen der View '%s':", view_name))
+        message(e$message)
+      }
+    })
+  }
 }
 
 load_functions_to_new_db <- function(function_string, con) {
