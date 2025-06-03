@@ -150,6 +150,7 @@ read_KeysFromDescription <- function (df, sep = sep)
       "Leistungsbeginn.*",
       "Leistungsstart",
       "Startdatum",
+      "Produktionsstart",
       "Leistung erbracht am"
     ),
     collapse = "|"
