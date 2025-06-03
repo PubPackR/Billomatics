@@ -389,17 +389,17 @@ authentication_postgresql <- function(args) {
 
     if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       #decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
-      decrypt_key <- "Postgres-Key wird lokal nicht benötigt"
       print("Postgres-Key wird lokal nicht benötigt")
+      return(c("Postgres-Credentials werden lokal nicht benötigt", "Postgres-Server-Info wird lokal nicht benötigt"))
     } else {
       decrypt_key <- args
+
+      credentials <- safer::decrypt_string(encrypted_credentials, key = decrypt_key)
+      server_info <- (safer::decrypt_string(encrypted_server_info, key = decrypt_key) %>% strsplit(", "))[[1]]
+
+      return(c(credentials, server_info))
     }
 
-    credentials <- safer::decrypt_string(encrypted_credentials, key = decrypt_key)
-    server_info <- (safer::decrypt_string(encrypted_server_info, key = decrypt_key) %>%
-      strsplit(", "))[[1]]
-
-    c(credentials, server_info)
 }
 
 #' authentication_gemini
