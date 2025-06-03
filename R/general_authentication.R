@@ -388,7 +388,9 @@ authentication_postgresql <- function(args) {
     encrypted_server_info <- readLines("../../keys/PostgreSQL_DB/postgresql_server.txt")
 
     if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
+      #decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
+      decrypt_key <- "Postgres-Key wird lokal nicht benötigt"
+      print("Postgres-Key wird lokal nicht benötigt")
     } else {
       decrypt_key <- args
     }
