@@ -394,6 +394,8 @@ EORSCRIPT
 load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys) {
   message(sprintf("📥 Versuche Tabelle zu laden: %s", table))
 
+  sql <- DBI::SQL
+
   # Befehl für SSH-psql zusammenbauen
   cmd <- sprintf(
     'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
@@ -512,51 +514,28 @@ postgres_restart_identities <- function(con) {
 
 write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables) {
 
-  sql <- DBI::SQL  # macht die Funktion sql() verfügbar für glue_sql()
-
   DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
   drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
   res <- DBI::dbExecute(con, drop_table_query)
   DBI::dbExecute(con, "SET client_min_messages TO NOTICE;")
 
-  # Write data first
-  DBI::dbWriteTable(
-    conn = con,
-    name = DBI::Id(schema = schema, table = table_name),
-    value = table_data_with_meta$data[0, ],
-    overwrite = TRUE
-  )
-
-  # Collect metadata
   meta <- table_data_with_meta$metadata
-
-  # Build full table ID
-  tbl_id <- DBI::Id(schema = schema, table = table_name)
-
-  schema_quoted <- DBI::dbQuoteIdentifier(con, schema)
-  table_name_quoted <- DBI::dbQuoteIdentifier(con, table_name)
 
   # Beispiel: identity_columns ist ein data.frame mit Spalten, die Identity bekommen sollen
   if (!is.null(meta$identity_keys) && nrow(meta$identity_keys) > 0) {
-    for (i in seq_len(nrow(meta$identity_keys))) {
-      col <- meta$identity_keys[i, ]
+      col <- meta$identity_keys[1, ]
       col_name <- col$column_name
-      # Drop the existing column
-      drop_query <- glue::glue_sql(
-        "ALTER TABLE {schema_quoted}.{table_name_quoted} DROP COLUMN {`col_name`*};",
-        .con = con
-      )
-      DBI::dbExecute(con, drop_query)
-
-      # Add column with IDENTITY
-      add_query <- glue::glue_sql(
-        "ALTER TABLE {schema_quoted}.{table_name_quoted}
-         ADD COLUMN {`col_name`*} bigint GENERATED ALWAYS AS IDENTITY;",
-        .con = con
-      )
-      DBI::dbExecute(con, add_query)
-    }
+  } else {
+      col_name <- NULL
   }
+
+  sql <- generate_pg_create_table_simple(con, table_data_with_meta$data[0,], schema = schema, table_name = table_name, id_col = col_name)
+  DBI::dbExecute(con, sql)
+
+  # Collect metadata
+  tbl_id <- DBI::Id(schema = schema, table = table_name)
+  schema_quoted <- DBI::dbQuoteIdentifier(con, schema)
+  table_name_quoted <- DBI::dbQuoteIdentifier(con, table_name)
 
   # PRIMARY KEY
   if (!is.null(meta$primary_keys) && nrow(meta$primary_keys) > 0) {
@@ -594,7 +573,8 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
       group <- uc_grouped[[constraint_name]]
 
       # Zitiere Spaltennamen
-      quoted_cols <- paste(DBI::dbQuoteIdentifier(con, group$column_name), collapse = ", ")
+      quoted_cols_vec <- DBI::dbQuoteIdentifier(con, group$column_name)
+      quoted_cols <- DBI::SQL(paste(quoted_cols_vec, collapse = ", "))
 
       # Zitiere Constraint-Name
       quoted_constraint_name <- DBI::dbQuoteIdentifier(con, constraint_name)
@@ -607,7 +587,7 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
       query <- glue::glue_sql(
         "ALTER TABLE {schema_quoted}.{table_name_quoted}
          ADD CONSTRAINT {quoted_constraint_name}
-         UNIQUE ({sql(quoted_cols)})",
+         UNIQUE ({quoted_cols})",
         .con = con
       )
 
@@ -620,32 +600,55 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
     }
   }
 
-  # FOREIGN KEYS
-  if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
-    for (i in seq_len(nrow(meta$foreign_keys))) {
-      fk <- meta$foreign_keys[i, ]
-      ref_table <- fk$referenced_table
-      ref_schema <- fk$referenced_schema
-      # Only apply FK if referenced table is available
-      if (paste0(ref_schema, ".", ref_table) %in% available_tables) {
+# FOREIGN KEYS
+if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
+  for (i in seq_len(nrow(meta$foreign_keys))) {
+    fk <- meta$foreign_keys[i, ]
+    ref_table <- fk$referenced_table
+    ref_schema <- fk$referenced_schema
+    constraint_name <- glue::glue("fk_{table_name}_{fk$constraint_column}")
+
+    # Nur anwenden, wenn die referenzierte Tabelle verfügbar ist
+    if (paste0(ref_schema, ".", ref_table) %in% available_tables) {
+      # Prüfe, ob Constraint bereits existiert
+      constraint_exists_query <- glue::glue("
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_schema = '{schema}'
+          AND table_name = '{table_name}'
+          AND constraint_name = '{constraint_name}'
+          AND constraint_type = 'FOREIGN KEY';
+      ")
+
+      exists <- tryCatch({
+        DBI::dbGetQuery(con, constraint_exists_query)
+      }, error = function(e) NULL)
+
+      if (is.null(exists) || nrow(exists) == 0) {
+        # Constraint anlegen
         query <- glue::glue("
-          ALTER TABLE {schema_quoted}.{table_name_quoted}
-            ADD CONSTRAINT fk_{table_name}_{fk$constraint_column}
-            FOREIGN KEY ({fk$constraint_column})
-            REFERENCES {fk$referenced_schema}.{fk$referenced_table} ({fk$referenced_column})
+          ALTER TABLE {DBI::dbQuoteIdentifier(con, schema)}.{DBI::dbQuoteIdentifier(con, table_name)}
+            ADD CONSTRAINT {DBI::dbQuoteIdentifier(con, constraint_name)}
+            FOREIGN KEY ({DBI::dbQuoteIdentifier(con, fk$constraint_column)})
+            REFERENCES {DBI::dbQuoteIdentifier(con, fk$referenced_schema)}.{DBI::dbQuoteIdentifier(con, fk$referenced_table)} ({DBI::dbQuoteIdentifier(con, fk$referenced_column)})
             {if (fk$update_rule != 'NO ACTION') glue::glue('ON UPDATE {fk$update_rule}') else ''}
             {if (fk$delete_rule != 'NO ACTION') glue::glue('ON DELETE {fk$delete_rule}') else ''};
-          ")
-        DBI::dbExecute(con, query)
+        ")
+
+        tryCatch({
+          DBI::dbExecute(con, query)
+          message(glue::glue("✔ FOREIGN KEY added: {table_name} → {ref_table}"))
+        }, error = function(e) {
+          message(glue::glue("✖ Failed to add FK {constraint_name}: {e$message}"))
+        })
       } else {
-          message(
-            glue::glue(
-              "Foreign key not created: {table_name} → {ref_table}. Please load {ref_table} before {table_name}."
-            )
-          )
+        message(glue::glue("⚠ Constraint {constraint_name} already exists, skipping."))
       }
+    } else {
+      message(glue::glue("⚠ Foreign key skipped: {table_name} → {ref_table}. Load {ref_table} before {table_name}."))
     }
   }
+}
+
 
   # NOT NULL
   if (!is.null(meta$not_null_columns) && nrow(meta$not_null_columns) > 0) {
@@ -727,7 +730,7 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
 
         # Default-Wert roh in SQL einfügen (kein quoting!)
         query <- glue::glue_sql(
-          "ALTER TABLE {schema_quoted}.{table_name_quoted} ALTER COLUMN {col_quoted} SET DEFAULT {sql(default)}",
+          "ALTER TABLE {schema_quoted}.{table_name_quoted} ALTER COLUMN {col_quoted} SET DEFAULT {default}",
           .con = con
         )
 
@@ -807,7 +810,7 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
       condition <- meta$check_constraints$check_condition[i]
 
       query <- glue::glue_sql(
-        "ALTER TABLE {schema_quoted}.{table_name_quoted} ADD CONSTRAINT {`constraint_name`} CHECK ({sql(condition)});",
+        "ALTER TABLE {schema_quoted}.{table_name_quoted} ADD CONSTRAINT {`constraint_name`} CHECK ({condition});",
         .con = con
       )
 
@@ -823,15 +826,15 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
   # TRIGGERS
   if (!is.null(meta$triggers) && nrow(meta$triggers) > 0) {
     for (i in seq_len(nrow(meta$triggers))) {
-      trigger_name <- DBI::dbQuoteIdentifier(con, meta$triggers$trigger_name[i])
-      timing <- meta$triggers$timing[i]  # BEFORE, AFTER, etc.
-      event <- meta$triggers$event[i]    # INSERT, UPDATE, DELETE
-      definition <- meta$triggers$definition[i]  # ganze Prozedur z. B. "EXECUTE FUNCTION ..."
+      trigger_name_quoted <- DBI::dbQuoteIdentifier(con, meta$triggers$trigger_name[i])
+      timing <- DBI::SQL(meta$triggers$timing[i])
+      event <- DBI::SQL(meta$triggers$event[i])
+      definition <- DBI::SQL(meta$triggers$definition[i])  # ganze Prozedur z. B. "EXECUTE FUNCTION ..."
 
       # Zusammensetzen der SQL-Abfrage
       query <- glue::glue_sql(
-        "CREATE TRIGGER {sql(meta$triggers$trigger_name[i])} {sql(timing)} {sql(event)} ON {schema_quoted}.{table_name_quoted}
-         FOR EACH ROW {SQL(definition)};",
+        "CREATE TRIGGER {trigger_name_quoted} {timing} {event} ON {schema_quoted}.{table_name_quoted}
+         FOR EACH ROW {definition};",
         .con = con
       )
 
@@ -852,6 +855,56 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
   )
 
   return(NULL)
+}
+
+generate_pg_create_table_simple <- function(con, df, schema = NULL, table_name, id_col = NULL) {
+
+  full_table_name <- if (!is.null(schema)) {
+    paste0(DBI::dbQuoteIdentifier(con, schema), ".", DBI::dbQuoteIdentifier(con, table_name))
+  } else {
+    DBI::dbQuoteIdentifier(con, table_name)
+  }
+
+  # Hilfsfunktion: R-Typ → Postgres-Typ (umgekehrtes Mapping)
+  r_to_pg <- function(x) {
+    # Prüfe Klassen
+    if (inherits(x, "integer")) {
+      "INTEGER"
+    } else if (inherits(x, "integer64")) {
+      "BIGINT"
+    } else if (inherits(x, "numeric")) {
+      "DOUBLE PRECISION"
+    } else if (inherits(x, "logical")) {
+      "BOOLEAN"
+    } else if (inherits(x, "Date")) {
+      "DATE"
+    } else if (inherits(x, "POSIXct") || inherits(x, "POSIXlt")) {
+      "TIMESTAMP WITHOUT TIME ZONE"
+    } else if (inherits(x, "hms")) {
+      "TIME WITHOUT TIME ZONE"
+    } else {
+      "TEXT"
+    }
+  }
+
+  cols <- names(df)
+
+  col_defs <- sapply(cols, function(col) {
+    if (!is.null(id_col) && col == id_col) {
+      paste0("\"", col, "\" BIGINT GENERATED ALWAYS AS IDENTITY")
+    } else {
+      pg_type <- r_to_pg(df[[col]])
+      paste0("\"", col, "\" ", pg_type)
+    }
+  }, USE.NAMES = FALSE)
+
+  sql <- paste0(
+    "CREATE TABLE ", full_table_name, " (\n  ",
+    paste(col_defs, collapse = ",\n  "),
+    "\n);"
+  )
+
+  return(sql)
 }
 
 categorize_sql_string <- function(input_string) {
