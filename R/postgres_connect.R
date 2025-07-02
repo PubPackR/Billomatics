@@ -826,26 +826,19 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
   # TRIGGERS
   if (!is.null(meta$triggers) && nrow(meta$triggers) > 0) {
     for (i in seq_len(nrow(meta$triggers))) {
-      trigger_name_quoted <- DBI::dbQuoteIdentifier(con, meta$triggers$trigger_name[i])
-      timing <- DBI::SQL(meta$triggers$timing[i])
-      event <- DBI::SQL(meta$triggers$event[i])
-      definition <- DBI::SQL(meta$triggers$definition[i])  # ganze Prozedur z. B. "EXECUTE FUNCTION ..."
-
-      # Zusammensetzen der SQL-Abfrage
-      query <- glue::glue_sql(
-        "CREATE TRIGGER {trigger_name_quoted} {timing} {event} ON {schema_quoted}.{table_name_quoted}
-         FOR EACH ROW {definition};",
-        .con = con
-      )
+      query <- meta$triggers$trigger_definition[i]
 
       tryCatch({
         DBI::dbExecute(con, query)
       }, error = function(e) {
-        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
-        cat(sprintf("Fehler beim Erstellen eines Triggers: %s\n", e$message))
+        cat(sprintf(
+          "Fehler beim Erstellen des Triggers '%s': %s\n",
+          meta$triggers$trigger_name[i], e$message
+        ))
       })
     }
   }
+
 
   # Write data
   DBI::dbAppendTable(
@@ -972,25 +965,21 @@ get_all_functions <- function(ssh_session, postgres_keys) {
 
   # Abfrage, um alle definierten Funktionen abzurufen
   query <- "
+COPY (
   SELECT
-      n.nspname AS schema_name,
-      p.proname AS function_name,
-      pg_catalog.pg_get_function_result(p.oid) AS return_type,
-      pg_catalog.pg_get_function_arguments(p.oid) AS arguments,
-      pg_catalog.pg_get_functiondef(p.oid) AS function_code
-  FROM
-      pg_catalog.pg_proc p
-  LEFT JOIN
-      pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-  WHERE
-      pg_catalog.pg_function_is_visible(p.oid)
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-  ORDER BY
-      n.nspname, p.proname;
-  "
+    n.nspname AS schema_name,
+    p.proname AS function_name,
+    pg_get_function_result(p.oid) AS return_type,
+    pg_get_function_arguments(p.oid) AS arguments,
+    pg_get_functiondef(p.oid) AS function_code
+  FROM pg_proc p
+  LEFT JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+  ORDER BY n.nspname, p.proname
+) TO STDOUT WITH CSV DELIMITER ',' QUOTE '\"' ESCAPE '\"';
+"
 
-  data_result <- execute_psql_query(query, ssh_session, postgres_keys)
+  data_result <- execute_functions_query(query, ssh_session, postgres_keys)
 
   # Gibt das DataFrame mit den Funktionen zurück
   return(data_result)
@@ -1074,6 +1063,24 @@ parse_pg_meta <- function(text_output) {
   # Convert to data frame
   df <- read.table(text = paste(data_lines, collapse = "\n"), quote = "", sep = "|", strip.white = TRUE, stringsAsFactors = FALSE, header = FALSE)
   names(df) <- header
+  return(df)
+}
+
+# Function to execute a psql query over SSH and retrieve the result
+execute_functions_query <- function(query, ssh_session, postgres_keys) {
+  # Build the psql command with provided credentials
+  psql_command <- sprintf("PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" <<'EOF'\n%s\nEOF",
+                          postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], query)
+
+  # Execute the query over SSH
+  result <- ssh::ssh_exec_internal(ssh_session, psql_command)
+
+  output_text <- rawToChar(result$stdout)
+
+  col_names <- c("schema_name", "function_name", "return_type", "arguments", "function_code")
+
+  df <- readr::read_csv(output_text, col_names = col_names, show_col_types = FALSE)
+
   return(df)
 }
 
@@ -1236,13 +1243,16 @@ WHERE
     # Get all triggers for a given table
     trigger_query <- sprintf("
       SELECT
-        trigger_name,
-        event_manipulation AS event,
-        action_timing AS timing,
-        action_statement AS definition
-      FROM information_schema.triggers
-      WHERE event_object_table = '%s'
-        AND event_object_schema = '%s';", table_name, schema)
+        tg.tgname AS trigger_name,
+        pg_get_triggerdef(tg.oid, true) AS trigger_definition,
+        c.relname AS table_name,
+        s.nspname AS schema_name
+      FROM pg_trigger tg
+      JOIN pg_class c ON tg.tgrelid = c.oid
+      JOIN pg_namespace s ON c.relnamespace = s.oid
+      WHERE s.nspname = '%s'
+        AND c.relname = '%s'
+        AND NOT tg.tgisinternal;", schema, table_name)
 
     trigger_info <- execute_psql_query(trigger_query, ssh_session, postgres_keys)
 

@@ -72,6 +72,15 @@ add_crm_tag <- function(headers, df) {
   # through the optional fields "action" and "field_type" the df gets filtered
   # before the request excecution
 
+  required_cols <- c("attachable_id", "attachable_type", "field_name", "action", "field_type")
+
+  # Check for required columns
+  missing_required <- setdiff(required_cols, names(df))
+  if (length(missing_required) > 0) {
+    stop(paste("❌ The following columns are missing in the dataframe:",
+               paste(missing_required, collapse = ", ")))
+  }
+
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "tag") %>%
     filter({if("action" %in% names(.)) action else NULL} == "add") %>%
