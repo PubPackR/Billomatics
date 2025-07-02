@@ -61,8 +61,8 @@ postgres_connect <- function(postgres_keys = NULL,
       if (is.null(postgres_keys)) { # Wenn keine Keys übergeben werden, dann stoppe die Funktion
         stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
       }
-      pool <- postgres_connect_intern_function(postgres_keys = postgres_keys)
-      return(pool)
+      con <- postgres_connect_intern_function(postgres_keys = postgres_keys)
+      return(con)
     }
     message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe diese zurück.")
     return(con)
@@ -82,19 +82,17 @@ postgres_connect <- function(postgres_keys = NULL,
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
       }
-      pool <- postgres_connect_intern_function(postgres_keys = postgres_keys, local_pw = local_pw, local_host = local_host, local_port = local_port, local_user = local_user, local_dbname = local_dbname, ssl_cert_path = ssl_cert_path)
-    } else {
-      pool <- con
+      con <- postgres_connect_intern_function(postgres_keys = postgres_keys, local_pw = local_pw, local_host = local_host, local_port = local_port, local_user = local_user, local_dbname = local_dbname, ssl_cert_path = ssl_cert_path)
     }
 
     # Wenn keine Tabellen angegeben sind, gebe nur die Verbindung zurück
     if (is.null(needed_tables)) {
       message("Keine Tabellen angegeben. Es werden keine Daten geladen.")
-      return(pool)
+      return(con)
     }
 
     # Bestimme zu downloadende Tabellen
-    tables_to_pull <- postgres_get_tables_to_pull(needed_tables, pool, update_local_tables)
+    tables_to_pull <- postgres_get_tables_to_pull(needed_tables, con, update_local_tables)
 
     # Lade Tabellen aus der Produktion nacheinander, so wird der RAM nicht überlastet
     if (length(tables_to_pull) > 0) {
@@ -116,7 +114,7 @@ postgres_connect <- function(postgres_keys = NULL,
         message("⬇️ Ziehe Tabelle aus Produktion: ", table_name)
         results <- postgres_pull_production_tables(
           table = table_name,  # einzeln übergeben
-          local_con = pool,
+          local_con = con,
           ssh_key_path = ssh_key_path,
           local_password = local_pw,
           load_in_memory = load_in_memory,
@@ -136,7 +134,7 @@ postgres_connect <- function(postgres_keys = NULL,
 
   }
 
-  return(pool)
+  return(con)
 }
 
 ################################################################################-
