@@ -1428,7 +1428,7 @@ postgres_get_tables_to_pull <- function(tables, con, update_local_tables) {
 #' @param local_pw Optionales Passwort für die lokale Datenbankverbindung. Wird in interaktiver Umgebung abgefragt, falls nicht angegeben.
 #' @param ssl_cert_path Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist `"../../metabase-data/postgres/eu-central-1-bundle.pem"`.
 #'
-#' @return Ein `DBIConnection`-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
+#' @return Ein `pool::dbPool`-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
 #'
 #' @details
 #' - In interaktiven Sessions (`interactive() == TRUE`) wird eine Verbindung zur lokalen PostgreSQL-Datenbank aufgebaut.
@@ -1498,7 +1498,7 @@ postgres_connect_intern_function <- function(local_host = "localhost",
       # Step 4: Close admin connection
       DBI::dbDisconnect(admin_con)
 
-      local_con <- DBI::dbConnect(
+      local_con <- pool::dbPool(
         drv = RPostgres::Postgres(),
         dbname = local_dbname,
         host = local_host,
@@ -1513,7 +1513,7 @@ postgres_connect_intern_function <- function(local_host = "localhost",
       return(local_con)
     } else {
       # 🌐 Produktionsverbindung außerhalb von interactive()
-      con <- DBI::dbConnect(
+      con <- pool::dbPool(
         drv = RPostgres::Postgres(),
         password = postgres_keys[[1]],
         user = postgres_keys[[2]],
