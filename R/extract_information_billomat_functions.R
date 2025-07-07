@@ -9,13 +9,30 @@
 compress_column <- function(column) {
   column <- gsub("\u00A0", " ", column, fixed = TRUE)
   column <- tolower(column)
-  column <- str_remove_all(column, " ag| se| gmbh| co\\. kg|kg")
-  column <-  gsub("[^[:alnum:]]", "", column)
-  column %>%
-    stringr::str_replace_all("[äÄ]", "ae") %>%
-    stringr::str_replace_all("[öÖ]", "oe") %>%
-    stringr::str_replace_all("[üÜ]", "ue")
+  column <- str_remove_all(column, " ag| se| gmbh| ggmbh| co\\. kg|kg")
 
+  # Replace accented characters with unaccented equivalents
+  column <- column %>%
+    stringr::str_replace_all("[ä]", "ae") %>%
+    stringr::str_replace_all("[ö]", "oe") %>%
+    stringr::str_replace_all("[ü]", "ue") %>%
+    stringr::str_replace_all("[Ä]", "ae") %>%
+    stringr::str_replace_all("[Ö]", "oe") %>%
+    stringr::str_replace_all("[Ü]", "ue") %>%
+    stringr::str_replace_all("á|à|â|ã|å|ā|ă|ä", "a") %>%
+    stringr::str_replace_all("ç|ć|č", "c") %>%
+    stringr::str_replace_all("é|è|ê|ë|ē|ė|ę", "e") %>%
+    stringr::str_replace_all("í|ì|î|ï|ī|į", "i") %>%
+    stringr::str_replace_all("ñ|ń", "n") %>%
+    stringr::str_replace_all("ó|ò|ô|õ|ø|ō|ő|ö", "o") %>%
+    stringr::str_replace_all("ú|ù|û|ū|ű|ü", "u") %>%
+    stringr::str_replace_all("ý|ÿ", "y") %>%
+    stringr::str_replace_all("ß", "ss")
+
+  # Remove all remaining non-alphanumeric characters
+  column <- gsub("[^[:alnum:]]", "", column)
+
+  return(column)
 }
 
 
