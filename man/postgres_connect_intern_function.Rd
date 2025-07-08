@@ -37,7 +37,7 @@ postgres_connect_intern_function(
 \item{ssl_cert_path}{Pfad zur SSL-Zertifikatsdatei für die Verbindung zur Produktionsdatenbank. Standard ist \code{"../../metabase-data/postgres/eu-central-1-bundle.pem"}.}
 }
 \value{
-Ein \code{DBIConnection}-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
+Ein \code{pool::dbPool}-Objekt, falls die Verbindung erfolgreich war. Andernfalls wird ein Fehler ausgelöst.
 }
 \description{
 Stellt eine Verbindung zu einer PostgreSQL-Datenbank her – lokal oder produktiv –, abhängig von der Umgebung (interaktiv oder nicht).

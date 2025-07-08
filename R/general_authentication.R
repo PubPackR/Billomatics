@@ -5,15 +5,39 @@ library(tidyverse)
 library(googlesheets4)
 library(googleAuthR)
 
-#' authentication_process
+#' Authenticate Multiple Services
 #'
-#' This function executes the requested authentication processes.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
-#' @param needed_services the authentication services you need as vector.
-#' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return authentication keys as vector
-
+#' Runs authentication for multiple external services such as Billomat, CRM,
+#' Google Sheet, Asana, MS Graph, and others, based on the provided service names.
+#'
+#' The function maps each requested service to its corresponding authentication function
+#' and passes the respective argument from \code{args}.
+#'
+#' **Usage Context:**
+#' \itemize{
+#'   \item In \strong{FlowForce jobs}, \code{args} is usually filled automatically
+#'   by reading from \code{commandArgs(trailingOnly = TRUE)}.
+#'   \item In \strong{Shiny apps}, \code{args} typically contains one or more preset keys from
+#'   your internal keys database, e.g., via \code{shinymanager::custom_access_keys_2("postgresql_public_key")}.
+#' }
+#'
+#' @param needed_services Character vector of service names to authenticate.
+#' Default includes common services like \code{"billomat"}, \code{"crm"}, \code{"google sheet"}, etc.
+#' @param args A list of arguments (e.g., API keys, tokens, credentials) for each service,
+#' usually populated from FlowForce job parameters or Shiny keys.
+#'
+#' @return A named list containing authentication results or \code{NA} for unsupported services.
+#'
+#' @examples
+#' \dontrun{
+#' # Example in FlowForce context
+#' args <- commandArgs(trailingOnly = TRUE)
+#' authentication_process(needed_services = c("billomat", "crm"), args = args)
+#'
+#' # Example in Shiny app
+#' args <- list(shinymanager::custom_access_keys_2("postgresql_public_key"))
+#' authentication_process(needed_services = c("postgresql"), args = args)
+#' }
 #' @export
 authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql"), args) {
 
@@ -35,9 +59,9 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
   keys <- list()
 
   for (service in needed_services) {
-    pos <- match(1, stringr::str_detect(service, needed_services))
+    pos <- match(service, needed_services)
 
-    if (!is.na(pos) && service %in% names(auth_functions)) {
+    if (service %in% names(auth_functions)) {
       keys[[service]] <- auth_functions[[service]](args[pos])
     } else {
       keys[[service]] <- NA

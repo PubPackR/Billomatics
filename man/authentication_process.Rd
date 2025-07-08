@@ -2,7 +2,7 @@
 % Please edit documentation in R/general_authentication.R
 \name{authentication_process}
 \alias{authentication_process}
-\title{authentication_process}
+\title{Authenticate Multiple Services}
 \usage{
 authentication_process(
   needed_services = c("billomat", "crm", "google sheet", "asana", "msgraph", "brevo",
@@ -11,14 +11,39 @@ authentication_process(
 )
 }
 \arguments{
-\item{needed_services}{the authentication services you need as vector.}
+\item{needed_services}{Character vector of service names to authenticate.
+Default includes common services like \code{"billomat"}, \code{"crm"}, \code{"google sheet"}, etc.}
 
-\item{args}{Additional Input Parameter, only needed through FlowForce Job}
+\item{args}{A list of arguments (e.g., API keys, tokens, credentials) for each service,
+usually populated from FlowForce job parameters or Shiny keys.}
 }
 \value{
-authentication keys as vector
+A named list containing authentication results or \code{NA} for unsupported services.
 }
 \description{
-This function executes the requested authentication processes.
-It can handle manual password inputs as well as Flow Force args Inputs.
+Runs authentication for multiple external services such as Billomat, CRM,
+Google Sheet, Asana, MS Graph, and others, based on the provided service names.
+}
+\details{
+The function maps each requested service to its corresponding authentication function
+and passes the respective argument from \code{args}.
+
+\strong{Usage Context:}
+\itemize{
+\item In \strong{FlowForce jobs}, \code{args} is usually filled automatically
+by reading from \code{commandArgs(trailingOnly = TRUE)}.
+\item In \strong{Shiny apps}, \code{args} typically contains one or more preset keys from
+your internal keys database, e.g., via \code{shinymanager::custom_access_keys_2("postgresql_public_key")}.
+}
+}
+\examples{
+\dontrun{
+# Example in FlowForce context
+args <- commandArgs(trailingOnly = TRUE)
+authentication_process(needed_services = c("billomat", "crm"), args = args)
+
+# Example in Shiny app
+args <- list(shinymanager::custom_access_keys_2("postgresql_public_key"))
+authentication_process(needed_services = c("postgresql"), args = args)
+}
 }

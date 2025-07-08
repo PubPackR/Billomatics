@@ -82,7 +82,10 @@ postgres_connect <- function(postgres_keys = NULL,
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
       }
-      con <- postgres_connect_intern_function(postgres_keys = postgres_keys, local_pw = local_pw, local_host = local_host, local_port = local_port, local_user = local_user, local_dbname = local_dbname, ssl_cert_path = ssl_cert_path)
+      result <- connect_with_retry(postgres_keys = postgres_keys, local_pw = local_pw, local_host = local_host, local_port = local_port, local_user = local_user, local_dbname = local_dbname, ssl_cert_path = ssl_cert_path)
+
+      con <- result$connection
+      local_pw <- result$local_pw  # optional: updated password
     }
 
     # Wenn keine Tabellen angegeben sind, gebe nur die Verbindung zurück
@@ -155,6 +158,65 @@ recursive_search <- function(x) {
     }
     lapply(x, recursive_search)
   }
+}
+
+#' Connect to PostgreSQL with Retry on Password Failure
+#'
+#' This internal helper function tries to establish a PostgreSQL connection using the provided credentials.
+#' If the first attempt fails (e.g. wrong password), it prompts the user to re-enter the password
+#' via a secure prompt (`getPass::getPass`) and retries once.
+#'
+#' @param postgres_keys List of PostgreSQL connection keys or credentials.
+#' @param local_pw Character. The initial password to use for the connection attempt.
+#' @param local_host Character. The database host.
+#' @param local_port Integer or Character. The database port.
+#' @param local_user Character. The database username.
+#' @param local_dbname Character. The database name.
+#' @param ssl_cert_path Character. Path to the SSL certificate (if required).
+#'
+#' @return A list with two elements:
+#' \describe{
+#'   \item{connection}{The established database connection object.}
+#'   \item{local_pw}{The password that was successfully used for the connection.}
+#' }
+#'
+#' @keywords internal
+#' @seealso \code{\link[getPass]{getPass}}
+#' @examples
+#' \dontrun{
+#' result <- connect_with_retry(postgres_keys, local_pw, local_host, local_port, local_user, local_dbname, ssl_cert_path)
+#' con <- result$connection
+#' local_pw <- result$local_pw
+#' }
+connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, local_user, local_dbname, ssl_cert_path) {
+  tryCatch({
+    # Erster Verbindungsversuch
+    con <- postgres_connect_intern_function(
+      postgres_keys = postgres_keys,
+      local_pw = local_pw,
+      local_host = local_host,
+      local_port = local_port,
+      local_user = local_user,
+      local_dbname = local_dbname,
+      ssl_cert_path = ssl_cert_path
+    )
+    list(connection = con, local_pw = local_pw)
+  }, error = function(e) {
+    message("First connection attempt failed: ", e$message)
+    retry_pw <- getPass::getPass("Please enter your product passwort again: ")
+
+    # Zweiter Versuch
+    con <- postgres_connect_intern_function(
+      postgres_keys = postgres_keys,
+      local_pw = retry_pw,
+      local_host = local_host,
+      local_port = local_port,
+      local_user = local_user,
+      local_dbname = local_dbname,
+      ssl_cert_path = ssl_cert_path
+    )
+    list(connection = con, local_pw = retry_pw)
+  })
 }
 
 #' Aufbau einer SSH-Verbindung mit Keyfile und Passphrase
