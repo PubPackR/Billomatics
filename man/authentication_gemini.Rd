@@ -5,14 +5,21 @@
 \title{authentication_gemini}
 \usage{
 authentication_gemini(args)
+
+authentication_gemini(args)
 }
 \arguments{
 \item{args}{Additional input parameter, only needed through FlowForce Job}
 }
 \value{
 Gemini API Key as String
+
+Openrouter API Key as String
 }
 \description{
+This function handles the key decryption for the Gemini API authentication.
+It supports manual decryption key input as well as FlowForce arguments.
+
 This function handles the key decryption for the Gemini API authentication.
 It supports manual decryption key input as well as FlowForce arguments.
 }
