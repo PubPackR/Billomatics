@@ -458,7 +458,7 @@ authentication_gemini <-  function(args) {
 #' @return Openrouter API Key as String
 #'
 #' @export
-authentication_gemini <-  function(args) {
+authentication_openrouter <-  function(args) {
 
   encrypted_api_key <- readLines("../../keys/openrouter.txt")
 
