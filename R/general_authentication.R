@@ -39,7 +39,7 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql", "gemini", "openrouter"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -53,7 +53,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
     BigQuery = authentication_Google_BigQuery,
     cleverreach = authentication_cleverreach,
     postgresql = authentication_postgresql,
-    gemini = authentication_gemini
+    gemini = authentication_gemini,
+    openrouter = authentication_openrouter
   )
 
   keys <- list()
@@ -441,6 +442,28 @@ authentication_gemini <-  function(args) {
 
   if (interactive() & (length(args) == 0 | is.na(args[1]))) {
     decrypt_key <- getPass::getPass("Bitte Decryption_Key für Gemini eingeben: ")
+  } else{
+    decrypt_key <- args
+  }
+
+  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+}
+
+#' authentication_openrouter
+#'
+#' This function handles the key decryption for the Gemini API authentication.
+#' It supports manual decryption key input as well as FlowForce arguments.
+#'
+#' @param args Additional input parameter, only needed through FlowForce Job
+#' @return Openrouter API Key as String
+#'
+#' @export
+authentication_openrouter <-  function(args) {
+
+  encrypted_api_key <- readLines("../../keys/openrouter.txt")
+
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key für OpenRouter eingeben: ")
   } else{
     decrypt_key <- args
   }
