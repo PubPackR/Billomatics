@@ -1,0 +1,14 @@
+Name: Analyze Selection for Postgres Tables
+Description: Extract tables from selected code
+Binding: analyze_postgres_tables_selection
+Interactive: true
+
+Name: Analyze File for Postgres Tables
+Description: Extract tables from current R script
+Binding: analyze_postgres_tables_file
+Interactive: true
+
+Name: Analyze Project for Postgres Tables
+Description: Extract tables from all R scripts in project
+Binding: analyze_postgres_tables_project
+Interactive: true
