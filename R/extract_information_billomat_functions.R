@@ -36,16 +36,13 @@ compress_column <- function(column) {
 }
 
 
-
-
 #----------------------------------------------------------------------------------------------------------------#
 ##------------------------------------ Functions when getting data from Billomat ---------------------------------
 #----------------------------------------------------------------------------------------------------------------#
 
-
 #' create a readable concise note
 #'
-#' This function creates a readable note
+#' This function creates a readable note and fixes some common mistakes
 
 #' @param df the df which holds the data from which information is extracted
 #' @param field the name of the field that contains the data
@@ -73,6 +70,12 @@ extract_note <- function(df, field) {
           `Produktbeschreibung` = "Produktbeschreibung"
         )
       ),
+      ## I want to make sure that there is always one whitespace before Laufzeitbeginn, Leistungsbeginn, Lauzfzeitende, Leistungsende
+      note = str_replace_all(
+        note,
+        "(?<!\\s)(Laufzeitbeginn|Leistungsbeginn|Laufzeitende|Leistungsende)",
+        " \\1"
+      ),
 
       note = str_remove_all(note, "[Gg]eplant.*?\\s"),
       note = str_remove(note, ": \n"),
@@ -98,16 +101,21 @@ extract_note <- function(df, field) {
 get_extracted_information <- function(df, field) {
   if (field == "description") {
     df <- df %>%
-      mutate(description = str_replace_all(
-        description,
-        pattern = c(
-          `Beginn des Leistungszeitraums` = "Laufzeitbeginn",
-          `Ende des Leistungszeitraums` = "Laufzeitende"
-
+      mutate(
+        description = str_replace_all(
+          description,
+          pattern = c(
+            `Beginn des Leistungszeitraums` = "Laufzeitbeginn",
+            `Ende des Leistungszeitraums` = "Laufzeitende"
+          )
         )
-      ))
+      )
   }
-  purrr::map_dfr(1:nrow(df), ~ extract_note(df[., ], field = field), .progress = TRUE) %>%
+  purrr::map_dfr(
+    1:nrow(df),
+    ~ extract_note(df[., ], field = field),
+    .progress = TRUE
+  ) %>%
     unnest(cols = note)
 }
 
@@ -123,12 +131,11 @@ get_extracted_information <- function(df, field) {
 #' @return the data as df which has id and all information
 
 #' @export
-read_KeysFromDescription <- function (df, sep = sep)
-{
+read_KeysFromDescription <- function(df, sep = sep) {
   replace_string <- c(
     `01.11.2024 bis 31.01.2025 und 01.05.2025 bis 31.07.2025` = "01.11.2024 - 31.07.2025",
     `–` = "-",
-   `bis zum` = "-",
+    `bis zum` = "-",
     `bis` = "-",
     `ab dem` = "",
     `02023` = "2023",
@@ -144,15 +151,17 @@ read_KeysFromDescription <- function (df, sep = sep)
     `01.11.2022 - 31.04.2023` = "01.11.2022-30.04.2023",
     `27.01, 10.02 , 02.02, 16.02` = "27.01.2023-16.02.2023",
     `31.09.` = "30.09.",
-   `29.02.2025` = "28.02.2025",
+    `29.02.2025` = "28.02.2025",
 
     `30.2.` = "28.02.",
     `31.04.` = "30.04.",
     `31.06.` = "30.06.",
     `31.11.` = "30.11."
   )
-  df <- df %>% separate(note, into = c("key", "text"), sep = sep) %>%
-    drop_na(text) %>% mutate(text = str_trim(text), text = na_if(text, ""))
+  df <- df %>%
+    separate(note, into = c("key", "text"), sep = sep) %>%
+    drop_na(text) %>%
+    mutate(text = str_trim(text), text = na_if(text, ""))
   to_Leistungsbeginn <- paste0(
     c(
       "Versand.*",
@@ -172,17 +181,22 @@ read_KeysFromDescription <- function (df, sep = sep)
     ),
     collapse = "|"
   )
-  to_Leistungsende <- paste0(c(
-    "Kampagnenende",
-    "Laufzeitende",
-    "Ende des Leistungszeitraums",
-    "Predicted end of performance"
-  ),
-  collapse = "|")
-  to_Leistungszeitraum <- paste0(c("Laufzeit", "Leistungszeit", "Leistungsbeginn", "Versand.*"),
-                                 collapse = "|")
+  to_Leistungsende <- paste0(
+    c(
+      "Kampagnenende",
+      "Laufzeitende",
+      "Ende des Leistungszeitraums",
+      "Predicted end of performance"
+    ),
+    collapse = "|"
+  )
+  to_Leistungszeitraum <- paste0(
+    c("Laufzeit", "Leistungszeit", "Leistungsbeginn", "Versand.*"),
+    collapse = "|"
+  )
   df <-
-    df %>% mutate(
+    df %>%
+    mutate(
       key = if_else(
         str_detect(key, to_Leistungsbeginn) &
           !str_detect(text, "-"),
@@ -196,7 +210,8 @@ read_KeysFromDescription <- function (df, sep = sep)
               !str_detect(text, "Wochen|Monat|asap|flexibel|einmalig"),
             "Leistungszeitraum",
             if_else(
-              str_detect(key, "Laufzeit") & !str_detect(text, "-|bis|vor|im|nfang"),
+              str_detect(key, "Laufzeit") &
+                !str_detect(text, "-|bis|vor|im|nfang"),
               "Laufzeit",
               key
             )
@@ -214,7 +229,6 @@ read_KeysFromDescription <- function (df, sep = sep)
       text = str_squish(text),
       text = str_remove_all(text, "(?<![:alpha:]) (?![:alpha:])")
     )
-
 }
 
 
@@ -240,9 +254,9 @@ fix_invalid_dmy_vec <- function(date_strs) {
   split_parts <- strsplit(date_strs, "\\.")
 
   # Extract day, month, year as integers
-  day   <- as.integer(sapply(split_parts, `[`, 1))
+  day <- as.integer(sapply(split_parts, `[`, 1))
   month <- as.integer(sapply(split_parts, `[`, 2))
-  year  <- as.integer(sapply(split_parts, `[`, 3))
+  year <- as.integer(sapply(split_parts, `[`, 3))
 
   # Handle invalid month values
   month <- pmin(pmax(month, 1), 12)
@@ -253,9 +267,8 @@ fix_invalid_dmy_vec <- function(date_strs) {
   # Clamp days to valid range
   day <- pmin(pmax(day, 1), last_day)
 
-
   # Return corrected dates
- paste0(day,".",month,".",year)
+  paste0(day, ".", month, ".", year)
 }
 
 #' extract the information from each note and put it in a long table
@@ -266,8 +279,7 @@ fix_invalid_dmy_vec <- function(date_strs) {
 #' @return the data as df with the id and the extracted laufzeit
 
 #' @export
-get_laufzeiten_information <- function (df)
-{
+get_laufzeiten_information <- function(df) {
   keep_keys <-
     c(
       "Laufzeit",
@@ -281,21 +293,23 @@ get_laufzeiten_information <- function (df)
     ) %>%
     paste(., collapse = "|")
 
-  df <- df %>% filter((grepl(x = key, pattern = keep_keys))) %>%
+  df <- df %>%
+    filter((grepl(x = key, pattern = keep_keys))) %>%
     mutate(
       key = case_when(
         str_detect(text, c("-|bis")) &
           !str_detect(text, c("Wochen|Monate")) ~
           "Leistungszeitraum",
         str_detect(key, "Leistungszeitraum") &
-          !str_detect(text, "-|bis") ~ "Leistungsende",
+          !str_detect(text, "-|bis") ~
+          "Leistungsende",
         TRUE ~ key
       )
     )
 
-
   df <-
-    df %>% mutate(
+    df %>%
+    mutate(
       text = str_trim(text),
       text = str_remove_all(
         text,
@@ -304,9 +318,11 @@ get_laufzeiten_information <- function (df)
         )
       ),
       text = na_if(text, "")
-    ) %>% drop_na(text) %>%
+    ) %>%
+    drop_na(text) %>%
     group_by(id, key) %>%
-    mutate(Laufzeitnummer = row_number()) %>% ungroup() %>%
+    mutate(Laufzeitnummer = row_number()) %>%
+    ungroup() %>%
     pivot_wider(
       id_cols = c("id", "Laufzeitnummer"),
       names_from = "key",
@@ -315,59 +331,73 @@ get_laufzeiten_information <- function (df)
 
   # in order to avoid that the code breaks if there is no "Leistungzeitraum I need to break the pipe
 
-  condition1 <- "Leistungszeitraum" %in% colnames(df) &
-    !("Leistungsbeginn" %in% colnames(df) |
-        "Leistungsende" %in% colnames(df))
+  condition1 <- "Leistungszeitraum" %in%
+    colnames(df) &
+    !("Leistungsbeginn" %in% colnames(df) | "Leistungsende" %in% colnames(df))
 
-
-  condition2 <- "Leistungszeitraum" %in% colnames(df) &
-    ("Leistungsbeginn" %in% colnames(df) |
-       "Leistungsende" %in% colnames(df))
-
+  condition2 <- "Leistungszeitraum" %in%
+    colnames(df) &
+    ("Leistungsbeginn" %in% colnames(df) | "Leistungsende" %in% colnames(df))
 
   if (condition1) {
-    print ("1")
-    df <- df %>% mutate(
-      Leistungszeitraum = str_remove_all(Leistungszeitraum, pattern = "(?<=-).+(?=-)"),
-      Leistungszeitraum = str_replace_all(Leistungszeitraum, pattern = c(`--` = "-")),
-      Leistungszeitraum = str_remove_all(
-        Leistungszeitraum,
-        pattern = c("\\(1\\)|\\(2. Kampagne\\)|dauerhaft ab dem")
-      )
-    ) %>%
+    print("1")
+    df <- df %>%
+      mutate(
+        Leistungszeitraum = str_remove_all(
+          Leistungszeitraum,
+          pattern = "(?<=-).+(?=-)"
+        ),
+        Leistungszeitraum = str_replace_all(
+          Leistungszeitraum,
+          pattern = c(`--` = "-")
+        ),
+        Leistungszeitraum = str_remove_all(
+          Leistungszeitraum,
+          pattern = c("\\(1\\)|\\(2. Kampagne\\)|dauerhaft ab dem")
+        )
+      ) %>%
       # to break up the leistungszeitraum into start and end
-      separate(Leistungszeitraum,
-               into = c("Start", "Ende"),
-               sep = "-")
+      separate(Leistungszeitraum, into = c("Start", "Ende"), sep = "-")
   } else if (condition2) {
-    print ("2")
+    print("2")
     # to coalesce the cases where both leistungszeitraum and start and end were given, we need another filter
 
     df <- df %>%
       # to break up the leistungszeitraum into start and end
-      separate(Leistungszeitraum,
-               into = c("Start", "Ende"),
-               sep = "-")
+      separate(Leistungszeitraum, into = c("Start", "Ende"), sep = "-")
 
-    if(!"Leistungsbeginn" %in% colnames(df)) {
+    if (!"Leistungsbeginn" %in% colnames(df)) {
       df <- df %>%
-        mutate(Leistungsbeginn = NA)}
+        mutate(Leistungsbeginn = NA)
+    }
 
-    if(!"Leistungsende" %in% colnames(df)) {
+    if (!"Leistungsende" %in% colnames(df)) {
       df <- df %>%
-        mutate(Leistungsende = NA)}
+        mutate(Leistungsende = NA)
+    }
 
     df <- df %>%
       mutate(
         # to only keep the dates and remove all text information
         Start = stringr::str_extract_all(Start, "[0-9]*\\.[0-9]*\\.[0-9]*"),
         Ende = stringr::str_extract_all(Ende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
-        Leistungsbeginn = stringr::str_extract_all(Leistungsbeginn, "[0-9]*\\.[0-9]*\\.[0-9]*"),
-        Leistungsende = stringr::str_extract_all(Leistungsende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
-        Start = ifelse(is.na(Start) | Start == "character(0)", Leistungsbeginn, Start),
-        Ende = ifelse(is.na(Ende) | Ende == "character(0)", Leistungsende, Ende))
+        Leistungsbeginn = stringr::str_extract_all(
+          Leistungsbeginn,
+          "[0-9]*\\.[0-9]*\\.[0-9]*"
+        ),
+        Leistungsende = stringr::str_extract_all(
+          Leistungsende,
+          "[0-9]*\\.[0-9]*\\.[0-9]*"
+        ),
+        Start = ifelse(
+          is.na(Start) | Start == "character(0)",
+          Leistungsbeginn,
+          Start
+        ),
+        Ende = ifelse(is.na(Ende) | Ende == "character(0)", Leistungsende, Ende)
+      )
   } else {
-    print ("3")
+    print("3")
     # add column if not existing
     if (!"Leistungsbeginn" %in% colnames(df)) {
       df <- df %>%
@@ -378,18 +408,22 @@ get_laufzeiten_information <- function (df)
         mutate(Leistungsende = NA)
     }
     # when there is no start and ende then I have to make this column
-    df <- df %>% mutate(
+    df <- df %>%
+      mutate(
+        # to only keep the dates and remove all text information
+        Leistungsbeginn = stringr::str_extract_all(
+          Leistungsbeginn,
+          "[0-9]*\\.[0-9]*\\.[0-9]*"
+        ),
+        Leistungsende = stringr::str_extract_all(
+          Leistungsende,
+          "[0-9]*\\.[0-9]*\\.[0-9]*"
+        ),
 
-      # to only keep the dates and remove all text information
-      Leistungsbeginn = stringr::str_extract_all(Leistungsbeginn, "[0-9]*\\.[0-9]*\\.[0-9]*"),
-      Leistungsende = stringr::str_extract_all(Leistungsende, "[0-9]*\\.[0-9]*\\.[0-9]*"),
-
-      Start = Leistungsbeginn,
-      Ende = Leistungsende
-    )
+        Start = Leistungsbeginn,
+        Ende = Leistungsende
+      )
   } # to coalesce the cases where both leistungszeitraum and start and end were given, we need another filter
-
-
 
   df <- df %>%
     group_by(id) %>%
@@ -397,8 +431,10 @@ get_laufzeiten_information <- function (df)
       Laufzeit_Start = min(dmy(Start), na.rm = TRUE),
       Laufzeit_Ende = max(dmy(Ende), na.rm = TRUE)
     ) |>
-    mutate(Laufzeit_Start = ymd(Laufzeit_Start),
-           Laufzeit_Ende = ymd(Laufzeit_Ende))
+    mutate(
+      Laufzeit_Start = ymd(Laufzeit_Start),
+      Laufzeit_Ende = ymd(Laufzeit_Ende)
+    )
 
   return(df)
 }
@@ -422,7 +458,6 @@ extract_laufzeit_dauer <- function(df_position, field = "description") {
       names_from = key,
       values_from = text
     )
-
 }
 
 #' get the number of impressions ordered
@@ -434,10 +469,15 @@ extract_laufzeit_dauer <- function(df_position, field = "description") {
 #' @export
 get_impressions_and_bonus <- function(df, field2extract = "description") {
   df <- df %>%
-    mutate(description = str_replace_all(
-      description,
-      pattern = c("Produktbeschreibung:" = "Produktbeschreibung:\n", "[Pp]lus" = "+")
-    ))
+    mutate(
+      description = str_replace_all(
+        description,
+        pattern = c(
+          "Produktbeschreibung:" = "Produktbeschreibung:\n",
+          "[Pp]lus" = "+"
+        )
+      )
+    )
 
   field <- field2extract
   extracted_information <-
@@ -483,8 +523,6 @@ get_impressions_and_bonus <- function(df, field2extract = "description") {
 ##------------------------------------ Functions to create documents export to jp5 ----------------------------------------------
 #----------------------------------------------------------------------------------------------------------------#
 
-
-
 #' get_invoice_information_from_document
 #' This function takes a data frame with comments and turns them into a table containing the reported performance
 #' @param df_document The data frame with all the documents intro
@@ -492,50 +530,62 @@ get_impressions_and_bonus <- function(df, field2extract = "description") {
 #' @return The function returns a df key - value with all the fields that are found in the intro
 #'
 #' @export
-get_invoice_information_from_document <- function(df_document,
-                                                  field = "intro") {
-
-  if(field == "intro") {
-
-   extracted_field <- df_document %>%
-    mutate(intro = intro) %>%
-    #filter(id == 405476) %>%
-    mutate(intro = str_remove_all(intro, "&nbsp;|amp;"),
-           intro = str_replace_all(intro, ";", ";\n")) %>%
-    Billomatics::get_extracted_information(.,field)}
-
-  else if (field == "note") {
+get_invoice_information_from_document <- function(
+  df_document,
+  field = "intro"
+) {
+  if (field == "intro") {
+    extracted_field <- df_document %>%
+      mutate(intro = intro) %>%
+      #filter(id == 405476) %>%
+      mutate(
+        intro = str_remove_all(intro, "&nbsp;|amp;"),
+        intro = str_replace_all(intro, ";", ";\n")
+      ) %>%
+      Billomatics::get_extracted_information(., field)
+  } else if (field == "note") {
     extracted_field <- df_document %>%
       mutate(note = note) %>%
       #filter(id == 405476) %>%
-      mutate(note = str_remove_all(note, "&nbsp;|amp;"),
-             note = str_replace_all(note, ";", ";\n")) %>%
-      Billomatics::get_extracted_information(.,field)
+      mutate(
+        note = str_remove_all(note, "&nbsp;|amp;"),
+        note = str_replace_all(note, ";", ";\n")
+      ) %>%
+      Billomatics::get_extracted_information(., field)
   } else {
-
     return("no known field")
   }
 
   ## only if there was a field to extract we can continue
-  if(exists("extracted_field")){
-  extracted_field %>%
-    separate(note, into = c("key", "value"), sep = ":",extra = "drop", fill = "right") %>%
-    mutate(value = na_if(str_squish(value), "")) %>%
-    drop_na(value) %>%
-    filter(
-      !str_detect(key, c(
-        "Laufzeit|Rechnungsstellung erfolgt|Zielsetzung|Zielgr"
-      )),
-      !str_detect(value, pattern = "AN....SF...."),
-      !str_detect(value, pattern = "AB....SF....")
-    ) %>%
-    mutate(
-      value = str_squish(str_remove_all(value, "&nbsp;")),
-      key = str_squish(str_remove_all(key, "\\(Auftraggeber\\)|\\)|;")),
-      key = str_trim(str_replace_all(
-        key, pattern = c("nummer" = "nr", "gruppe" = "gr")
-      ))
-    )
+  if (exists("extracted_field")) {
+    extracted_field %>%
+      separate(
+        note,
+        into = c("key", "value"),
+        sep = ":",
+        extra = "drop",
+        fill = "right"
+      ) %>%
+      mutate(value = na_if(str_squish(value), "")) %>%
+      drop_na(value) %>%
+      filter(
+        !str_detect(
+          key,
+          c(
+            "Laufzeit|Rechnungsstellung erfolgt|Zielsetzung|Zielgr"
+          )
+        ),
+        !str_detect(value, pattern = "AN....SF...."),
+        !str_detect(value, pattern = "AB....SF....")
+      ) %>%
+      mutate(
+        value = str_squish(str_remove_all(value, "&nbsp;")),
+        key = str_squish(str_remove_all(key, "\\(Auftraggeber\\)|\\)|;")),
+        key = str_trim(str_replace_all(
+          key,
+          pattern = c("nummer" = "nr", "gruppe" = "gr")
+        ))
+      )
   }
 }
 
@@ -547,15 +597,16 @@ get_invoice_information_from_document <- function(df_document,
 #' @return The function returns a df with either the extra billing informations in a table or the CPC performance
 #'
 #' @export
-get_information_from_comments <- function(df_comments,
-                                          document_type = "confirmation",
-                                          desired_information = c("Rechnungszusatzinformation", "CPC Kampagne")) {
+get_information_from_comments <- function(
+  df_comments,
+  document_type = "confirmation",
+  desired_information = c("Rechnungszusatzinformation", "CPC Kampagne")
+) {
   # To be able to use the function for all document types we use a document_id
   document_id_var <- paste0(document_type, "_id")
   df_comments <- df_comments %>%
     mutate(document_id = get(document_id_var)) %>%
     unnest(everything())
-
 
   df_comments %>%
     ## only keep comments with the desired information
@@ -566,21 +617,28 @@ get_information_from_comments <- function(df_comments,
         "Rechnungszusatzinformationen:|Rechnungszusatzinformation:|CPC Kampagne:|\\.|€"
       )
     ) %>%
-    Billomatics::get_extracted_information(., "text")  %>%
+    Billomatics::get_extracted_information(., "text") %>%
     separate(note, into = c("key", "value"), sep = ":") %>%
-    mutate(value = na_if(str_squish(value), ""),
-           key = str_trim(str_replace_all(
-             key, pattern = c("nummer" = "nr", "gruppe" = "gr")
-           ))) %>%
+    mutate(
+      value = na_if(str_squish(value), ""),
+      key = str_trim(str_replace_all(
+        key,
+        pattern = c("nummer" = "nr", "gruppe" = "gr")
+      ))
+    ) %>%
     drop_na(value) %>%
     filter(
-      !str_detect(value, "20022390 mit der Billomat ID"),!str_detect(key, "Billomat-ID|Billomat ID")
+      !str_detect(value, "20022390 mit der Billomat ID"),
+      !str_detect(key, "Billomat-ID|Billomat ID")
     ) %>%
-    left_join(df_comments %>%
-                distinct(id, document_id, created), by = c("id")) %>%
+    left_join(
+      df_comments %>%
+        distinct(id, document_id, created),
+      by = c("id")
+    ) %>%
     group_by(key, document_id) %>%
     slice_max(created) %>%
-    mutate(document_id= as.character(document_id))
+    mutate(document_id = as.character(document_id))
 }
 
 
@@ -593,21 +651,22 @@ get_information_from_comments <- function(df_comments,
 #' @return The function returns one dataframe with the document_id, key col containing the name of the information and value its value.
 #'
 #' @export
-consolidate_invoice_information <- function(df_Billing_information_comment,
-                                            df_Billing_information_document
-                                            ) {
-
-  if(!"document_id" %in% colnames(df_Billing_information_document)) {
+consolidate_invoice_information <- function(
+  df_Billing_information_comment,
+  df_Billing_information_document
+) {
+  if (!"document_id" %in% colnames(df_Billing_information_document)) {
     df_Billing_information_document <- df_Billing_information_document %>%
       mutate(document_id = as.character(id))
   }
 
   df_Billing_information_document %>%
-  bind_rows(df_Billing_information_comment %>%
-    select(document_id, key, value)) %>%
+    bind_rows(
+      df_Billing_information_comment %>%
+        select(document_id, key, value)
+    ) %>%
     ungroup() %>%
     distinct(document_id, value, .keep_all = TRUE) %>%
     select(document_id, key, value) %>%
     mutate(document_id = as.character(document_id))
 }
-
