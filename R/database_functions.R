@@ -113,8 +113,10 @@ postgres_upsert_data <- function(con, schema, table, data,
   }
 
   # Temporäre Tabelle erstellen, um die Daten zu übertragen
-  temp_table <- paste0("temp_upsert_", as.integer(Sys.time()))
-  DBI::dbWriteTable(con, temp_table, data, temporary = TRUE)
+  temp_table <- paste0("temp_upsert_", format(Sys.time(), "%Y%m%d%H%M%S"), "_",
+                       round(as.numeric(Sys.time()) * 1000) %% 1000, "_",
+                       sample.int(999999, 1))
+  DBI::dbWriteTable(con, temp_table, data, temporary = TRUE, overwrite = TRUE)
 
   # Update-Klausel erstellen
   update_clause <- if (length(update_cols) > 0) {
@@ -160,7 +162,9 @@ postgres_upsert_data <- function(con, schema, table, data,
 
   # Optional: Löschen von nicht mehr vorhandenen Einträgen
   if (delete_missing) {
-    temp_table <- paste0("temp_delete_", as.integer(Sys.time()))
+    temp_table <- paste0("temp_delete_", format(Sys.time(), "%Y%m%d%H%M%S"), "_",
+                         round(as.numeric(Sys.time()) * 1000) %% 1000, "_",
+                         sample.int(999999, 1))
 
     # Temporäre Tabelle erstellen und befüllen
     DBI::dbWriteTable(con, temp_table, unique(data[match_cols]), temporary = TRUE, overwrite = TRUE)
