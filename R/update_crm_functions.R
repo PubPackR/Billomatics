@@ -65,7 +65,7 @@ remove_crm_tag <- function(headers, df) {
 
   if (nrow(invalid_tag_ids) > 0) {
     stop(paste0("❌ custom_fields_id (tag id) must be a positive number. ",
-                "Found invalid IDs at rows: ", paste(which(df$custom_fields_id %in% invalid_tag_ids$custom_fields_id), collapse = ", ")))
+                "Found invalid IDs at rows: ", paste(which(is.na(df$custom_fields_id) | df$custom_fields_id <= 0), collapse = ", ")))
   }
 
   # iterate over every row in to_remove and generate DELETE Request
@@ -216,7 +216,7 @@ remove_crm_custom_fields <- function(headers, df) {
 
   if (nrow(invalid_cf_ids) > 0) {
     stop(paste0("❌ custom_fields_id must be a positive number. ",
-                "Found invalid IDs at rows: ", paste(which(df$custom_fields_id %in% invalid_cf_ids$custom_fields_id), collapse = ", ")))
+                "Found invalid IDs at rows: ", paste(which(is.na(df$custom_fields_id) | df$custom_fields_id <= 0), collapse = ", ")))
   }
 
   for (r in 1:nrow(df)) {
@@ -296,15 +296,6 @@ add_crm_custom_fields <- function(headers, df) {
   if (nrow(invalid_types) > 0) {
     stop(paste0("❌ attachable_type must be 'people' or 'companies'. ",
                 "Found invalid types: ", paste(unique(invalid_types$attachable_type), collapse = ", ")))
-  }
-
-  # Validate field_name (custom_fields_type_id): must be numeric and positive
-  invalid_field_names <- df %>%
-    filter(is.na(field_name) | !is.numeric(field_name) | field_name <= 0)
-
-  if (nrow(invalid_field_names) > 0) {
-    stop(paste0("❌ field_name (custom_fields_type_id) must be a positive number. ",
-                "Found invalid values at rows: ", paste(which(df$field_name %in% invalid_field_names$field_name | is.na(df$field_name)), collapse = ", ")))
   }
 
   # Validate value: must not be empty or NA
