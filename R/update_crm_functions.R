@@ -122,7 +122,41 @@ add_crm_tag <- function(headers, df) {
 
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "tag") %>%
-    filter({if("action" %in% names(.)) action else NULL} == "add") %>%
+    filter({if("action" %in% names(.)) action else NULL} == "add")
+
+  if (nrow(df) == 0) {
+    warning("⚠️ No rows to process after filtering")
+    return(invisible(NULL))
+  }
+
+  # Validate attachable_id: must be at least 6 digits
+  invalid_ids <- df %>%
+    filter(is.na(attachable_id) | attachable_id < 100000)
+
+  if (nrow(invalid_ids) > 0) {
+    stop(paste0("❌ attachable_id must be at least 6 digits (>= 100000). ",
+                "Found invalid IDs: ", paste(unique(invalid_ids$attachable_id), collapse = ", ")))
+  }
+
+  # Validate attachable_type: must be "people" or "companies"
+  invalid_types <- df %>%
+    filter(!attachable_type %in% c("people", "companies"))
+
+  if (nrow(invalid_types) > 0) {
+    stop(paste0("❌ attachable_type must be 'people' or 'companies'. ",
+                "Found invalid types: ", paste(unique(invalid_types$attachable_type), collapse = ", ")))
+  }
+
+  # Validate field_name: must not be empty or NA
+  invalid_field_names <- df %>%
+    filter(is.na(field_name) | trimws(as.character(field_name)) == "")
+
+  if (nrow(invalid_field_names) > 0) {
+    stop(paste0("❌ field_name (tag name) must not be empty or NA. ",
+                "Found invalid values at rows: ", paste(which(is.na(df$field_name) | trimws(as.character(df$field_name)) == ""), collapse = ", ")))
+  }
+
+  df <- df %>%
     mutate(attachable_type = ifelse(
       attachable_type == "companies",
       "Company",
