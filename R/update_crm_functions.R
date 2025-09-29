@@ -21,6 +21,13 @@ library(tidyverse)
 
 #' @export
 remove_crm_tag <- function(headers, df) {
+  # Validate required columns
+  required_cols <- c("attachable_id", "attachable_type", "custom_fields_id")
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0) {
+    stop(paste("❌ Missing required columns:", paste(missing_cols, collapse = ", ")))
+  }
+
   # the df can include add and remove requests for tags and custom fields
   # through the optional fields "action" and "field_type" the df gets filtered
   # before the request excecution
@@ -28,6 +35,38 @@ remove_crm_tag <- function(headers, df) {
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "tag") %>%
     filter({if("action" %in% names(.)) action else NULL} == "remove")
+
+  if (nrow(df) == 0) {
+    warning("⚠️ No rows to process after filtering")
+    return(invisible(NULL))
+  }
+
+  # Validate attachable_id: must be at least 6 digits
+  invalid_ids <- df %>%
+    filter(is.na(attachable_id) | attachable_id < 100000)
+
+  if (nrow(invalid_ids) > 0) {
+    stop(paste0("❌ attachable_id must be at least 6 digits (>= 100000). ",
+                "Found invalid IDs: ", paste(unique(invalid_ids$attachable_id), collapse = ", ")))
+  }
+
+  # Validate attachable_type: must be "people" or "companies"
+  invalid_types <- df %>%
+    filter(!attachable_type %in% c("people", "companies"))
+
+  if (nrow(invalid_types) > 0) {
+    stop(paste0("❌ attachable_type must be 'people' or 'companies'. ",
+                "Found invalid types: ", paste(unique(invalid_types$attachable_type), collapse = ", ")))
+  }
+
+  # Validate custom_fields_id (tag id): must be numeric and positive
+  invalid_tag_ids <- df %>%
+    filter(is.na(custom_fields_id) | custom_fields_id <= 0)
+
+  if (nrow(invalid_tag_ids) > 0) {
+    stop(paste0("❌ custom_fields_id (tag id) must be a positive number. ",
+                "Found invalid IDs at rows: ", paste(which(df$custom_fields_id %in% invalid_tag_ids$custom_fields_id), collapse = ", ")))
+  }
 
   # iterate over every row in to_remove and generate DELETE Request
   for(r in 1:nrow(df)){
@@ -133,6 +172,13 @@ add_crm_tag <- function(headers, df) {
 
 #' @export
 remove_crm_custom_fields <- function(headers, df) {
+  # Validate required columns
+  required_cols <- c("attachable_id", "attachable_type", "custom_fields_id")
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0) {
+    stop(paste("❌ Missing required columns:", paste(missing_cols, collapse = ", ")))
+  }
+
   # the df can include add and remove requests for tags and custom fields
   # through the optional fields "action" and "field_type" the df gets filtered
   # before the request excecution
@@ -140,6 +186,38 @@ remove_crm_custom_fields <- function(headers, df) {
   df <- df %>%
     filter({if("field_type" %in% names(.)) field_type else NULL} == "custom_field") %>%
     filter({if("action" %in% names(.)) action else NULL} == "remove")
+
+  if (nrow(df) == 0) {
+    warning("⚠️ No rows to process after filtering")
+    return(invisible(NULL))
+  }
+
+  # Validate attachable_id: must be at least 6 digits
+  invalid_ids <- df %>%
+    filter(is.na(attachable_id) | attachable_id < 100000)
+
+  if (nrow(invalid_ids) > 0) {
+    stop(paste0("❌ attachable_id must be at least 6 digits (>= 100000). ",
+                "Found invalid IDs: ", paste(unique(invalid_ids$attachable_id), collapse = ", ")))
+  }
+
+  # Validate attachable_type: must be "people" or "companies"
+  invalid_types <- df %>%
+    filter(!attachable_type %in% c("people", "companies"))
+
+  if (nrow(invalid_types) > 0) {
+    stop(paste0("❌ attachable_type must be 'people' or 'companies'. ",
+                "Found invalid types: ", paste(unique(invalid_types$attachable_type), collapse = ", ")))
+  }
+
+  # Validate custom_fields_id: must be numeric and positive
+  invalid_cf_ids <- df %>%
+    filter(is.na(custom_fields_id) | custom_fields_id <= 0)
+
+  if (nrow(invalid_cf_ids) > 0) {
+    stop(paste0("❌ custom_fields_id must be a positive number. ",
+                "Found invalid IDs at rows: ", paste(which(df$custom_fields_id %in% invalid_cf_ids$custom_fields_id), collapse = ", ")))
+  }
 
   for (r in 1:nrow(df)) {
 
@@ -178,6 +256,13 @@ remove_crm_custom_fields <- function(headers, df) {
 
 #' @export
 add_crm_custom_fields <- function(headers, df) {
+  # Validate required columns
+  required_cols <- c("attachable_id", "attachable_type", "field_name", "value")
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0) {
+    stop(paste("❌ Missing required columns:", paste(missing_cols, collapse = ", ")))
+  }
+
   # the df can include add and remove requests for tags and custom fields
   # through the optional fields "action" and "field_type" the df gets filtered
   # before the request excecution
@@ -189,6 +274,47 @@ add_crm_custom_fields <- function(headers, df) {
       attachable_type == "companies", "Company",
       ifelse(attachable_type == "people", "Person", attachable_type)
   ))
+
+  if (nrow(df) == 0) {
+    warning("⚠️ No rows to process after filtering")
+    return(invisible(NULL))
+  }
+
+  # Validate attachable_id: must be at least 6 digits
+  invalid_ids <- df %>%
+    filter(is.na(attachable_id) | attachable_id < 100000)
+
+  if (nrow(invalid_ids) > 0) {
+    stop(paste0("❌ attachable_id must be at least 6 digits (>= 100000). ",
+                "Found invalid IDs: ", paste(unique(invalid_ids$attachable_id), collapse = ", ")))
+  }
+
+  # Validate attachable_type: must be "people" or "companies"
+  invalid_types <- df %>%
+    filter(!attachable_type %in% c("people", "companies"))
+
+  if (nrow(invalid_types) > 0) {
+    stop(paste0("❌ attachable_type must be 'people' or 'companies'. ",
+                "Found invalid types: ", paste(unique(invalid_types$attachable_type), collapse = ", ")))
+  }
+
+  # Validate field_name (custom_fields_type_id): must be numeric and positive
+  invalid_field_names <- df %>%
+    filter(is.na(field_name) | !is.numeric(field_name) | field_name <= 0)
+
+  if (nrow(invalid_field_names) > 0) {
+    stop(paste0("❌ field_name (custom_fields_type_id) must be a positive number. ",
+                "Found invalid values at rows: ", paste(which(df$field_name %in% invalid_field_names$field_name | is.na(df$field_name)), collapse = ", ")))
+  }
+
+  # Validate value: must not be empty or NA
+  invalid_values <- df %>%
+    filter(is.na(value) | trimws(as.character(value)) == "")
+
+  if (nrow(invalid_values) > 0) {
+    stop(paste0("❌ value must not be empty or NA. ",
+                "Found invalid values at rows: ", paste(which(is.na(df$value) | trimws(as.character(df$value)) == ""), collapse = ", ")))
+  }
 
   for(a in 1:nrow(df)){
 
