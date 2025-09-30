@@ -6,19 +6,41 @@
 #' The notes and protocols are NOT downloaded.
 
 #' @param api_key the api key you have to provide
+#' @param person_id optional person_id to load a single contact (default: NULL loads all contacts)
 #' @param pages the setting to call all pages (default), or a specific number of pages (one page includes 250 entries)
 #' @return the tibble which contains all information, this can be stored in a single vector or lists
 
 #' @export
-get_central_station_contacts <- function (api_key, pages = "all") {
-  # if the pages are set to "all" then all pages will be downloaded
-  # if pages is set to a specific number, then this number of pages will be downloaded
+get_central_station_contacts <- function (api_key, pages = "all", person_id = NULL) {
   # define header
   headers <- c(
     "content-type" = "application/json",
     "X-apikey" = api_key,
     "Accept" = "*/*"
   )
+
+  # if person_id is provided, load single contact
+  if (!is.null(person_id)) {
+    url <- paste0("https://api.centralstationcrm.net/api/people/", person_id, "?includes=all&methods=all")
+    response <- httr::GET(url, httr::add_headers(headers))
+    data <- jsonlite::fromJSON(httr::content(response, "text"))
+
+    # data$person contains the actual person data with nested data frames
+    # wrap only multi-value elements in list to create list-columns where needed
+    data$person <- lapply(data$person, function(x) {
+      if(is.null(x)) {
+        NA
+      } else if(is.data.frame(x) || is.list(x) || length(x) > 1) {
+        list(x)
+      } else {
+        x
+      }
+    })
+    return(tibble::as_tibble(data$person))
+  }
+
+  # if the pages are set to "all" then all pages will be downloaded
+  # if pages is set to a specific number, then this number of pages will be downloaded
 
   #define url to count all people
   url <- "https://api.centralstationcrm.net/api/people/count"

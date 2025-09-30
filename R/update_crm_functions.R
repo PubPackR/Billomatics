@@ -4,6 +4,128 @@ library(dplyr)
 library(tidyr)
 library(tidyverse)
 
+# -------------------------- Helper Functions --------------------------------
+
+#' Validate required columns in dataframe
+#' @param df dataframe to validate
+#' @param required_cols character vector of required column names
+#' @keywords internal
+validate_required_columns <- function(df, required_cols) {
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0) {
+    stop(paste("❌ Missing required columns:", paste(missing_cols, collapse = ", ")))
+  }
+}
+
+#' Filter dataframe by field_type and action
+#' @param df dataframe to filter
+#' @param field_type_value value to filter field_type by (e.g., "tag", "custom_field")
+#' @param action_value value to filter action by (e.g., "add", "remove")
+#' @keywords internal
+filter_by_field_and_action <- function(df, field_type_value, action_value) {
+  df <- df %>%
+    filter({if("field_type" %in% names(.)) field_type else NULL} == field_type_value) %>%
+    filter({if("action" %in% names(.)) action else NULL} == action_value)
+
+  if (nrow(df) == 0) {
+    warning("⚠️ No rows to process after filtering")
+    return(NULL)
+  }
+
+  df
+}
+
+#' Validate attachable_id column
+#' @param df dataframe to validate
+#' @keywords internal
+validate_attachable_id <- function(df) {
+  invalid_ids <- df %>%
+    filter(is.na(attachable_id) | attachable_id < 100000)
+
+  if (nrow(invalid_ids) > 0) {
+    stop(paste0("❌ attachable_id must be at least 6 digits (>= 100000). ",
+                "Found invalid IDs: ", paste(unique(invalid_ids$attachable_id), collapse = ", ")))
+  }
+}
+
+#' Validate attachable_type column
+#' @param df dataframe to validate
+#' @keywords internal
+validate_attachable_type <- function(df) {
+  invalid_types <- df %>%
+    filter(!attachable_type %in% c("people", "companies"))
+
+  if (nrow(invalid_types) > 0) {
+    stop(paste0("❌ attachable_type must be 'people' or 'companies'. ",
+                "Found invalid types: ", paste(unique(invalid_types$attachable_type), collapse = ", ")))
+  }
+}
+
+#' Validate custom_fields_id column
+#' @param df dataframe to validate
+#' @keywords internal
+validate_custom_fields_id <- function(df) {
+  invalid_ids <- df %>%
+    filter(is.na(custom_fields_id) | custom_fields_id <= 0)
+
+  if (nrow(invalid_ids) > 0) {
+    stop(paste0("❌ custom_fields_id must be a positive number. ",
+                "Found invalid IDs at rows: ", paste(which(is.na(df$custom_fields_id) | df$custom_fields_id <= 0), collapse = ", ")))
+  }
+}
+
+#' Validate field_name column (for tags)
+#' @param df dataframe to validate
+#' @keywords internal
+validate_field_name <- function(df) {
+  invalid_field_names <- df %>%
+    filter(is.na(field_name) | trimws(as.character(field_name)) == "")
+
+  if (nrow(invalid_field_names) > 0) {
+    stop(paste0("❌ field_name (tag name) must not be empty or NA. ",
+                "Found invalid values at rows: ", paste(which(is.na(df$field_name) | trimws(as.character(df$field_name)) == ""), collapse = ", ")))
+  }
+}
+
+#' Validate value column (for custom fields)
+#' @param df dataframe to validate
+#' @keywords internal
+validate_value <- function(df) {
+  invalid_values <- df %>%
+    filter(is.na(value) | trimws(as.character(value)) == "")
+
+  if (nrow(invalid_values) > 0) {
+    stop(paste0("❌ value must not be empty or NA. ",
+                "Found invalid values at rows: ", paste(which(is.na(df$value) | trimws(as.character(df$value)) == ""), collapse = ", ")))
+  }
+}
+
+#' Build CRM API URL for DELETE operations
+#' @param attachable_type "people" or "companies"
+#' @param attachable_id ID of the person/company
+#' @param resource_type "tags" or "custom_fields"
+#' @param resource_id ID of the tag or custom field
+#' @keywords internal
+build_crm_delete_url <- function(attachable_type, attachable_id, resource_type, resource_id) {
+  paste0(
+    "https://api.centralstationcrm.net/api/",
+    attachable_type, "/",
+    attachable_id, "/",
+    resource_type, "/",
+    resource_id
+  )
+}
+
+#' Transform attachable_type to API format
+#' @param attachable_type "people" or "companies"
+#' @keywords internal
+transform_attachable_type <- function(attachable_type) {
+  ifelse(attachable_type == "companies", "Company",
+         ifelse(attachable_type == "people", "Person", attachable_type))
+}
+
+# -------------------------- Main Functions --------------------------------
+
 #' remove_crm_tag
 #'
 #' This function calls the CRM API and starts a delete request for tags,
