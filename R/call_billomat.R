@@ -163,7 +163,60 @@ retrieveData <- function(content,
                ))
 }
 
+retrieveData_withCheck <- function(content, per_page, logger, billomatApiKey = billomatApiKey, billomatID = billomatID){
+    page_result1 <- 
+      curl_fetch_header(
+      page = 1,
+      content = content,
+      per_page = per_page,
+      billomatApiKey = billomatApiKey, 
+      billomatID = billomatID
+    )
+  expected_count <- page_result1$headers$`x-total-count` %>% as.numeric()
+  max_pages <- ceiling(expected_count/per_page)
 
+  all_pages <-  
+    purrr::map(.x = 1:max_pages,
+               ~ curl_fetch_billomat(
+                 page = .,
+                 content = content,
+                 per_page = per_page,
+                 billomatApiKey = billomatApiKey,
+                 billomatID = billomatID
+               ))
+
+   actual_count <- sum(purrr::map_int(all_pages, ~ xml2::xml_length(.x$body)))
+
+   if (!is.null(logger)) {
+      if (actual_count == expected_count) {
+        log4r::info(logger, paste0(content, " is complete"))
+      } else {
+        log4r::warn(logger, paste0(content, " data incomplete. Expected: ", expected_count, ", Got: ", actual_count))
+      }
+    }
+
+    return(all_pages)
+}
+
+# retrieve_page_result(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID){
+#   return(curl_fetch_header(
+#       page = 1,
+#       content = content,
+#       per_page = per_page,
+#       billomatApiKey = billomatApiKey,
+#       billomatID = billomatID
+#     ))
+# }
+
+# retrieve_all_pages(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID){
+#   return(curl_fetch_header(
+#       page = 1,
+#       content = content,
+#       per_page = per_page,
+#       billomatApiKey = billomatApiKey,
+#       billomatID = billomatID
+#     ))
+# }
 
 #' fetch_all_entries
 #' this function carries out the call to get all the content of the call
