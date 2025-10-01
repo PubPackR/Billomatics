@@ -90,11 +90,11 @@ get_central_station_single_tags <- function (api_key, tag_to_export, pages = 100
 #'  attachable_type - "people" or "companies"
 #'  field_name - name of the tag
 #'  field_type - optional, has to be value "tag"
-
+#' 
 #' @param headers the header informations you have to send with your request
 #' @param df the dataframe which should include the following fields:
 #' @return no return values
-
+#' 
 #' @export
 add_crm_tag <- function(headers, df) {
   # Filter by field_type and action
