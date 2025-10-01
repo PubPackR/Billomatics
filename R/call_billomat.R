@@ -163,19 +163,28 @@ retrieveData <- function(content,
                ))
 }
 
+#' retrieveData_withCheck
+#' this function carries out the call to get all the content of the call with validation
+#' @param content the name of the tables you are interested in, this is one string
+#' @param per_page how many entries per page to get
+#' @param logger a log4r logger object for logging validation results
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @return the call returns a list with all pages and logs whether the expected row count matches the actual count
+#' @export
 retrieveData_withCheck <- function(content, per_page, logger, billomatApiKey = billomatApiKey, billomatID = billomatID){
-    page_result1 <- 
+    page_result1 <-
       curl_fetch_header(
       page = 1,
       content = content,
       per_page = per_page,
-      billomatApiKey = billomatApiKey, 
+      billomatApiKey = billomatApiKey,
       billomatID = billomatID
     )
   expected_count <- page_result1$headers$`x-total-count` %>% as.numeric()
   max_pages <- ceiling(expected_count/per_page)
 
-  all_pages <-  
+  all_pages <-
     purrr::map(.x = 1:max_pages,
                ~ curl_fetch_billomat(
                  page = .,
@@ -198,25 +207,6 @@ retrieveData_withCheck <- function(content, per_page, logger, billomatApiKey = b
     return(all_pages)
 }
 
-# retrieve_page_result(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID){
-#   return(curl_fetch_header(
-#       page = 1,
-#       content = content,
-#       per_page = per_page,
-#       billomatApiKey = billomatApiKey,
-#       billomatID = billomatID
-#     ))
-# }
-
-# retrieve_all_pages(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID){
-#   return(curl_fetch_header(
-#       page = 1,
-#       content = content,
-#       per_page = per_page,
-#       billomatApiKey = billomatApiKey,
-#       billomatID = billomatID
-#     ))
-# }
 
 #' fetch_all_entries
 #' this function carries out the call to get all the content of the call
