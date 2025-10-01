@@ -72,11 +72,10 @@ get_crm_addresses <- function(headers, df) {
             address_id = addr_id,
             atype = addr_atype,
             street = addr_street,
-            additional = addr_additional,
             zip = addr_zip,
             city = addr_city,
-            state = addr_state,
-            country = addr_country
+            state_code = addr_state_code,
+            country_code = addr_country_code
           )
 
         if (nrow(address_data) > 0) {
