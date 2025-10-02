@@ -183,15 +183,15 @@ create_crm_position <- function(headers, df) {
   validate_attachable_id(df)
   validate_positive_id(df, "company_id", "company_id")
 
-  # Iterate over every row
+  # Iterate over every row and collect responses
+  all_responses <- tibble()
+
   for (p in 1:nrow(df)) {
     # Build position data list with defaults
     position_data <- list(
       position = list(
         person_id = as.numeric(df$attachable_id[p]),
-        company_id = as.numeric(df$company_id[p]),
-        primary_function = TRUE,
-        former = FALSE
+        company_id = as.numeric(df$company_id[p])
       )
     )
 
@@ -220,10 +220,24 @@ create_crm_position <- function(headers, df) {
     )
 
     # Check response status
-    if (!httr::status_code(response) %in% c(200, 201)) {
+    if (httr::status_code(response) %in% c(200, 201)) {
+      new_response <- jsonlite::fromJSON(httr::content(response, "text"))
+      position_tibble <- as_tibble(
+        lapply(new_response$position, function(x) if (length(x) == 0) NA else x),
+        .name_repair = "unique"
+      )
+      all_responses <- bind_rows(all_responses, position_tibble)
+    } else {
       warning(paste0("⚠️ Failed to create position for person ID ", df$attachable_id[p],
                      " at company ID ", df$company_id[p],
                      " - Status: ", httr::status_code(response)))
     }
+  }
+
+  # Combine all successful responses
+  if (length(all_responses) > 0) {
+    return(all_responses)
+  } else {
+    return(NULL)
   }
 }

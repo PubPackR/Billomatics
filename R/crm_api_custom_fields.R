@@ -137,6 +137,9 @@ add_crm_custom_fields <- function(headers, df) {
   df <- df %>%
     mutate(attachable_type_string = transform_attachable_type(attachable_type))
 
+  # Iterate over every row and collect responses
+  all_responses <- tibble()
+
   for(a in 1:nrow(df)){
 
     #generate body string with person_id and pool_name
@@ -161,11 +164,25 @@ add_crm_custom_fields <- function(headers, df) {
     )
 
     # Check response status
-    if (!httr::status_code(response) %in% c(200, 201)) {
+    if (httr::status_code(response) %in% c(200, 201)) {
+      new_response <- jsonlite::fromJSON(httr::content(response, "text"))
+      custom_field_tibble <- as_tibble(
+        lapply(new_response$custom_field, function(x) if (length(x) == 0) NA else x),
+        .name_repair = "unique"
+      )
+      all_responses <- bind_rows(all_responses, custom_field_tibble)
+    } else {
       warning(paste0("⚠️ Failed to add custom field (type_id: ", df$field_name[a],
                      ") to ID ", df$attachable_id[a],
                      " - Status: ", httr::status_code(response)))
     }
+  }
+
+  # Combine all successful responses
+  if (length(all_responses) > 0) {
+    return(all_responses)
+  } else {
+    return(NULL)
   }
 }
 

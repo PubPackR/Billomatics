@@ -138,7 +138,9 @@ add_crm_addresses <- function(headers, df) {
   df <- df %>%
     mutate(attachable_type_string = transform_attachable_type(attachable_type))
 
-  # Iterate over every row
+  # Iterate over every row and collect responses
+  all_responses <- tibble()
+
   for (p in 1:nrow(df)) {
     # Build address data
     addr_data <- list(
@@ -173,11 +175,25 @@ add_crm_addresses <- function(headers, df) {
     )
 
     # Check response status
-    if (!httr::status_code(response) %in% c(200, 201)) {
+    if (httr::status_code(response) %in% c(200, 201)) {
+      new_response <- jsonlite::fromJSON(httr::content(response, "text"))
+      addr_tibble <- as_tibble(
+        lapply(new_response$addr, function(x) if (length(x) == 0) NA else x),
+        .name_repair = "unique"
+      )
+      all_responses <- bind_rows(all_responses, addr_tibble)
+    } else {
       warning(paste0("⚠️ Failed to add address (", df$street[p], ", ", df$city[p],
                      ") to ID ", df$attachable_id[p],
                      " - Status: ", httr::status_code(response)))
     }
+  }
+
+  # Combine all successful responses
+  if (length(all_responses) > 0) {
+    return(all_responses)
+  } else {
+    return(NULL)
   }
 }
 

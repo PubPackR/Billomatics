@@ -165,7 +165,9 @@ create_crm_company <- function(headers, df) {
   validate_required_columns(df, c("company_name"))
   validate_not_empty(df, "company_name")
 
-  # Iterate over every row
+  # Iterate over every row and collect responses
+  all_responses <- tibble()
+
   for (p in 1:nrow(df)) {
     # Prepare company data
     company_data <- list(
@@ -185,9 +187,23 @@ create_crm_company <- function(headers, df) {
     )
 
     # Check response status
-    if (!httr::status_code(response) %in% c(200, 201)) {
+    if (httr::status_code(response) %in% c(200, 201)) {
+      new_response <- jsonlite::fromJSON(httr::content(response, "text"))
+      company_tibble <- as_tibble(
+        lapply(new_response$company, function(x) if (length(x) == 0) NA else x),
+        .name_repair = "unique"
+      )
+      all_responses <- bind_rows(all_responses, company_tibble)
+    } else {
       warning(paste0("⚠️ Failed to create company '", df$company_name[p],
                      "' - Status: ", httr::status_code(response)))
     }
+  }
+
+  # Combine all successful responses
+  if (length(all_responses) > 0) {
+    return(all_responses)
+  } else {
+    return(NULL)
   }
 }

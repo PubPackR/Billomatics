@@ -115,36 +115,52 @@ add_crm_tag <- function(headers, df) {
   df <- df %>%
     mutate(attachable_type = transform_attachable_type(attachable_type))
 
-  #iterate over every row in imported data frame
-    for(p in 1:nrow(df)){
+  # Iterate over every row and collect responses
+  all_responses <- tibble()
 
-      #generate body string with person_id and pool_name
-      body_string <- paste0(
-          '{
-            "tag": {
-              "attachable_id": ', df$attachable_id[p], ',
-              "attachable_type": "', df$attachable_type[p],'",
-              "name": "', df$field_name[p], '",
-              "api_input": true
-              }
-            }'
-          )
+  for(p in 1:nrow(df)){
 
-      # execute post request with predefined header and body
-      response <- httr::POST(
-        "https://api.centralstationcrm.net/api/tags",
-        httr::add_headers(headers),
-        body = body_string,
-        encode = "raw"
+    #generate body string with person_id and pool_name
+    body_string <- paste0(
+        '{
+          "tag": {
+            "attachable_id": ', df$attachable_id[p], ',
+            "attachable_type": "', df$attachable_type[p],'",
+            "name": "', df$field_name[p], '",
+            "api_input": true
+            }
+          }'
+        )
+
+    # execute post request with predefined header and body
+    response <- httr::POST(
+      "https://api.centralstationcrm.net/api/tags",
+      httr::add_headers(headers),
+      body = body_string,
+      encode = "raw"
+    )
+
+    # Check response status
+    if (httr::status_code(response) %in% c(200, 201)) {
+      new_response <- jsonlite::fromJSON(httr::content(response, "text"))
+      tag_tibble <- as_tibble(
+        lapply(new_response$tag, function(x) if (length(x) == 0) NA else x),
+        .name_repair = "unique"
       )
-
-      # Check response status
-      if (!httr::status_code(response) %in% c(200, 201)) {
-        warning(paste0("⚠️ Failed to add tag '", df$field_name[p],
-                       "' to ID ", df$attachable_id[p],
-                       " - Status: ", httr::status_code(response)))
-      }
+      all_responses <- bind_rows(all_responses, tag_tibble)
+    } else {
+      warning(paste0("⚠️ Failed to add tag '", df$field_name[p],
+                     "' to ID ", df$attachable_id[p],
+                     " - Status: ", httr::status_code(response)))
     }
+  }
+
+  # Combine all successful responses
+  if (length(all_responses) > 0) {
+    return(all_responses)
+  } else {
+    return(NULL)
+  }
 }
 
 

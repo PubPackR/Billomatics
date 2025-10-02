@@ -245,7 +245,9 @@ create_crm_person <- function(headers, df) {
     return(invisible(NULL))
   }
 
-  # Iterate over every row
+  # Iterate over every row and collect responses
+  all_responses <- tibble()
+
   for (p in 1:nrow(df)) {
     # Build person data list
     person_data <- list(
@@ -277,9 +279,23 @@ create_crm_person <- function(headers, df) {
     )
 
     # Check response status
-    if (!httr::status_code(response) %in% c(200, 201)) {
+    if (httr::status_code(response) %in% c(200, 201)) {
+      new_response <- jsonlite::fromJSON(httr::content(response, "text"))
+      person_tibble <- as_tibble(
+        lapply(new_response$person, function(x) if (length(x) == 0) NA else x),
+        .name_repair = "unique"
+      )
+      all_responses <- bind_rows(all_responses, person_tibble)
+    } else {
       warning(paste0("⚠️ Failed to create person in row ", p,
                      " - Status: ", httr::status_code(response)))
     }
+  }
+
+  # Combine all successful responses
+  if (length(all_responses) > 0) {
+    return(all_responses)
+  } else {
+    return(NULL)
   }
 }
