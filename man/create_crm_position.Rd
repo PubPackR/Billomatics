@@ -12,7 +12,7 @@ create_crm_position(headers, df)
 \item{df}{Dataframe with position information}
 }
 \value{
-no return values
+Tibble with created position data (id, person_id, company_id, name, department, etc.) or NULL if no rows processed
 }
 \description{
 Create new position relationship between person and company

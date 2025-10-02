@@ -142,7 +142,7 @@ search_company_by_name <- function(headers, company_name) {
 }
 
 
-#' create_company
+#' create_crm_company
 #'
 #' Create new company in CRM
 #' Required columns: company_name, action, field_type
@@ -150,7 +150,7 @@ search_company_by_name <- function(headers, company_name) {
 #'
 #' @param headers API headers with authentication
 #' @param df Dataframe with company information
-#' @return no return values
+#' @return Tibble with created company data (id, name, created_at, etc.) or NULL if no rows processed
 #'
 #' @export
 create_crm_company <- function(headers, df) {
@@ -166,7 +166,7 @@ create_crm_company <- function(headers, df) {
   validate_not_empty(df, "company_name")
 
   # Iterate over every row and collect responses
-  all_responses <- tibble()
+  all_responses <- tibble::tibble()
 
   for (p in 1:nrow(df)) {
     # Prepare company data

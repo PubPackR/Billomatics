@@ -225,7 +225,7 @@ update_crm_person <- function(headers, df) {
 }
 
 
-#' create_person
+#' create_crm_person
 #'
 #' Create new person in CRM
 #' Required columns: action, field_type
@@ -234,7 +234,7 @@ update_crm_person <- function(headers, df) {
 #'
 #' @param headers API headers with authentication
 #' @param df Dataframe with person information
-#' @return no return values
+#' @return Tibble with created person data (id, name, salutation, created_at, etc.) or NULL if no rows processed
 #'
 #' @export
 create_crm_person <- function(headers, df) {
@@ -246,7 +246,7 @@ create_crm_person <- function(headers, df) {
   }
 
   # Iterate over every row and collect responses
-  all_responses <- tibble()
+  all_responses <- tibble::tibble()
 
   for (p in 1:nrow(df)) {
     # Build person data list

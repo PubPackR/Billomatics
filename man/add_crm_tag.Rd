@@ -12,7 +12,7 @@ add_crm_tag(headers, df)
 \item{df}{the dataframe which should include the following fields:}
 }
 \value{
-no return values
+Tibble with created tag data (id, name, attachable_id, attachable_type, created_at, etc.) or NULL if no rows processed
 }
 \description{
 This function calls the CRM API and starts a post request for new tags,

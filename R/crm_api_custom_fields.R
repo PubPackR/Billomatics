@@ -115,7 +115,7 @@ get_crm_custom_fields <- function(headers, df) {
 
 #' @param headers the header informations you have to send with your request
 #' @param df the dataframe which should include the following fields:
-#' @return no return values
+#' @return Tibble with created custom_field data (id, custom_fields_type_id, name, attachable_id, etc.) or NULL if no rows processed
 
 #' @export
 add_crm_custom_fields <- function(headers, df) {
@@ -138,7 +138,7 @@ add_crm_custom_fields <- function(headers, df) {
     mutate(attachable_type_string = transform_attachable_type(attachable_type))
 
   # Iterate over every row and collect responses
-  all_responses <- tibble()
+  all_responses <- tibble::tibble()
 
   for(a in 1:nrow(df)){
 
@@ -362,12 +362,6 @@ manage_crm_custom_fields <- function(headers, df) {
 
   # Execute CREATE operations
   if (nrow(df_add) > 0) {
-    df_add_prepared <- df_add %>%
-      select(-old_value, -new_value, -old_empty, -new_empty) %>%
-      rename(value = new_value) %>%
-      mutate(value = ifelse(is.na(value), new_value, value))
-
-    # Fix: use the actual new_value
     df_add_prepared <- df_add %>%
       mutate(value = new_value) %>%
       select(attachable_id, attachable_type, field_name, value, action, field_type)

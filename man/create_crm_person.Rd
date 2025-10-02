@@ -2,7 +2,7 @@
 % Please edit documentation in R/crm_api_people.R
 \name{create_crm_person}
 \alias{create_crm_person}
-\title{create_person}
+\title{create_crm_person}
 \usage{
 create_crm_person(headers, df)
 }
@@ -12,7 +12,7 @@ create_crm_person(headers, df)
 \item{df}{Dataframe with person information}
 }
 \value{
-no return values
+Tibble with created person data (id, name, salutation, created_at, etc.) or NULL if no rows processed
 }
 \description{
 Create new person in CRM

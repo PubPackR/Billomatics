@@ -112,7 +112,7 @@ get_crm_addresses <- function(headers, df) {
 #'
 #' @param headers API headers with authentication
 #' @param df Dataframe with address information
-#' @return no return values
+#' @return Tibble with created address data (id, atype, street, city, zip, country, etc.) or NULL if no rows processed
 #'
 #' @export
 add_crm_addresses <- function(headers, df) {
@@ -139,7 +139,7 @@ add_crm_addresses <- function(headers, df) {
     mutate(attachable_type_string = transform_attachable_type(attachable_type))
 
   # Iterate over every row and collect responses
-  all_responses <- tibble()
+  all_responses <- tibble::tibble()
 
   for (p in 1:nrow(df)) {
     # Build address data

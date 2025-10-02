@@ -55,8 +55,7 @@ get_crm_positions <- function(headers, df) {
     # Unnest position data and add person_id
     positions_data <- positions_data %>%
       tidyr::unnest(position, names_sep = "_") %>%
-      dplyr::mutate(attachable_id = person_id) %>%
-      dplyr::rename(position_id = position_id)
+      dplyr::mutate(attachable_id = person_id)
 
     all_results <- dplyr::bind_rows(all_results, positions_data)
   }
@@ -167,7 +166,7 @@ update_crm_position <- function(headers, df) {
 #'
 #' @param headers API headers with authentication
 #' @param df Dataframe with position information
-#' @return no return values
+#' @return Tibble with created position data (id, person_id, company_id, name, department, etc.) or NULL if no rows processed
 #'
 #' @export
 create_crm_position <- function(headers, df) {
@@ -184,7 +183,7 @@ create_crm_position <- function(headers, df) {
   validate_positive_id(df, "company_id", "company_id")
 
   # Iterate over every row and collect responses
-  all_responses <- tibble()
+  all_responses <- tibble::tibble()
 
   for (p in 1:nrow(df)) {
     # Build position data list with defaults

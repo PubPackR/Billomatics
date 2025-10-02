@@ -90,10 +90,10 @@ get_central_station_single_tags <- function (api_key, tag_to_export, pages = 100
 #'  attachable_type - "people" or "companies"
 #'  field_name - name of the tag
 #'  field_type - optional, has to be value "tag"
-#' 
+#'
 #' @param headers the header informations you have to send with your request
 #' @param df the dataframe which should include the following fields:
-#' @return no return values
+#' @return Tibble with created tag data (id, name, attachable_id, attachable_type, created_at, etc.) or NULL if no rows processed
 #' 
 #' @export
 add_crm_tag <- function(headers, df) {
@@ -116,7 +116,7 @@ add_crm_tag <- function(headers, df) {
     mutate(attachable_type = transform_attachable_type(attachable_type))
 
   # Iterate over every row and collect responses
-  all_responses <- tibble()
+  all_responses <- tibble::tibble()
 
   for(p in 1:nrow(df)){
 

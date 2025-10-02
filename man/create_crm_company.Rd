@@ -2,7 +2,7 @@
 % Please edit documentation in R/crm_api_companies.R
 \name{create_crm_company}
 \alias{create_crm_company}
-\title{create_company}
+\title{create_crm_company}
 \usage{
 create_crm_company(headers, df)
 }
@@ -12,7 +12,7 @@ create_crm_company(headers, df)
 \item{df}{Dataframe with company information}
 }
 \value{
-no return values
+Tibble with created company data (id, name, created_at, etc.) or NULL if no rows processed
 }
 \description{
 Create new company in CRM

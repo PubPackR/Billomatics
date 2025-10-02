@@ -12,7 +12,7 @@ add_crm_custom_fields(headers, df)
 \item{df}{the dataframe which should include the following fields:}
 }
 \value{
-no return values
+Tibble with created custom_field data (id, custom_fields_type_id, name, attachable_id, etc.) or NULL if no rows processed
 }
 \description{
 This function calls the CRM API and starts an post request for

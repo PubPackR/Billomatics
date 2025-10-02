@@ -12,7 +12,7 @@ add_crm_addresses(headers, df)
 \item{df}{Dataframe with address information}
 }
 \value{
-no return values
+Tibble with created address data (id, atype, street, city, zip, country, etc.) or NULL if no rows processed
 }
 \description{
 Add new addresses to people or companies
