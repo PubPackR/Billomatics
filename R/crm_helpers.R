@@ -33,8 +33,8 @@ filter_by_field_and_action <- function(df, field_type_value, action_value) {
   validate_required_columns(df, c("field_type", "action"))
 
   df <- df %>%
-    filter(field_type == field_type_value) %>%
-    filter(action == action_value)
+    filter(.data$field_type == field_type_value) %>%
+    filter(.data$action == action_value)
 
   if (nrow(df) == 0) {
     warning("⚠️ No rows to process after filtering")

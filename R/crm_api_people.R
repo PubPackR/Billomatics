@@ -198,6 +198,9 @@ update_crm_person <- function(headers, df) {
     if (has_valid_value(df, "background", p)) {
       person_data$person$background <- df$background[p]
     }
+    if (has_valid_value(df, "user_id", p)) {
+      person_data$person$user_id <- df$user_id[p]
+    }
 
     # Check if we have any updates
     if (length(person_data$person) == 0) {
