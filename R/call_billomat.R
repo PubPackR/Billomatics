@@ -167,9 +167,9 @@ retrieveData <- function(content,
 #' this function carries out the call to get all the content of the call with validation
 #' @param content the name of the tables you are interested in, this is one string
 #' @param per_page how many entries per page to get
-#' @param logger a log4r logger object for logging validation results
 #' @param billomatApiKey please provide your billomat Api key here
 #' @param billomatID please provide your billomat ID here
+#' @param logger a log4r logger object for logging validation results
 #' @return the call returns a list with all pages and logs whether the expected row count matches the actual count
 #' @export
 retrieveData_withCheck <- function(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID, logger = NULL){
