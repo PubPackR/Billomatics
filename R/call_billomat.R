@@ -172,7 +172,7 @@ retrieveData <- function(content,
 #' @param billomatID please provide your billomat ID here
 #' @return the call returns a list with all pages and logs whether the expected row count matches the actual count
 #' @export
-retrieveData_withCheck <- function(content, per_page, logger, billomatApiKey = billomatApiKey, billomatID = billomatID){
+retrieveData_withCheck <- function(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID, logger = NULL){
     page_result1 <-
       curl_fetch_header(
       page = 1,
