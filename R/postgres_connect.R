@@ -689,7 +689,7 @@ postgres_restart_identities <- function(con) {
   invisible(NULL)
 }
 
-write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables, chunk_size = 50000) {
+write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables, chunk_size = 10000) {
 
   DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
   drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
