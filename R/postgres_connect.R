@@ -18,6 +18,8 @@
 #' @param local_password_is_product Logical. Indicates whether the local password is the same as the production password
 #'        (only relevant for SSH-based data transfer).
 #' @param load_in_memory Logical. Currently not used. Default is `FALSE`.
+#' @param chunk_size Integer. Number of rows to process at once when downloading large tables. Default is `50000`.
+#'        Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.
 #'
 #' @return Returns a connection object to the local database if a new connection is established.
 #'         If a connection is passed in via `con`, it is returned unchanged.
@@ -35,6 +37,12 @@
 #'     needed_tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
 #'     update_local_tables = FALSE
 #'   )
+#'
+#'   # For very large tables, reduce chunk size to use less memory
+#'   con <- postgres_connect(
+#'     needed_tables = c("raw.large_table"),
+#'     chunk_size = 10000  # Process 10k rows at a time
+#'   )
 #' }
 #'
 #' @export
@@ -50,7 +58,8 @@ postgres_connect <- function(postgres_keys = NULL,
                              local_user = "postgres",
                              local_pw = NULL,
                              load_in_memory = FALSE,
-                             local_password_is_product = FALSE) {
+                             local_password_is_product = FALSE,
+                             chunk_size = 50000) {
 
   if (!interactive())
 
@@ -124,13 +133,20 @@ postgres_connect <- function(postgres_keys = NULL,
           local_password_is_product = local_password_is_product,
           load_functions_to_db = first_table, # Load Functions only in first run
           preset_ssh_key = results,
-          available_tables = available_tables
+          available_tables = available_tables,
+          chunk_size = chunk_size
         )
 
         available_tables <- c(available_tables, table_name)  # Füge die Tabelle der Liste hinzu
         first_table <- FALSE  # Nach dem ersten Durchlauf nicht mehr TRUE setzen
 
       }
+
+      # Nach dem Laden aller Tabellen: Finale Überprüfung aller Identity-Sequenzen
+      # (als Sicherheit, falls irgendwo etwas schief ging)
+      message("🔄 Überprüfe Identity-Sequenzen für alle Tabellen...")
+      postgres_restart_identities(con = con)
+
     } else {
       message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
     }
@@ -287,6 +303,7 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
 #' @param load_functions_to_db Logical. If `TRUE` (default), all PostgreSQL functions from the remote DB are imported into the local DB.
 #' @param preset_ssh_key Optional string name to select from preconfigured SSH key paths (e.g. `"ci"`).
 #' @param available_tables Character vector of all known tables (optional). Used to assist metadata writing.
+#' @param chunk_size Integer. Number of rows to process at once when downloading the table. Default is `50000`.
 #'
 #' @return Returns the decrypted production credentials invisibly (as a named list), e.g., for further use.
 #'
@@ -306,7 +323,8 @@ postgres_pull_production_tables <- function(table = NULL,
                                             local_password_is_product = FALSE,
                                             load_functions_to_db = TRUE,
                                             preset_ssh_key = "",
-                                            available_tables = c()) {
+                                            available_tables = c(),
+                                            chunk_size = 50000) {
 
   if (!interactive()) {
     message("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -336,7 +354,7 @@ postgres_pull_production_tables <- function(table = NULL,
 
   } else {
 
-    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys)
+    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys, chunk_size = chunk_size)
 
     if (is.null(tables_data)) { return(ssh_session[[2]]) }
 
@@ -354,8 +372,9 @@ postgres_pull_production_tables <- function(table = NULL,
 
     message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
 
-    write_table_with_metadata(con = local_con, schema = schema, table_name = table_name, table_data_with_meta = tables_data, available_tables = available_tables)
-    postgres_restart_identities(con = local_con)
+    write_table_with_metadata(con = local_con, schema = schema, table_name = table_name, table_data_with_meta = tables_data, available_tables = available_tables, chunk_size = chunk_size)
+    # Identity-Sequenz wird bereits in write_table_with_metadata gesetzt
+    # postgres_restart_identities(con = local_con) ist nicht mehr nötig
 
   }
 
@@ -453,14 +472,116 @@ EORSCRIPT
   return(split_output)
 }
 
-load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys) {
+load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk_size = 50000) {
   message(sprintf("📥 Versuche Tabelle zu laden: %s", table))
 
-  sql <- DBI::SQL
+  # Metadaten abrufen
+  metadata <- get_table_metadata(table, ssh_session[[1]], postgres_keys)
 
-  # Befehl für SSH-psql zusammenbauen
+  # Zähle zuerst die Zeilen, um zu entscheiden ob Chunking nötig ist
+  count_cmd <- sprintf(
+    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -t -A -c \"SELECT COUNT(*) FROM %s;\"',
+    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], table
+  )
+
+  count_result <- ssh::ssh_exec_internal(ssh_session[[1]], count_cmd)
+  total_rows <- as.integer(trimws(rawToChar(count_result$stdout)))
+
+  if (is.na(total_rows) || total_rows == 0) {
+    # Leere Tabelle - einfach leeren DataFrame zurückgeben
+    df <- data.frame(matrix(ncol = nrow(metadata$data_types), nrow = 0))
+    names(df) <- metadata$data_types$column_name
+    df <- apply_column_types(df, metadata$data_types)
+    message(sprintf("✅ Tabelle %s ist leer (0 Zeilen)", table))
+    return(list(data = df, metadata = metadata))
+  }
+
+  # Wenn die Tabelle klein ist, lade sie in einem Rutsch
+  if (total_rows <= chunk_size) {
+    message(sprintf("📊 Lade %d Zeilen in einem Durchgang...", total_rows))
+    df <- load_table_full(table, ssh_session, postgres_keys, metadata)
+    if (is.null(df)) return(NULL)
+    return(list(data = df, metadata = metadata))
+  }
+
+  # Große Tabelle - lade in Chunks
+  message(sprintf("📊 Tabelle enthält %d Zeilen - lade in Chunks von %d Zeilen...", total_rows, chunk_size))
+
+  all_chunks <- list()
+  num_chunks <- ceiling(total_rows / chunk_size)
+
+  for (chunk_num in seq_len(num_chunks)) {
+    offset <- (chunk_num - 1) * chunk_size
+    message(sprintf("  ⏳ Chunk %d/%d (Zeilen %d-%d)...", chunk_num, num_chunks,
+                    offset + 1, min(offset + chunk_size, total_rows)))
+
+    # Alle Chunks bekommen HEADER - wir filtern später beim Lesen
+    # Befehl für SSH-psql mit LIMIT und OFFSET
+    # Wichtig: ORDER BY id um sicherzustellen, dass LIMIT/OFFSET konsistent ist
+    # FORCE_QUOTE * stellt sicher, dass alle Werte (auch "NA") in Quotes sind
+    cmd <- sprintf(
+      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY id LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true, FORCE_QUOTE *)\" 2>&1; echo \"EXIT_STATUS:$?\"',
+      postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+      table, chunk_size, offset
+    )
+
+    result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
+    output <- rawToChar(result$stdout)
+    parts <- strsplit(output, "EXIT_STATUS:")[[1]]
+
+    data_part <- parts[1]
+    status <- as.integer(parts[2])
+
+    # Fehlerbehandlung
+    if (status != 0 || (grepl("error", data_part, ignore.case = TRUE) & grepl("^ERROR:", output, ignore.case = TRUE))) {
+      error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) data_part else "Unbekannter Fehler"
+      message(sprintf("❌ Fehler bei Chunk %d: %s", chunk_num, error_msg))
+      return(NULL)
+    }
+
+    # Chunk einlesen - alle haben Header
+    # WICHTIG: PostgreSQL verwendet \N für NULL
+    # "NA" ist ein String und sollte NICHT als NULL interpretiert werden!
+    chunk_df <- tryCatch({
+      utils::read.csv(text = data_part, stringsAsFactors = FALSE, header = TRUE,
+                     na.strings = c("\\N"))
+    }, error = function(e) {
+      message(sprintf("❌ Fehler beim Parsen von Chunk %d: %s", chunk_num, e$message))
+      return(NULL)
+    })
+
+    if (is.null(chunk_df)) return(NULL)
+
+    all_chunks[[chunk_num]] <- chunk_df
+
+    # Speicher freigeben nach jedem Chunk
+    gc(verbose = FALSE)
+  }
+
+  # Alle Chunks zusammenfügen
+  message("🔗 Füge Chunks zusammen...")
+  df <- tryCatch({
+    combined_df <- do.call(rbind, all_chunks)
+    combined_df <- apply_column_types(combined_df, metadata$data_types)
+    as.data.frame(combined_df, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    message(sprintf("❌ Fehler beim Zusammenfügen der Chunks: %s", e$message))
+    return(NULL)
+  })
+
+  if (!is.null(df)) {
+    message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
+    return(list(data = df, metadata = metadata))
+  } else {
+    return(NULL)
+  }
+}
+
+# Hilfsfunktion für kleine Tabellen (keine Chunks nötig)
+load_table_full <- function(table, ssh_session, postgres_keys, metadata) {
+  # FORCE_QUOTE * stellt sicher, dass alle Werte (auch "NA") in Quotes sind
   cmd <- sprintf(
-    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH CSV HEADER\" 2>&1; echo \"EXIT_STATUS:$?\"',
+    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH (FORMAT CSV, HEADER true, FORCE_QUOTE *)\" 2>&1; echo \"EXIT_STATUS:$?\"',
     postgres_keys[1], # Passwort
     postgres_keys[3], # DB-Name
     postgres_keys[2], # User
@@ -469,7 +590,6 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys) {
     table
   )
 
-  # SSH-Befehl ausführen
   result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
   output <- rawToChar(result$stdout)
   parts <- strsplit(output, "EXIT_STATUS:")[[1]]
@@ -479,7 +599,7 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys) {
 
   # Fehlerbehandlung
   if (status != 0 || (grepl("error", data_part, ignore.case = TRUE) & grepl("^ERROR:", output, ignore.case = TRUE))) {
-    error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) data_part else "Unbekannter Fehler (keine Fehlermeldung erkannt)"
+    error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) data_part else "Unbekannter Fehler"
 
     if (grepl("does not exist|existiert nicht|relation.*not found", error_msg, ignore.case = TRUE)) {
       message(sprintf("❌ Tabelle %s existiert nicht", table))
@@ -491,12 +611,12 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys) {
     return(NULL)
   }
 
-  # Metadaten abrufen
-  metadata <- get_table_metadata(table, ssh_session[[1]], postgres_keys)
-
   # Daten einlesen & typisieren
+  # WICHTIG: PostgreSQL verwendet \N für NULL
+  # "NA" ist ein String und sollte NICHT als NULL interpretiert werden!
   df <- tryCatch({
-    tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE)
+    tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE,
+                             na.strings = c("\\N"))
     tmp_df <- apply_column_types(tmp_df, metadata$data_types)
     as.data.frame(tmp_df, stringsAsFactors = FALSE)
   }, error = function(e) {
@@ -504,12 +624,7 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys) {
     return(NULL)
   })
 
-  if (!is.null(df)) {
-    message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
-    return(list(data = df, metadata = metadata))
-  } else {
-    return(NULL)
-  }
+  return(df)
 }
 
 test_view_or_table <- function(ssh_session, postgres_keys, table) {
@@ -574,7 +689,7 @@ postgres_restart_identities <- function(con) {
   invisible(NULL)
 }
 
-write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables) {
+write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables, chunk_size = 50000) {
 
   DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
   drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
@@ -902,12 +1017,96 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
   }
 
 
-  # Write data
-  DBI::dbAppendTable(
-    conn = con,
-    name = DBI::Id(schema = schema, table = table_name),
-    value = table_data_with_meta$data
-  )
+  # Write data in chunks to avoid memory issues
+  total_rows <- nrow(table_data_with_meta$data)
+
+  if (total_rows == 0) {
+    message("  ⚠️ Keine Daten zum Schreiben vorhanden")
+    return(NULL)
+  }
+
+  # Die Tabelle wurde bereits mit GENERATED BY DEFAULT AS IDENTITY erstellt,
+  # daher können wir existierende IDs direkt einfügen
+  # Aber: wir müssen die Identity-Sequenz vorab setzen, damit sie nicht mit den Daten kollidiert
+  if (!is.null(col_name) && col_name %in% names(table_data_with_meta$data)) {
+    # Prüfe auf Duplikate in den Daten
+    id_values <- table_data_with_meta$data[[col_name]]
+    duplicated_ids <- id_values[duplicated(id_values)]
+    if (length(duplicated_ids) > 0) {
+      message(sprintf("  ⚠️ WARNUNG: %d doppelte IDs in den Daten gefunden!", length(duplicated_ids)))
+      message(sprintf("  Beispiele: %s", paste(head(duplicated_ids, 5), collapse = ", ")))
+      message("  → Die Daten aus der Produktion enthalten bereits Duplikate!")
+    }
+
+    max_id <- max(id_values, na.rm = TRUE)
+    min_id <- min(id_values, na.rm = TRUE)
+    message(sprintf("  📊 ID-Range: %s bis %s (%d Zeilen)", min_id, max_id, total_rows))
+
+    # WICHTIG: Sortiere die Daten nach ID, um sicherzustellen, dass jede ID nur in einem Chunk ist
+    # (Verhindert Duplikate über Chunk-Grenzen hinweg)
+    if (!is.unsorted(id_values)) {
+      message("  ✓ Daten sind bereits nach ID sortiert")
+    } else {
+      message("  🔄 Sortiere Daten nach ID für sichere Chunk-Verarbeitung...")
+      table_data_with_meta$data <- table_data_with_meta$data[order(table_data_with_meta$data[[col_name]]), ]
+    }
+
+    if (!is.na(max_id) && max_id > 0) {
+      # Nutze die gleiche Logik wie postgres_restart_identities()
+      # Setze die Identity-Sequenz auf MAX(id) + 1
+      tryCatch({
+        alter_qry <- sprintf("ALTER TABLE %s.%s ALTER COLUMN %s RESTART WITH %s",
+                            DBI::dbQuoteIdentifier(con, schema),
+                            DBI::dbQuoteIdentifier(con, table_name),
+                            DBI::dbQuoteIdentifier(con, col_name),
+                            as.character(max_id + 1))
+        DBI::dbExecute(con, alter_qry)
+        message(sprintf("  🔢 Identity-Sequenz auf %s gesetzt (höchste ID + 1)", max_id + 1))
+      }, error = function(e) {
+        message("  ⚠️ Konnte Identity-Sequenz nicht vorab setzen: ", e$message)
+      })
+    }
+  }
+
+  if (total_rows <= chunk_size) {
+    # Small table - write in one go
+    DBI::dbAppendTable(
+      conn = con,
+      name = DBI::Id(schema = schema, table = table_name),
+      value = table_data_with_meta$data
+    )
+  } else {
+    # Large table - write in chunks
+    num_chunks <- ceiling(total_rows / chunk_size)
+    message(sprintf("  📝 Schreibe %d Zeilen in %d Batches...", total_rows, num_chunks))
+
+    # Verwende dbWriteTable mit append=TRUE statt dbAppendTable
+    # dbWriteTable respektiert GENERATED BY DEFAULT besser
+    for (chunk_num in seq_len(num_chunks)) {
+      start_idx <- (chunk_num - 1) * chunk_size + 1
+      end_idx <- min(chunk_num * chunk_size, total_rows)
+
+      chunk_data <- table_data_with_meta$data[start_idx:end_idx, , drop = FALSE]
+
+      tryCatch({
+        DBI::dbWriteTable(
+          conn = con,
+          name = DBI::Id(schema = schema, table = table_name),
+          value = chunk_data,
+          append = TRUE,
+          row.names = FALSE
+        )
+        if (chunk_num %% 5 == 0 || chunk_num == num_chunks) {
+          message(sprintf("    ✓ Batch %d/%d geschrieben (%d Zeilen)", chunk_num, num_chunks, end_idx))
+        }
+      }, error = function(e) {
+        stop(sprintf("Fehler beim Schreiben von Batch %d: %s", chunk_num, e$message))
+      })
+
+      # Speicher freigeben nach jedem Chunk
+      gc(verbose = FALSE)
+    }
+  }
 
   return(NULL)
 }
@@ -946,7 +1145,8 @@ generate_pg_create_table_simple <- function(con, df, schema = NULL, table_name, 
 
   col_defs <- sapply(cols, function(col) {
     if (!is.null(id_col) && col == id_col) {
-      paste0("\"", col, "\" BIGINT GENERATED ALWAYS AS IDENTITY")
+      # BY DEFAULT erlaubt das Einfügen von existierenden IDs aus der Produktion
+      paste0("\"", col, "\" BIGINT GENERATED BY DEFAULT AS IDENTITY")
     } else {
       pg_type <- r_to_pg(df[[col]])
       paste0("\"", col, "\" ", pg_type)
@@ -1395,7 +1595,9 @@ apply_column_types <- function(df, type_info) {
     if (!col %in% names(df)) next
 
     raw_values <- df[[col]]
-    raw_values[raw_values %in% c("", "NULL", "NA", "NaN")] <- NA
+    # WICHTIG: NULL-Werte werden bereits beim CSV-Import erkannt (na.strings = c("\\N"))
+    # Hier findet KEINE String-zu-NULL-Konvertierung mehr statt!
+    # Alle Strings (auch "", "NULL", "NA", "NaN") bleiben erhalten.
 
     df[[col]] <- switch(type,
       "text" = as.character(raw_values),

@@ -17,7 +17,8 @@ postgres_connect(
   local_user = "postgres",
   local_pw = NULL,
   load_in_memory = FALSE,
-  local_password_is_product = FALSE
+  local_password_is_product = FALSE,
+  chunk_size = 50000
 )
 }
 \arguments{
@@ -42,6 +43,9 @@ If \code{FALSE} (default), only missing local tables will be downloaded.}
 
 \item{local_password_is_product}{Logical. Indicates whether the local password is the same as the production password
 (only relevant for SSH-based data transfer).}
+
+\item{chunk_size}{Integer. Number of rows to process at once when downloading large tables. Default is \code{50000}.
+Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.}
 }
 \value{
 Returns a connection object to the local database if a new connection is established.
@@ -66,6 +70,12 @@ The function can be used interactively (e.g., in RStudio) or in a server context
   con <- postgres_connect(
     needed_tables = c("raw.crm_leads", "analytics.dashboard_metrics"),
     update_local_tables = FALSE
+  )
+
+  # For very large tables, reduce chunk size to use less memory
+  con <- postgres_connect(
+    needed_tables = c("raw.large_table"),
+    chunk_size = 10000  # Process 10k rows at a time
   )
 }
 
