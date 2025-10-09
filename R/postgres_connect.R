@@ -18,7 +18,7 @@
 #' @param local_password_is_product Logical. Indicates whether the local password is the same as the production password
 #'        (only relevant for SSH-based data transfer).
 #' @param load_in_memory Logical. Currently not used. Default is `FALSE`.
-#' @param chunk_size Integer. Number of rows to process at once when downloading large tables. Default is `50000`.
+#' @param chunk_size Integer. Number of rows to process at once when downloading large tables. Default is `10000`.
 #'        Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.
 #'
 #' @return Returns a connection object to the local database if a new connection is established.
@@ -59,7 +59,7 @@ postgres_connect <- function(postgres_keys = NULL,
                              local_pw = NULL,
                              load_in_memory = FALSE,
                              local_password_is_product = FALSE,
-                             chunk_size = 50000) {
+                             chunk_size = 10000) {
 
   if (!interactive())
 
@@ -303,7 +303,7 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
 #' @param load_functions_to_db Logical. If `TRUE` (default), all PostgreSQL functions from the remote DB are imported into the local DB.
 #' @param preset_ssh_key Optional string name to select from preconfigured SSH key paths (e.g. `"ci"`).
 #' @param available_tables Character vector of all known tables (optional). Used to assist metadata writing.
-#' @param chunk_size Integer. Number of rows to process at once when downloading the table. Default is `50000`.
+#' @param chunk_size Integer. Number of rows to process at once when downloading the table. Default is `10000`.
 #'
 #' @return Returns the decrypted production credentials invisibly (as a named list), e.g., for further use.
 #'
@@ -324,7 +324,7 @@ postgres_pull_production_tables <- function(table = NULL,
                                             load_functions_to_db = TRUE,
                                             preset_ssh_key = "",
                                             available_tables = c(),
-                                            chunk_size = 50000) {
+                                            chunk_size = 10000) {
 
   if (!interactive()) {
     message("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -472,7 +472,7 @@ EORSCRIPT
   return(split_output)
 }
 
-load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk_size = 50000) {
+load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk_size = 10000) {
   message(sprintf("📥 Versuche Tabelle zu laden: %s", table))
 
   # Metadaten abrufen

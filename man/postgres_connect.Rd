@@ -18,7 +18,7 @@ postgres_connect(
   local_pw = NULL,
   load_in_memory = FALSE,
   local_password_is_product = FALSE,
-  chunk_size = 50000
+  chunk_size = 10000
 )
 }
 \arguments{
@@ -44,7 +44,7 @@ If \code{FALSE} (default), only missing local tables will be downloaded.}
 \item{local_password_is_product}{Logical. Indicates whether the local password is the same as the production password
 (only relevant for SSH-based data transfer).}
 
-\item{chunk_size}{Integer. Number of rows to process at once when downloading large tables. Default is \code{50000}.
+\item{chunk_size}{Integer. Number of rows to process at once when downloading large tables. Default is \code{10000}.
 Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.}
 }
 \value{
