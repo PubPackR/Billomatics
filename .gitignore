@@ -2,3 +2,4 @@
 .Rhistory
 tests/
 Billomatics.Rproj
+settings*.json

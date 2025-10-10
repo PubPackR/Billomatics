@@ -15,5 +15,5 @@ extract_note(df, field)
 the data as df which has id and all information
 }
 \description{
-This function creates a readable note
+This function creates a readable note and fixes some common mistakes
 }
