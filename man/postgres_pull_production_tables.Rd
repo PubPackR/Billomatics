@@ -14,7 +14,8 @@ postgres_pull_production_tables(
   load_functions_to_db = TRUE,
   preset_ssh_key = "",
   available_tables = c(),
-  chunk_size = 10000
+  chunk_size = 10000,
+  verbose = FALSE
 )
 }
 \arguments{

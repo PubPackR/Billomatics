@@ -20,6 +20,8 @@
 #' @param load_in_memory Logical. Currently not used. Default is `FALSE`.
 #' @param chunk_size Integer. Number of rows to process at once when downloading large tables. Default is `10000`.
 #'        Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.
+#' @param verbose Logical. If `TRUE`, shows detailed output including function loading, foreign keys, ID ranges, etc.
+#'        If `FALSE` (default), only shows table name and progress bar.
 #'
 #' @return Returns a connection object to the local database if a new connection is established.
 #'         If a connection is passed in via `con`, it is returned unchanged.
@@ -43,6 +45,12 @@
 #'     needed_tables = c("raw.large_table"),
 #'     chunk_size = 10000  # Process 10k rows at a time
 #'   )
+#'
+#'   # Enable verbose output for detailed progress information
+#'   con <- postgres_connect(
+#'     needed_tables = c("raw.crm_leads"),
+#'     verbose = TRUE  # Shows detailed output (functions loaded, ID ranges, etc.)
+#'   )
 #' }
 #'
 #' @export
@@ -59,7 +67,8 @@ postgres_connect <- function(postgres_keys = NULL,
                              local_pw = NULL,
                              load_in_memory = FALSE,
                              local_password_is_product = FALSE,
-                             chunk_size = 10000) {
+                             chunk_size = 10000,
+                             verbose = FALSE) {
 
   if (!interactive())
 
@@ -123,7 +132,9 @@ postgres_connect <- function(postgres_keys = NULL,
 
       for (table_name in tables_to_pull) {
 
-        message("⬇️ Ziehe Tabelle aus Produktion: ", table_name)
+        if (verbose) {
+          message("⬇️ Ziehe Tabelle aus Produktion: ", table_name)
+        }
         results <- postgres_pull_production_tables(
           table = table_name,  # einzeln übergeben
           local_con = con,
@@ -134,7 +145,8 @@ postgres_connect <- function(postgres_keys = NULL,
           load_functions_to_db = first_table, # Load Functions only in first run
           preset_ssh_key = results,
           available_tables = available_tables,
-          chunk_size = chunk_size
+          chunk_size = chunk_size,
+          verbose = verbose
         )
 
         available_tables <- c(available_tables, table_name)  # Füge die Tabelle der Liste hinzu
@@ -324,7 +336,8 @@ postgres_pull_production_tables <- function(table = NULL,
                                             load_functions_to_db = TRUE,
                                             preset_ssh_key = "",
                                             available_tables = c(),
-                                            chunk_size = 10000) {
+                                            chunk_size = 10000,
+                                            verbose = FALSE) {
 
   if (!interactive()) {
     message("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -343,7 +356,7 @@ postgres_pull_production_tables <- function(table = NULL,
   postgres_keys <- get_postgres_keys_via_ssh(ssh_session = ssh_session, decrypt_key = decrypt_key)
 
   # Lade Funktionen in die lokale DB, wenn es die erste Tabelle ist
-  if (load_functions_to_db) { load_functions_to_new_db(con = local_con, function_string = get_all_functions(ssh_session[[1]], postgres_keys)) }
+  if (load_functions_to_db) { load_functions_to_new_db(con = local_con, function_string = get_all_functions(ssh_session[[1]], postgres_keys), verbose = verbose) }
 
   table_is_view <- test_view_or_table(ssh_session[[1]], postgres_keys, table)
 
@@ -354,7 +367,7 @@ postgres_pull_production_tables <- function(table = NULL,
 
   } else {
 
-    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys, chunk_size = chunk_size)
+    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys, chunk_size = chunk_size, verbose = verbose)
 
     if (is.null(tables_data)) { return(ssh_session[[2]]) }
 
@@ -370,9 +383,11 @@ postgres_pull_production_tables <- function(table = NULL,
     DBI::dbExecute(local_con, sprintf('CREATE SCHEMA IF NOT EXISTS "%s";', schema))
     DBI::dbExecute(local_con, "SET client_min_messages TO NOTICE;")
 
-    message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
+    if (verbose) {
+      message(sprintf("📤 Schreibe Tabelle %s nach PostgreSQL (%s.%s)", table, schema, table_name))
+    }
 
-    write_table_with_metadata(con = local_con, schema = schema, table_name = table_name, table_data_with_meta = tables_data, available_tables = available_tables, chunk_size = chunk_size)
+    write_table_with_metadata(con = local_con, schema = schema, table_name = table_name, table_data_with_meta = tables_data, available_tables = available_tables, chunk_size = chunk_size, verbose = verbose)
     # Identity-Sequenz wird bereits in write_table_with_metadata gesetzt
     # postgres_restart_identities(con = local_con) ist nicht mehr nötig
 
@@ -472,8 +487,13 @@ EORSCRIPT
   return(split_output)
 }
 
-load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk_size = 10000) {
-  message(sprintf("📥 Versuche Tabelle zu laden: %s", table))
+load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk_size = 10000, verbose = FALSE) {
+  if (!verbose) {
+    # Im non-verbose Modus: nur Tabellenname anzeigen
+    message(sprintf("📥 %s", table))
+  } else {
+    message(sprintf("📥 Versuche Tabelle zu laden: %s", table))
+  }
 
   # Metadaten abrufen
   metadata <- get_table_metadata(table, ssh_session[[1]], postgres_keys)
@@ -492,35 +512,40 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
     df <- data.frame(matrix(ncol = nrow(metadata$data_types), nrow = 0))
     names(df) <- metadata$data_types$column_name
     df <- apply_column_types(df, metadata$data_types)
-    message(sprintf("✅ Tabelle %s ist leer (0 Zeilen)", table))
+    if (verbose) {
+      message(sprintf("✅ Tabelle %s ist leer (0 Zeilen)", table))
+    }
     return(list(data = df, metadata = metadata))
   }
 
-  # Wenn die Tabelle klein ist, lade sie in einem Rutsch
-  if (total_rows <= chunk_size) {
-    message(sprintf("📊 Lade %d Zeilen in einem Durchgang...", total_rows))
-    df <- load_table_full(table, ssh_session, postgres_keys, metadata)
-    if (is.null(df)) return(NULL)
-    return(list(data = df, metadata = metadata))
+  # WICHTIG: Immer Chunking verwenden, auch für kleine Tabellen
+  # rawToChar() kann bei großen Strings zu Memory-Errors führen
+  num_chunks <- ceiling(total_rows / chunk_size)
+  if (verbose) {
+    message(sprintf("📊 Tabelle enthält %d Zeilen - lade in %d Chunks...", total_rows, num_chunks))
   }
-
-  # Große Tabelle - lade in Chunks
-  message(sprintf("📊 Tabelle enthält %d Zeilen - lade in Chunks von %d Zeilen...", total_rows, chunk_size))
 
   all_chunks <- list()
-  num_chunks <- ceiling(total_rows / chunk_size)
 
   for (chunk_num in seq_len(num_chunks)) {
     offset <- (chunk_num - 1) * chunk_size
-    message(sprintf("  ⏳ Chunk %d/%d (Zeilen %d-%d)...", chunk_num, num_chunks,
-                    offset + 1, min(offset + chunk_size, total_rows)))
+
+    # Progress anzeigen (überschreibend)
+    rows_loaded <- min(offset + chunk_size, total_rows)
+    progress_pct <- round(100 * rows_loaded / total_rows)
+    progress_bar_length <- 20
+    filled <- round(progress_bar_length * rows_loaded / total_rows)
+    bar <- paste0(paste(rep("█", filled), collapse = ""), paste(rep("░", progress_bar_length - filled), collapse = ""))
+
+    cat(sprintf("\r  ⏳ [%s] %d%% (%d/%d Zeilen)", bar, progress_pct, rows_loaded, total_rows))
+    flush.console()
 
     # Alle Chunks bekommen HEADER - wir filtern später beim Lesen
     # Befehl für SSH-psql mit LIMIT und OFFSET
     # Wichtig: ORDER BY id um sicherzustellen, dass LIMIT/OFFSET konsistent ist
-    # FORCE_QUOTE * stellt sicher, dass alle Werte (auch "NA") in Quotes sind
+    # NULL wird als \N exportiert (PostgreSQL Standard für CSV NULL)
     cmd <- sprintf(
-      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY id LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true, FORCE_QUOTE *)\" 2>&1; echo \"EXIT_STATUS:$?\"',
+      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY id LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
       postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
       table, chunk_size, offset
     )
@@ -543,8 +568,19 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
     # WICHTIG: PostgreSQL verwendet \N für NULL
     # "NA" ist ein String und sollte NICHT als NULL interpretiert werden!
     chunk_df <- tryCatch({
-      utils::read.csv(text = data_part, stringsAsFactors = FALSE, header = TRUE,
+      raw_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE, header = TRUE,
                      na.strings = c("\\N"))
+
+      # WICHTIG: read.csv konvertiert \N in character-Spalten zu "" statt NA
+      # Wir müssen leere Strings nachträglich zu NA konvertieren (aber nur für \N, nicht für echte "")
+      # Problem: Wir können nicht unterscheiden zwischen echtem "" und \N-konvertiertem ""
+      # Lösung: Alle "" in character-Spalten zu NA konvertieren (PostgreSQL speichert "" nicht als NULL)
+      for (col in names(raw_df)) {
+        if (is.character(raw_df[[col]])) {
+          raw_df[[col]][raw_df[[col]] == ""] <- NA_character_
+        }
+      }
+      raw_df
     }, error = function(e) {
       message(sprintf("❌ Fehler beim Parsen von Chunk %d: %s", chunk_num, e$message))
       return(NULL)
@@ -558,10 +594,16 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
     gc(verbose = FALSE)
   }
 
-  # Alle Chunks zusammenfügen
-  message("🔗 Füge Chunks zusammen...")
+  # Neue Zeile nach Progress-Bar
+  cat("\n")
+
+  # Alle Chunks zusammenfügen und Typen anwenden
+  if (verbose) {
+    message("🔗 Füge Chunks zusammen...")
+  }
   df <- tryCatch({
     combined_df <- do.call(rbind, all_chunks)
+    # Typen auf kombinierten DataFrame anwenden (mit robuster Fehlerbehandlung)
     combined_df <- apply_column_types(combined_df, metadata$data_types)
     as.data.frame(combined_df, stringsAsFactors = FALSE)
   }, error = function(e) {
@@ -570,7 +612,9 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
   })
 
   if (!is.null(df)) {
-    message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
+    if (verbose) {
+      message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
+    }
     return(list(data = df, metadata = metadata))
   } else {
     return(NULL)
@@ -579,9 +623,9 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
 
 # Hilfsfunktion für kleine Tabellen (keine Chunks nötig)
 load_table_full <- function(table, ssh_session, postgres_keys, metadata) {
-  # FORCE_QUOTE * stellt sicher, dass alle Werte (auch "NA") in Quotes sind
+  # NULL wird als \N exportiert (PostgreSQL Standard für CSV NULL)
   cmd <- sprintf(
-    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH (FORMAT CSV, HEADER true, FORCE_QUOTE *)\" 2>&1; echo \"EXIT_STATUS:$?\"',
+    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
     postgres_keys[1], # Passwort
     postgres_keys[3], # DB-Name
     postgres_keys[2], # User
@@ -612,11 +656,19 @@ load_table_full <- function(table, ssh_session, postgres_keys, metadata) {
   }
 
   # Daten einlesen & typisieren
-  # WICHTIG: PostgreSQL verwendet \N für NULL
-  # "NA" ist ein String und sollte NICHT als NULL interpretiert werden!
+  # WICHTIG: PostgreSQL verwendet \N für NULL in CSV-Export
   df <- tryCatch({
     tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE,
                              na.strings = c("\\N"))
+
+    # WICHTIG: read.csv konvertiert \N in character-Spalten zu "" statt NA
+    # Alle "" in character-Spalten zu NA konvertieren
+    for (col in names(tmp_df)) {
+      if (is.character(tmp_df[[col]])) {
+        tmp_df[[col]][tmp_df[[col]] == ""] <- NA_character_
+      }
+    }
+
     tmp_df <- apply_column_types(tmp_df, metadata$data_types)
     as.data.frame(tmp_df, stringsAsFactors = FALSE)
   }, error = function(e) {
@@ -689,7 +741,7 @@ postgres_restart_identities <- function(con) {
   invisible(NULL)
 }
 
-write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables, chunk_size = 10000) {
+write_table_with_metadata <- function(con, schema, table_name, table_data_with_meta, available_tables, chunk_size = 10000, verbose = FALSE) {
 
   DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
   drop_table_query <- sprintf("DROP TABLE IF EXISTS %s.%s CASCADE;", schema, table_name)
@@ -813,15 +865,23 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
 
         tryCatch({
           DBI::dbExecute(con, query)
-          message(glue::glue("✔ FOREIGN KEY added: {table_name} → {ref_table}"))
+          if (verbose) {
+            message(glue::glue("✔ FOREIGN KEY added: {table_name} → {ref_table}"))
+          }
         }, error = function(e) {
-          message(glue::glue("✖ Failed to add FK {constraint_name}: {e$message}"))
+          if (verbose) {
+            message(glue::glue("✖ Failed to add FK {constraint_name}: {e$message}"))
+          }
         })
       } else {
-        message(glue::glue("⚠ Constraint {constraint_name} already exists, skipping."))
+        if (verbose) {
+          message(glue::glue("⚠ Constraint {constraint_name} already exists, skipping."))
+        }
       }
     } else {
-      message(glue::glue("⚠ Foreign key skipped: {table_name} → {ref_table}. Load {ref_table} before {table_name}."))
+      if (verbose) {
+        message(glue::glue("⚠ Foreign key skipped: {table_name} → {ref_table}. Load {ref_table} before {table_name}."))
+      }
     }
   }
 }
@@ -1021,7 +1081,9 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
   total_rows <- nrow(table_data_with_meta$data)
 
   if (total_rows == 0) {
-    message("  ⚠️ Keine Daten zum Schreiben vorhanden")
+    if (verbose) {
+      message("  ⚠️ Keine Daten zum Schreiben vorhanden")
+    }
     return(NULL)
   }
 
@@ -1032,7 +1094,7 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
     # Prüfe auf Duplikate in den Daten
     id_values <- table_data_with_meta$data[[col_name]]
     duplicated_ids <- id_values[duplicated(id_values)]
-    if (length(duplicated_ids) > 0) {
+    if (length(duplicated_ids) > 0 && verbose) {
       message(sprintf("  ⚠️ WARNUNG: %d doppelte IDs in den Daten gefunden!", length(duplicated_ids)))
       message(sprintf("  Beispiele: %s", paste(head(duplicated_ids, 5), collapse = ", ")))
       message("  → Die Daten aus der Produktion enthalten bereits Duplikate!")
@@ -1040,14 +1102,20 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
 
     max_id <- max(id_values, na.rm = TRUE)
     min_id <- min(id_values, na.rm = TRUE)
-    message(sprintf("  📊 ID-Range: %s bis %s (%d Zeilen)", min_id, max_id, total_rows))
+    if (verbose) {
+      message(sprintf("  📊 ID-Range: %s bis %s (%d Zeilen)", min_id, max_id, total_rows))
+    }
 
     # WICHTIG: Sortiere die Daten nach ID, um sicherzustellen, dass jede ID nur in einem Chunk ist
     # (Verhindert Duplikate über Chunk-Grenzen hinweg)
     if (!is.unsorted(id_values)) {
-      message("  ✓ Daten sind bereits nach ID sortiert")
+      if (verbose) {
+        message("  ✓ Daten sind bereits nach ID sortiert")
+      }
     } else {
-      message("  🔄 Sortiere Daten nach ID für sichere Chunk-Verarbeitung...")
+      if (verbose) {
+        message("  🔄 Sortiere Daten nach ID für sichere Chunk-Verarbeitung...")
+      }
       table_data_with_meta$data <- table_data_with_meta$data[order(table_data_with_meta$data[[col_name]]), ]
     }
 
@@ -1061,9 +1129,13 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
                             DBI::dbQuoteIdentifier(con, col_name),
                             as.character(max_id + 1))
         DBI::dbExecute(con, alter_qry)
-        message(sprintf("  🔢 Identity-Sequenz auf %s gesetzt (höchste ID + 1)", max_id + 1))
+        if (verbose) {
+          message(sprintf("  🔢 Identity-Sequenz auf %s gesetzt (höchste ID + 1)", max_id + 1))
+        }
       }, error = function(e) {
-        message("  ⚠️ Konnte Identity-Sequenz nicht vorab setzen: ", e$message)
+        if (verbose) {
+          message("  ⚠️ Konnte Identity-Sequenz nicht vorab setzen: ", e$message)
+        }
       })
     }
   }
@@ -1078,7 +1150,9 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
   } else {
     # Large table - write in chunks
     num_chunks <- ceiling(total_rows / chunk_size)
-    message(sprintf("  📝 Schreibe %d Zeilen in %d Batches...", total_rows, num_chunks))
+    if (verbose) {
+      message(sprintf("  📝 Schreibe %d Zeilen in %d Batches...", total_rows, num_chunks))
+    }
 
     # Verwende dbWriteTable mit append=TRUE statt dbAppendTable
     # dbWriteTable respektiert GENERATED BY DEFAULT besser
@@ -1096,7 +1170,7 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
           append = TRUE,
           row.names = FALSE
         )
-        if (chunk_num %% 5 == 0 || chunk_num == num_chunks) {
+        if (verbose && (chunk_num %% 5 == 0 || chunk_num == num_chunks)) {
           message(sprintf("    ✓ Batch %d/%d geschrieben (%d Zeilen)", chunk_num, num_chunks, end_idx))
         }
       }, error = function(e) {
@@ -1271,9 +1345,11 @@ load_view_definitions_to_new_db <- function(view_definitions, con) {
   }
 }
 
-load_functions_to_new_db <- function(function_string, con) {
+load_functions_to_new_db <- function(function_string, con, verbose = FALSE) {
 
   functions_df <- function_string
+  loaded_count <- 0
+  error_count <- 0
 
   for (i in 1:nrow(functions_df)) {
     # Hole die Funktionsdefinition
@@ -1295,10 +1371,23 @@ load_functions_to_new_db <- function(function_string, con) {
       # Führe die Funktionsdefinition aus
       tryCatch({
         DBI::dbExecute(con, function_code)
-        cat(sprintf("Function loaded: %s.%s\n", functions_df$schema_name[i], function_name))
+        loaded_count <- loaded_count + 1
       }, error = function(e) {
-        cat(sprintf("Error loading function %s: %s\n", function_name, e$message))
+        error_count <- error_count + 1
+        if (verbose) {
+          cat(sprintf("⚠️ Error loading function %s: %s\n", function_name, e$message))
+        }
       })
+    }
+  }
+
+  # Zusammenfassung statt einzelne Messages
+  if (verbose) {
+    if (loaded_count > 0) {
+      message(sprintf("✅ %d PostgreSQL functions loaded", loaded_count))
+    }
+    if (error_count > 0) {
+      message(sprintf("⚠️ %d functions failed to load", error_count))
     }
   }
 }
@@ -1599,46 +1688,54 @@ apply_column_types <- function(df, type_info) {
     # Hier findet KEINE String-zu-NULL-Konvertierung mehr statt!
     # Alle Strings (auch "", "NULL", "NA", "NaN") bleiben erhalten.
 
-    df[[col]] <- switch(type,
-      "text" = as.character(raw_values),
-      "varchar" = as.character(raw_values),
-      "char" = as.character(raw_values),
-      "integer" = as.integer(raw_values),
-      "int4" = as.integer(raw_values),
-      "bigint" = bit64::as.integer64(raw_values),
-      "int8" = bit64::as.integer64(raw_values),
-      "smallint" = as.integer(raw_values),
-      "int2" = as.integer(raw_values),
-      "numeric" = as.numeric(raw_values),
-      "decimal" = as.numeric(raw_values),
-      "real" = as.numeric(raw_values),
-      "float4" = as.numeric(raw_values),
-      "double precision" = as.numeric(raw_values),
-      "float8" = as.numeric(raw_values),
-      "boolean" = ifelse(raw_values %in% c("t", "f", "true", "false", "TRUE", "FALSE"),
-                         tolower(raw_values) %in% c("t", "true"), NA),
-      "timestamp without time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d"
-      )),
-      "timestamp with time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
-        "%Y-%m-%d %H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S"
-      )),
-      "date" = as.Date(raw_values),
-      "time without time zone" = hms::as_hms(raw_values),
-      "json" = raw_values,  # optional: jsonlite::fromJSON(raw_values)
-      "jsonb" = raw_values,
-      "uuid" = as.character(raw_values),
-      "bytea" = raw_values,  # falls gewünscht: base64decode oder raw
-      {
-        message(glue::glue("Unbekannter Datentyp: {type}, wird als character behandelt."))
-        as.character(raw_values)
-      }
-    )
+    # Konvertierung mit Fehlerbehandlung - bei Fehler bleiben Werte als character
+    df[[col]] <- tryCatch({
+      switch(type,
+        "text" = as.character(raw_values),
+        "varchar" = as.character(raw_values),
+        "char" = as.character(raw_values),
+        "integer" = as.integer(raw_values),
+        "int4" = as.integer(raw_values),
+        "bigint" = bit64::as.integer64(raw_values),
+        "int8" = bit64::as.integer64(raw_values),
+        "smallint" = as.integer(raw_values),
+        "int2" = as.integer(raw_values),
+        "numeric" = as.numeric(raw_values),
+        "decimal" = as.numeric(raw_values),
+        "real" = as.numeric(raw_values),
+        "float4" = as.numeric(raw_values),
+        "double precision" = as.numeric(raw_values),
+        "float8" = as.numeric(raw_values),
+        "boolean" = ifelse(raw_values %in% c("t", "f", "true", "false", "TRUE", "FALSE"),
+                           tolower(raw_values) %in% c("t", "true"), NA),
+        "timestamp without time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
+          "%Y-%m-%d %H:%M:%S",
+          "%Y-%m-%dT%H:%M:%S",
+          "%Y-%m-%d"
+        )),
+        "timestamp with time zone" = as.POSIXct(raw_values, tz = "UTC", tryFormats = c(
+          "%Y-%m-%d %H:%M:%S%z",
+          "%Y-%m-%dT%H:%M:%S%z",
+          "%Y-%m-%d %H:%M:%S",
+          "%Y-%m-%dT%H:%M:%S"
+        )),
+        "date" = as.Date(raw_values),
+        "time without time zone" = hms::as_hms(raw_values),
+        "json" = raw_values,  # optional: jsonlite::fromJSON(raw_values)
+        "jsonb" = raw_values,
+        "uuid" = as.character(raw_values),
+        "bytea" = raw_values,  # falls gewünscht: base64decode oder raw
+        {
+          message(glue::glue("Unbekannter Datentyp: {type}, wird als character behandelt."))
+          as.character(raw_values)
+        }
+      )
+    }, error = function(e) {
+      # Bei Konvertierungsfehler: Werte als character belassen
+      message(sprintf("⚠️ Fehler bei Konvertierung von Spalte '%s' zu Typ '%s': %s - Spalte bleibt als character",
+                      col, type, e$message))
+      as.character(raw_values)
+    })
   }
   return(df)
 }
