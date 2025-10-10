@@ -163,6 +163,49 @@ retrieveData <- function(content,
                ))
 }
 
+#' retrieveData_withCheck
+#' this function carries out the call to get all the content of the call with validation
+#' @param content the name of the tables you are interested in, this is one string
+#' @param per_page how many entries per page to get
+#' @param billomatApiKey please provide your billomat Api key here
+#' @param billomatID please provide your billomat ID here
+#' @param logger a log4r logger object for logging validation results
+#' @return the call returns a list with all pages and logs whether the expected row count matches the actual count
+#' @export
+retrieveData_withCheck <- function(content, per_page, billomatApiKey = billomatApiKey, billomatID = billomatID, logger = NULL){
+    page_result1 <-
+      curl_fetch_header(
+      page = 1,
+      content = content,
+      per_page = per_page,
+      billomatApiKey = billomatApiKey,
+      billomatID = billomatID
+    )
+  expected_count <- page_result1$headers$`x-total-count` %>% as.numeric()
+  max_pages <- ceiling(expected_count/per_page)
+
+  all_pages <-
+    purrr::map(.x = 1:max_pages,
+               ~ curl_fetch_billomat(
+                 page = .,
+                 content = content,
+                 per_page = per_page,
+                 billomatApiKey = billomatApiKey,
+                 billomatID = billomatID
+               ))
+
+   actual_count <- sum(purrr::map_int(all_pages, ~ xml2::xml_length(.x$body)))
+
+   if (!is.null(logger)) {
+      if (actual_count == expected_count) {
+        log4r::info(logger, paste0(content, " is complete"))
+      } else {
+        log4r::warn(logger, paste0(content, " data incomplete. Expected: ", expected_count, ", Got: ", actual_count))
+      }
+    }
+
+    return(all_pages)
+}
 
 
 #' fetch_all_entries
