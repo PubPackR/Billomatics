@@ -13,7 +13,9 @@ postgres_pull_production_tables(
   local_password_is_product = FALSE,
   load_functions_to_db = TRUE,
   preset_ssh_key = "",
-  available_tables = c()
+  available_tables = c(),
+  chunk_size = 10000,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -35,6 +37,8 @@ If \code{NULL}, no data is loaded and only the decrypted credentials are returne
 \item{preset_ssh_key}{Optional string name to select from preconfigured SSH key paths (e.g. \code{"ci"}).}
 
 \item{available_tables}{Character vector of all known tables (optional). Used to assist metadata writing.}
+
+\item{chunk_size}{Integer. Number of rows to process at once when downloading the table. Default is \code{10000}.}
 }
 \value{
 Returns the decrypted production credentials invisibly (as a named list), e.g., for further use.
