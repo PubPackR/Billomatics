@@ -500,12 +500,32 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
 
   # Zähle zuerst die Zeilen, um zu entscheiden ob Chunking nötig ist
   count_cmd <- sprintf(
-    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -t -A -c \"SELECT COUNT(*) FROM %s;\"',
+    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -t -A -c \"SELECT COUNT(*) FROM %s;\" 2>&1; echo \"EXIT_STATUS:$?\"',
     postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], table
   )
 
   count_result <- ssh::ssh_exec_internal(ssh_session[[1]], count_cmd)
-  total_rows <- as.integer(trimws(rawToChar(count_result$stdout)))
+  output <- rawToChar(count_result$stdout)
+  parts <- strsplit(output, "EXIT_STATUS:")[[1]]
+
+  count_part <- parts[1]
+  status <- as.integer(parts[2])
+
+  # Fehlerbehandlung für COUNT-Abfrage
+  if (status != 0 || grepl("ERROR:", count_part, ignore.case = TRUE)) {
+    error_msg <- trimws(count_part)
+
+    if (grepl("does not exist|existiert nicht|relation.*not found", error_msg, ignore.case = TRUE)) {
+      message(sprintf("❌ Tabelle %s existiert nicht in der Produktionsdatenbank", table))
+    } else if (grepl("permission denied|Zugriff verweigert", error_msg, ignore.case = TRUE)) {
+      message(sprintf("❌ Keine Berechtigung für Tabelle %s", table))
+    } else {
+      message(sprintf("❌ Fehler bei Tabelle %s: %s", table, error_msg))
+    }
+    return(NULL)
+  }
+
+  total_rows <- as.integer(trimws(count_part))
 
   if (is.na(total_rows) || total_rows == 0) {
     # Leere Tabelle - einfach leeren DataFrame zurückgeben
