@@ -106,6 +106,13 @@ postgres_upsert_data <- function(con, schema, table, data,
   # Spalten, die geupdatet werden sollen (ohne created_at und match_cols)
   update_cols <- setdiff(colnames_data, c("created_at", "updated_at", match_cols))
 
+  # Automatically handle 'is_deleted' if present
+  if ("is_deleted" %in% table_columns && !"is_deleted" %in% colnames_data) {
+    data$is_deleted <- FALSE
+    colnames_data <- c(colnames_data, "is_deleted")
+    update_cols <- c(update_cols, "is_deleted")
+  }
+
   # Wenn keine 'match_cols' angegeben sind, prüfen, ob es eine typische ID-Spalte gibt
   if (is.null(match_cols)) {
     match_cols <- intersect(colnames_data, c("id"))
