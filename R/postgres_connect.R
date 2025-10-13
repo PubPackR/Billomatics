@@ -1009,12 +1009,13 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
       index_sql <- meta$indexes$indexdef[i]
 
       # Ausführen der CREATE INDEX-Anweisung
+      # UNIQUE Indexes überspringen, da diese bereits über UNIQUE CONSTRAINTS erstellt wurden
       if (!grepl("UNIQUE", index_sql)) {
         tryCatch({
-          DBI::dbExecute(con, query)
+          DBI::dbExecute(con, index_sql)
         }, error = function(e) {
           # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
-          cat(sprintf("Fehler beim Erstellen eines UNIQUE Values: %s\n", e$message))
+          cat(sprintf("Fehler beim Erstellen eines Index: %s\n", e$message))
         })
       }
     }
