@@ -587,9 +587,11 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
     # Chunk einlesen - alle haben Header
     # WICHTIG: PostgreSQL verwendet \N für NULL
     # "NA" ist ein String und sollte NICHT als NULL interpretiert werden!
+    # WICHTIG: colClasses = "character" verhindert automatische Typ-Konvertierung
+    # (z.B. führende Nullen bei Tel-Nummern würden sonst verloren gehen)
     chunk_df <- tryCatch({
       raw_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE, header = TRUE,
-                     na.strings = c("\\N"))
+                     na.strings = c("\\N"), colClasses = "character")
 
       # WICHTIG: read.csv konvertiert \N in character-Spalten zu "" statt NA
       # Wir müssen leere Strings nachträglich zu NA konvertieren (aber nur für \N, nicht für echte "")
@@ -677,9 +679,11 @@ load_table_full <- function(table, ssh_session, postgres_keys, metadata) {
 
   # Daten einlesen & typisieren
   # WICHTIG: PostgreSQL verwendet \N für NULL in CSV-Export
+  # WICHTIG: colClasses = "character" verhindert automatische Typ-Konvertierung
+  # (z.B. führende Nullen bei Tel-Nummern würden sonst verloren gehen)
   df <- tryCatch({
     tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE,
-                             na.strings = c("\\N"))
+                             na.strings = c("\\N"), colClasses = "character")
 
     # WICHTIG: read.csv konvertiert \N in character-Spalten zu "" statt NA
     # Alle "" in character-Spalten zu NA konvertieren
