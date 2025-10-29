@@ -22,6 +22,8 @@
 #'        Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.
 #' @param verbose Logical. If `TRUE`, shows detailed output including function loading, foreign keys, ID ranges, etc.
 #'        If `FALSE` (default), only shows table name and progress bar.
+#' @param path_to_keys_db Character. Optional path to the keys database. If `NULL` (default), uses the standard path.
+#' @param path_to_user_db Character. Optional path to the user database. If `NULL` (default), uses the standard path.
 #'
 #' @return Returns a connection object to the local database if a new connection is established.
 #'         If a connection is passed in via `con`, it is returned unchanged.
@@ -68,7 +70,9 @@ postgres_connect <- function(postgres_keys = NULL,
                              load_in_memory = FALSE,
                              local_password_is_product = FALSE,
                              chunk_size = 10000,
-                             verbose = FALSE) {
+                             verbose = FALSE,
+                             path_to_keys_db = NULL,
+                             path_to_user_db = NULL) {
 
   if (!interactive())
 
@@ -146,7 +150,9 @@ postgres_connect <- function(postgres_keys = NULL,
           preset_ssh_key = results,
           available_tables = available_tables,
           chunk_size = chunk_size,
-          verbose = verbose
+          verbose = verbose,
+          path_to_keys_db = path_to_keys_db,
+          path_to_user_db = path_to_user_db
         )
 
         available_tables <- c(available_tables, table_name)  # Füge die Tabelle der Liste hinzu
@@ -316,6 +322,8 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
 #' @param preset_ssh_key Optional string name to select from preconfigured SSH key paths (e.g. `"ci"`).
 #' @param available_tables Character vector of all known tables (optional). Used to assist metadata writing.
 #' @param chunk_size Integer. Number of rows to process at once when downloading the table. Default is `10000`.
+#' @param path_to_keys_db Character. Optional path to the keys database. If `NULL` (default), uses the standard path.
+#' @param path_to_user_db Character. Optional path to the user database. If `NULL` (default), uses the standard path.
 #'
 #' @return Returns the decrypted production credentials invisibly (as a named list), e.g., for further use.
 #'
@@ -337,7 +345,9 @@ postgres_pull_production_tables <- function(table = NULL,
                                             preset_ssh_key = "",
                                             available_tables = c(),
                                             chunk_size = 10000,
-                                            verbose = FALSE) {
+                                            verbose = FALSE,
+                                            path_to_keys_db = NULL,
+                                            path_to_user_db = NULL) {
 
   if (!interactive()) {
     message("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -352,7 +362,7 @@ postgres_pull_production_tables <- function(table = NULL,
     try(ssh::ssh_disconnect(ssh_session[[1]]), silent = TRUE)
   })
 
-  decrypt_key <- load_postgres_decrypt_key(local_password = local_password, local_password_is_product = local_password_is_product)
+  decrypt_key <- load_postgres_decrypt_key(local_password = local_password, local_password_is_product = local_password_is_product, path_to_keys_db = path_to_keys_db, path_to_user_db = path_to_user_db)
   postgres_keys <- get_postgres_keys_via_ssh(ssh_session = ssh_session, decrypt_key = decrypt_key)
 
   # Lade Funktionen in die lokale DB, wenn es die erste Tabelle ist
@@ -396,7 +406,7 @@ postgres_pull_production_tables <- function(table = NULL,
   return(ssh_session[[2]])
 }
 
-load_postgres_decrypt_key <- function(local_password, local_password_is_product = FALSE) {
+load_postgres_decrypt_key <- function(local_password, local_password_is_product = FALSE, path_to_keys_db = NULL, path_to_user_db = NULL) {
   # Passwort bestimmen
   produkt_key <- if (local_password_is_product) {
     local_password
@@ -406,10 +416,26 @@ load_postgres_decrypt_key <- function(local_password, local_password_is_product 
 
   # Versuch, den Decrypt-Key zu laden – mit doppeltem Fallback
   tryCatch({
-    return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key))
+    if(is.null(path_to_keys_db) && is.null(path_to_user_db)) {
+      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key))
+    } else if(!is.null(path_to_keys_db) && is.null(path_to_user_db)) {
+      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db))
+    } else if(is.null(path_to_keys_db) && !is.null(path_to_user_db)) {
+      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_user_db = path_to_user_db))
+    } else {
+      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db, path_to_user_db = path_to_user_db))
+    }
   }, error = function(e1) {
     tryCatch({
-      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key))
+          if(is.null(path_to_keys_db) && is.null(path_to_user_db)) {
+            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key))
+          } else if(!is.null(path_to_keys_db) && is.null(path_to_user_db)) {
+            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db))
+          } else if(is.null(path_to_keys_db) && !is.null(path_to_user_db)) {
+            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_user_db = path_to_user_db))
+          } else {
+            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db, path_to_user_db = path_to_user_db))
+          }
     }, error = function(e2) {
       stop(
         paste(
