@@ -302,3 +302,47 @@ create_crm_person <- function(headers, df) {
     return(NULL)
   }
 }
+
+
+#' delete_crm_person
+#'
+#' This function calls the CRM API and deletes a person by their ID.
+#' Required columns: attachable_id, action, field_type
+#' action must be "delete", field_type must be "person"
+#'
+#' @param headers API headers with authentication (including X-apikey)
+#' @param df Dataframe with person information to delete
+#' @return No return value (invisible NULL)
+#'
+#' @export
+delete_crm_person <- function(headers, df) {
+  # Filter by field_type and action
+  df <- filter_by_field_and_action(df, "person", "delete")
+
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
+  # Validate required columns
+  validate_required_columns(df, c("attachable_id"))
+  validate_attachable_id(df)
+
+  # Iterate over every row
+  for (p in 1:nrow(df)) {
+    # Execute DELETE request
+    response <- httr::DELETE(
+      paste0("https://api.centralstationcrm.net/api/people/", df$attachable_id[p]),
+      httr::add_headers(headers)
+    )
+
+    # Check response status
+    if (httr::status_code(response) %in% c(200, 204)) {
+      message(paste0("✓ Successfully deleted person ID ", df$attachable_id[p]))
+    } else {
+      warning(paste0("⚠️ Failed to delete person ID ", df$attachable_id[p],
+                     " - Status: ", httr::status_code(response)))
+    }
+  }
+
+  return(invisible(NULL))
+}
