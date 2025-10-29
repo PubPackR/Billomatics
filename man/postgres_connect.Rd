@@ -19,7 +19,9 @@ postgres_connect(
   load_in_memory = FALSE,
   local_password_is_product = FALSE,
   chunk_size = 10000,
-  verbose = FALSE
+  verbose = FALSE,
+  path_to_keys_db = NULL,
+  path_to_user_db = NULL
 )
 }
 \arguments{
@@ -50,6 +52,10 @@ Smaller values use less memory but may be slower. Increase for faster transfers 
 
 \item{verbose}{Logical. If \code{TRUE}, shows detailed output including function loading, foreign keys, ID ranges, etc.
 If \code{FALSE} (default), only shows table name and progress bar.}
+
+\item{path_to_keys_db}{Character. Optional path to the keys database. If \code{NULL} (default), uses the standard path.}
+
+\item{path_to_user_db}{Character. Optional path to the user database. If \code{NULL} (default), uses the standard path.}
 }
 \value{
 Returns a connection object to the local database if a new connection is established.

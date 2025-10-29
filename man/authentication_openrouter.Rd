@@ -13,6 +13,6 @@ authentication_openrouter(args)
 Openrouter API Key as String
 }
 \description{
-This function handles the key decryption for the Gemini API authentication.
+This function handles the key decryption for the OpenRouter API authentication.
 It supports manual decryption key input as well as FlowForce arguments.
 }

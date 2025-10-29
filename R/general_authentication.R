@@ -39,11 +39,12 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql", "gemini", "openrouter"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql", "gemini", "openrouter"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
     crm = authentication_crm,
+    crm_lm = authentication_crm_lm,
     `google sheet` = authentication_GSheet,
     asana = authentication_asana,
     msgraph = authentication_msgraph,
@@ -80,8 +81,6 @@ authentication_process <- function(needed_services = c("billomat", "crm", "googl
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
-
-#' @export
 authentication_billomat <-  function(args) {
 
     if (interactive() & (length(args) == 0 | is.na(args[1]))) {
@@ -109,8 +108,6 @@ authentication_billomat <-  function(args) {
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
-
-#' @export
 authentication_crm <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/CRM.txt")
@@ -125,6 +122,28 @@ authentication_crm <-  function(args) {
     safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
 
+#' authentication_crm_lm
+#'
+#' This function executes the CRM LM authentication process.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @param return_keys optional, vector with already acquired keys
+#' @return authentication key in vector
+authentication_crm_lm <-  function(args) {
+
+    encrypted_api_key <- readLines("../../keys/CRM_LM.txt")
+
+    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+      decrypt_key <-
+        getPass::getPass("Bitte Decryption_Key für CRM LM eingeben: ")
+    } else{
+      decrypt_key <- args
+    }
+
+    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+}
+
 #' authentication_GSheet
 #'
 #' This function executes the Google Sheet authentication process.
@@ -132,8 +151,6 @@ authentication_crm <-  function(args) {
 
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @return no return values
-
-#' @export
 authentication_GSheet <-  function(args) {
     if (interactive() & (length(args) == 0 | is.na(args[1]))) {
       decrypt_google_sheets_key <-
@@ -174,16 +191,14 @@ authentication_GSheet <-  function(args) {
 }
 
 
-#' authentication_billomat
+#' authentication_asana
 #'
-#' This function executes the billomat authentication process.
+#' This function executes the Asana authentication process.
 #' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
-
-#' @export
 authentication_asana <-  function(args) {
 
   if (interactive() & (length(args) == 0 | is.na(args[1]))) {
@@ -212,8 +227,6 @@ authentication_asana <-  function(args) {
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
-
-#' @export
 authentication_msgraph <-  function(args) {
 
   encrypted_api_key <- readLines("../../keys/Microsoft365R/microsoft365r.txt")
@@ -236,8 +249,6 @@ authentication_msgraph <-  function(args) {
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
-
-#' @export
 authentication_brevo <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/Brevo/smpt-key.txt")
@@ -260,8 +271,6 @@ authentication_brevo <-  function(args) {
 
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @return no return values
-
-#' @export
 authentication_Google_Analytics <-  function(args) {
   if (interactive() & (length(args) == 0 | is.na(args[1]))) {
     decrypt_google_analytics_key <-
@@ -311,8 +320,6 @@ authentication_Google_Analytics <-  function(args) {
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @param return_keys optional, vector with already acquired keys
 #' @return authentication key in vector
-
-#' @export
 authentication_bonus_db <-  function(args) {
 
     encrypted_api_key <- readLines("../../keys/BonusDB/bonusDBKey.txt")
@@ -334,8 +341,6 @@ authentication_bonus_db <-  function(args) {
 
 #' @param args Additional Input Parameter, only needed through FlowForce Job
 #' @return no return values
-
-#' @export
 authentication_Google_BigQuery <-  function(args) {
   if (interactive()  & (length(args) == 0 | is.na(args[1]))) {
     decrypt_google_BigQuery_key <-
@@ -383,8 +388,6 @@ authentication_Google_BigQuery <-  function(args) {
 
 #' @param args Zusätzlicher Eingabeparameter, nur erforderlich bei FlowForce-Jobs
 #' @return Authentifizierungs-Token als Zeichenkette
-
-#' @export
 authentication_cleverreach <- function(args) {
     encrypted_api_key <- readLines("../../keys/cleverReach_key.txt")
 
@@ -406,8 +409,6 @@ authentication_cleverreach <- function(args) {
 
 #' @param args Additional input parameter, only needed through FlowForce Job
 #' @return PostgreSQL DB Key as String
-
-#' @export
 authentication_postgresql <- function(args) {
     encrypted_credentials <- readLines("../../keys/PostgreSQL_DB/postgresql_key.txt")
     encrypted_server_info <- readLines("../../keys/PostgreSQL_DB/postgresql_server.txt")
@@ -434,8 +435,6 @@ authentication_postgresql <- function(args) {
 #'
 #' @param args Additional input parameter, only needed through FlowForce Job
 #' @return Gemini API Key as String
-#'
-#' @export
 authentication_gemini <-  function(args) {
 
   encrypted_api_key <- readLines("../../keys/gemini_key.txt")
@@ -451,13 +450,11 @@ authentication_gemini <-  function(args) {
 
 #' authentication_openrouter
 #'
-#' This function handles the key decryption for the Gemini API authentication.
+#' This function handles the key decryption for the OpenRouter API authentication.
 #' It supports manual decryption key input as well as FlowForce arguments.
 #'
 #' @param args Additional input parameter, only needed through FlowForce Job
 #' @return Openrouter API Key as String
-#'
-#' @export
 authentication_openrouter <-  function(args) {
 
   encrypted_api_key <- readLines("../../keys/openrouter.txt")
