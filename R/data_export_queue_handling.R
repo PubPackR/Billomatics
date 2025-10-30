@@ -211,6 +211,7 @@ job_start_safe <- function(con, job_name, poll_interval = 5, timeout = 600) {
 #'
 #' run_data_job(con, my_export_function, job_name = "daily_export")
 #' }
+#' @export
 run_data_job <- function(con, job_function, job_name = NULL, poll_interval = 5, timeout = 600) {
   if (is.null(job_name)) {
     job_name <- deparse(substitute(job_function))
