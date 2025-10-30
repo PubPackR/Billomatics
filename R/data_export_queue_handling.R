@@ -161,8 +161,8 @@ job_last_run <- function(con, job_name) {
 #' }
 job_start_safe <- function(con, job_name, poll_interval = 5, timeout = 600) {
   start_time <- Sys.time()
-  
-  # warten, bis der vorherige Job beendet ist
+
+  # Wait until the previous job has finished
   if (job_is_running(con, job_name)) {
     message(paste(
       "Job",
@@ -181,8 +181,8 @@ job_start_safe <- function(con, job_name, poll_interval = 5, timeout = 600) {
       Sys.sleep(poll_interval)
     }
   }
-  
-  # jetzt kann der Job sicher starten
+
+  # Now the job can safely start
   job_start(con, job_name)
 }
 
@@ -218,20 +218,20 @@ run_data_job <- function(con, job_function, job_name = NULL, poll_interval = 5, 
 
   job_start_safe(con, job_name, poll_interval = poll_interval, timeout = timeout)
 
-  # tryCatch gibt Error-Objekt zurück bei Fehler, NULL bei Erfolg
+  # tryCatch returns error object on failure, NULL on success
   result <- tryCatch({
-    job_function()      # hier läuft der Job
-    NULL                # kein Error = NULL
+    job_function()      # Execute the job
+    NULL                # No error = NULL
   }, error = function(e) {
     message("Job failed: ", e$message)
-    e                   # Error zurückgeben
+    e                   # Return error
   })
 
-  # Status basierend auf result bestimmen und Job stoppen
+  # Determine status based on result and stop job
   status <- if (is.null(result)) "success" else "failure"
   job_stop(con, job_name, status)
 
-  # Error re-throwen, damit Aufrufer informiert wird
+  # Re-throw error to inform caller
   if (status == "failure") {
     stop(result)
   }
