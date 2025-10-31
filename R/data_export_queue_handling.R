@@ -219,6 +219,26 @@ run_data_job <- function(con, job_function, job_name = NULL, poll_interval = 5, 
 
   job_start_safe(con, job_name, poll_interval = poll_interval, timeout = timeout)
 
+  # Use environment to share state between on.exit and function body
+  # This avoids using <<- which violates coding guidelines
+  state <- new.env()
+  state$job_stopped <- FALSE
+
+  # Ensure job is marked as stopped even on interrupt (Ctrl+C)
+  # on.exit runs even when function is interrupted
+  on.exit({
+    if (!state$job_stopped) {
+      tryCatch({
+        job_stop(con, job_name, status = "failure")
+        message("\nJob interrupted - marked as failed in database")
+      }, error = function(e) {
+        message("\nWarning: Could not mark job as failed in database: ", e$message)
+      })
+    }
+  }, add = TRUE)
+
+  start_time <- Sys.time()
+
   # tryCatch returns error object on failure, NULL on success
   result <- tryCatch({
     job_function()      # Execute the job
@@ -230,7 +250,23 @@ run_data_job <- function(con, job_function, job_name = NULL, poll_interval = 5, 
 
   # Determine status based on result and stop job
   status <- if (is.null(result)) "success" else "failure"
+
+  end_time <- Sys.time()
+  duration <- round(
+    as.numeric(difftime(end_time, start_time, units = "mins")),
+    2
+  )
+  message(paste0(job_name, " completed in ", duration, " minutes with status: ", status))
+
+  # Compare with defined timeout
+  if (duration > (timeout / 60)) {
+    message(paste0(
+      "Warning: Job duration (", duration, " mins) exceeded timeout (", timeout / 60, " mins)."
+    ))
+  }
+
   job_stop(con, job_name, status)
+  state$job_stopped <- TRUE  # Mark as stopped to prevent on.exit from running
 
   # Re-throw error to inform caller
   if (status == "failure") {
