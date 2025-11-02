@@ -11,21 +11,41 @@ job_start_safe(con, job_name, poll_interval = 5, timeout = 600)
 
 \item{job_name}{Character string identifying the job}
 
-\item{poll_interval}{Numeric. Seconds to wait between checks (default: 5)}
+\item{poll_interval}{Numeric. Seconds to wait between queue checks (default: 5)}
 
-\item{timeout}{Numeric. Maximum seconds to wait for previous job (default: 600)}
+\item{timeout}{Numeric. Maximum seconds to wait AFTER becoming first in queue (default: 600)}
 }
 \value{
-Number of rows affected (from DBI::dbExecute)
+UUID string (request_id) identifying this job run
 }
 \description{
-Starts a job only after any previously running instance has completed.
-If a job with the same name is already running, this function will wait
-until it completes or until the timeout is reached.
+Starts a job only after being first in queue and acquiring advisory lock.
+Implements True FIFO queue using request events and race-safe lock acquisition.
+If a job is already running, this function will wait in queue until it's this
+request's turn AND the lock can be acquired.
+}
+\details{
+Queue mechanism:
+\enumerate{
+\item Inserts a 'request' event with unique request_id
+\item Polls until this request is first in queue (FIFO order by timestamp)
+\item Tries to acquire PostgreSQL advisory lock
+\item Once first in queue AND lock acquired, inserts 'start' event
+\item Returns request_id to link all subsequent events for this run
+}
+
+Timeout behavior:
+\itemize{
+\item The timeout only applies AFTER this request becomes first in queue
+\item While waiting behind other requests, there is NO timeout
+\item Timer resets each time queue position changes
+\item This ensures fair queuing even with many requests ahead
+}
 }
 \examples{
 \dontrun{
 con <- postgres_connect(needed_tables = c("processed.data_job_events"))
-job_start_safe(con, "my_job", poll_interval = 10, timeout = 300)
+request_id <- job_start_safe(con, "my_job", poll_interval = 10, timeout = 300)
+# Use request_id for job_stop(), job_heartbeat(), etc.
 }
 }
