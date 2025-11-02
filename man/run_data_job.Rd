@@ -9,7 +9,8 @@ run_data_job(
   job_function,
   job_name = NULL,
   poll_interval = 5,
-  timeout = 600
+  timeout = 600,
+  hard_timeout = FALSE
 )
 }
 \arguments{
@@ -21,15 +22,27 @@ run_data_job(
 
 \item{poll_interval}{Numeric. Seconds to wait between queue checks (default: 5)}
 
-\item{timeout}{Numeric. Maximum seconds to wait for previous job (default: 600)}
+\item{timeout}{Numeric. Maximum seconds to wait in queue (applies only when first in queue, default: 600)}
+
+\item{hard_timeout}{Logical. If TRUE, enforces execution timeout equal to queue timeout (default: FALSE)}
 }
 \value{
-Invisibly returns TRUE on success, throws error on failure
+Invisibly returns a list with elements: success (TRUE), status ("success"),
+result (return value from job_function), duration_minutes (numeric), and request_id (UUID).
+Throws error on failure.
 }
 \description{
 Executes a data job function with automatic queue management, error handling,
 and event logging. Ensures only one instance of the job runs at a time.
 Records success/failure status in the database and re-throws errors to the caller.
+}
+\details{
+Timeout behavior:
+\itemize{
+\item \code{timeout} applies when waiting for lock acquisition (only after becoming first in queue)
+\item \code{hard_timeout = TRUE} also enforces this timeout during job execution
+\item This prevents runaway jobs from consuming resources indefinitely
+}
 }
 \examples{
 \dontrun{
@@ -40,6 +53,11 @@ my_export_function <- function() {
   message("Exporting data...")
 }
 
+# Basic usage
 run_data_job(con, my_export_function, job_name = "daily_export")
+
+# With hard timeout (kills job if it runs longer than 600 seconds)
+run_data_job(con, my_export_function, job_name = "daily_export",
+             timeout = 600, hard_timeout = TRUE)
 }
 }

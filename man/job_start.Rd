@@ -4,12 +4,14 @@
 \alias{job_start}
 \title{Start a Job Event}
 \usage{
-job_start(con, job_name)
+job_start(con, job_name, request_id = NULL)
 }
 \arguments{
 \item{con}{Database connection object (DBI connection)}
 
 \item{job_name}{Character string identifying the job}
+
+\item{request_id}{UUID identifying this specific job run (optional for backward compatibility)}
 }
 \value{
 Number of rows affected (from DBI::dbExecute)
@@ -21,5 +23,9 @@ Records a 'start' event for a job in the data_job_events table.
 \dontrun{
 con <- postgres_connect(needed_tables = c("processed.data_job_events"))
 job_start(con, "my_export_job")
+
+# With request_id for queue management
+request_id <- uuid::UUIDgenerate()
+job_start(con, "my_export_job", request_id)
 }
 }

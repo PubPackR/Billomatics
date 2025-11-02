@@ -4,7 +4,7 @@
 \alias{job_stop}
 \title{Stop a Job Event}
 \usage{
-job_stop(con, job_name, status = "end")
+job_stop(con, job_name, status = "end", request_id = NULL)
 }
 \arguments{
 \item{con}{Database connection object (DBI connection)}
@@ -12,6 +12,8 @@ job_stop(con, job_name, status = "end")
 \item{job_name}{Character string identifying the job}
 
 \item{status}{Character string for the event type. One of 'end', 'success', or 'failure' (default: 'end')}
+
+\item{request_id}{UUID identifying this specific job run (optional for backward compatibility)}
 }
 \value{
 Number of rows affected (from DBI::dbExecute)
@@ -27,5 +29,9 @@ con <- postgres_connect(needed_tables = c("processed.data_job_events"))
 job_stop(con, "my_export_job")
 job_stop(con, "my_export_job", status = "success")
 job_stop(con, "my_export_job", status = "failure")
+
+# With request_id for queue management
+request_id <- uuid::UUIDgenerate()
+job_stop(con, "my_export_job", "success", request_id = request_id)
 }
 }

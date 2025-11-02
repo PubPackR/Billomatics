@@ -4,12 +4,14 @@
 \alias{job_heartbeat}
 \title{Send Job Heartbeat}
 \usage{
-job_heartbeat(con, job_name)
+job_heartbeat(con, job_name, request_id = NULL)
 }
 \arguments{
 \item{con}{Database connection object (DBI connection)}
 
 \item{job_name}{Character string identifying the job}
+
+\item{request_id}{UUID identifying this specific job run (optional for backward compatibility)}
 }
 \value{
 Number of rows affected (from DBI::dbExecute)
@@ -22,5 +24,9 @@ This prevents the job from being considered stuck or timed out.
 \dontrun{
 con <- postgres_connect(needed_tables = c("processed.data_job_events"))
 job_heartbeat(con, "my_long_running_job")
+
+# With request_id for queue management
+request_id <- uuid::UUIDgenerate()
+job_heartbeat(con, "my_long_running_job", request_id)
 }
 }
