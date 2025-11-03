@@ -51,6 +51,8 @@ custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
 #' @param delete_missing Logical. If `TRUE`, rows that are no longer present in the data frame
 #'        will be deleted (based on the conflict keys).
 #' @param returning_cols Optional character vector of columns to return after the UPSERT.
+#' @param allow_manual_id Logical. If `TRUE`, the ID column can be manually provided in `data` and will be used
+#'        for insert/update operations. If `FALSE` (default), the ID column is excluded from updates.
 #'
 #' @return A `data.frame` with the returned columns (if `returning_cols` is set), otherwise `invisible(NULL)`.
 #'
@@ -58,11 +60,13 @@ custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
 #' - If `match_cols` is not specified, the function looks for a typical ID column (e.g., "id").
 #' - Columns in `data` that do not exist in the target table are ignored with a warning.
 #' - Only columns other than `created_at`, `updated_at`, and `match_cols` are updated.
+#' - By default, the "id" column is excluded from updates. Set `allow_manual_id = TRUE` to include it.
 #' - A temporary table is created and used to perform the UPSERT.
 #' - If `delete_missing = TRUE`, all entries not found in the current data based on `match_cols` will be deleted.
 #'
 #' @examples
 #' \dontrun{
+#'   # Standard upsert with auto-generated IDs
 #'   postgres_upsert_data(
 #'     con = my_connection,
 #'     schema = "raw",
@@ -72,13 +76,24 @@ custom_decrypt_db <- function(df, columns_to_decrypt, key = NULL) {
 #'     delete_missing = TRUE,
 #'     returning_cols = c("id", "updated_at")
 #'   )
+#'
+#'   # Upsert with manually provided IDs (e.g., from external API)
+#'   postgres_upsert_data(
+#'     con = my_connection,
+#'     schema = "raw",
+#'     table = "makandra_companies",
+#'     data = companies_from_api,  # contains 'id' column from API
+#'     match_cols = c("id"),
+#'     allow_manual_id = TRUE
+#'   )
 #' }
 #'
 #' @export
 postgres_upsert_data <- function(con, schema, table, data,
                                  match_cols = NULL,
                                  delete_missing = FALSE,
-                                 returning_cols = NULL) {
+                                 returning_cols = NULL,
+                                 allow_manual_id = FALSE) {
 
   # Überprüfen, ob das Argument 'data' ein DataFrame ist
   if (!is.data.frame(data)) {
@@ -101,7 +116,14 @@ postgres_upsert_data <- function(con, schema, table, data,
             paste(missing_cols, collapse = ", "))
   }
   data <- data[, intersect(colnames_data, table_columns), drop = FALSE]
-  colnames_data <- setdiff(colnames(data), c("id", "updated_at"))  # Aktualisieren, da sich data geändert hat
+
+  # ID-Spalte ausschließen, wenn nicht explizit erlaubt
+  cols_to_exclude <- if (allow_manual_id) {
+    c("updated_at")
+  } else {
+    c("id", "updated_at")
+  }
+  colnames_data <- setdiff(colnames(data), cols_to_exclude)
 
   # Spalten, die geupdatet werden sollen (ohne created_at und match_cols)
   update_cols <- setdiff(colnames_data, c("created_at", "updated_at", match_cols))
