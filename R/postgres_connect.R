@@ -261,13 +261,18 @@ connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, 
 #' @param ssh_key_path Pfad zum privaten SSH-Key (z. B. `~/.ssh/id_rsa`).
 #' @param remote_user Benutzername für den Remote-Login.
 #' @param remote_host Adresse des Remote-Hosts (z. B. `server.example.com`).
+#' @param passwd Optional. Passphrase für den SSH-Key. Wird interaktiv abgefragt, wenn nicht angegeben.
+#' @param timeout Timeout in Sekunden für den SSH-Verbindungsaufbau. Standard: 60 Sekunden.
 #'
 #' @return Ein aktives SSH-Verbindungsobjekt vom Typ `ssh::ssh_session`.
 #'
 #' @details
 #' - Die Funktion verwendet das Paket `ssh`, um eine Verbindung zum Remote-Server aufzubauen.
 #' - Vor dem Verbindungsaufbau wird geprüft, ob der angegebene SSH-Key existiert.
-#' - Tritt ein Fehler beim Verbindungsaufbau auf, wird dieser abgefangen und als Fehlermeldung ausgegeben.
+#' - Bei Timeout-Problemen wird automatisch ein Retry-Mechanismus aktiviert. Die Anzahl der Versuche
+#'   wird basierend auf dem `timeout`-Parameter berechnet (1 Versuch pro 10 Sekunden).
+#' - Zwischen den Versuchen wird eine kurze Pause (2 Sekunden) eingelegt.
+#' - Tritt ein Fehler beim Verbindungsaufbau auf, wird eine hilfreiche Fehlermeldung mit Lösungsvorschlägen ausgegeben.
 #'
 #' @examples
 #' \dontrun{
@@ -282,7 +287,7 @@ connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, 
 #'
 #' @importFrom getPass getPass
 #' @keywords internal
-establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, passwd = "") {
+establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, passwd = "", timeout = 60) {
   if (!file.exists(ssh_key_path)) {
     stop("Die angegebene SSH-Key-Datei existiert nicht: ", ssh_key_path)
   }
@@ -292,17 +297,53 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
   }
 
   #message("🔐 Aufbau SSH-Verbindung...")
-  ssh_session <- tryCatch({
-    ssh::ssh_connect(
-      host = paste0(remote_user, "@", remote_host),
-      keyfile = ssh_key_path,
-      passwd = passwd
-    )
-  }, error = function(e) {
-    stop("Fehler beim Aufbau der SSH-Verbindung: ", e$message)
-  })
 
-  return(list(ssh_session, passwd))
+  # Retry-Mechanismus mit mehreren Versuchen
+  # libssh hat einen festen Timeout von ~10 Sekunden pro Versuch
+  max_retries <- ceiling(timeout / 10)  # Anzahl der Versuche basierend auf gewünschtem Timeout
+
+  for (attempt in 1:max_retries) {
+    result <- tryCatch({
+      if (attempt > 1) {
+        message(sprintf("🔄 Verbindungsversuch %d von %d...", attempt, max_retries))
+      }
+
+      ssh_session <- ssh::ssh_connect(
+        host = paste0(remote_user, "@", remote_host),
+        keyfile = ssh_key_path,
+        passwd = passwd,
+        verbose = FALSE
+      )
+
+      # Erfolgreiche Verbindung
+      list(success = TRUE, session = ssh_session, error = NULL)
+
+    }, error = function(e) {
+      # Fehler aufgetreten
+      list(success = FALSE, session = NULL, error = e)
+    })
+
+    # Wenn erfolgreich, gebe Session zurück
+    if (result$success) {
+      if (attempt > 1) {
+        message("✅ SSH-Verbindung erfolgreich hergestellt")
+      }
+      return(list(result$session, passwd))
+    }
+
+    # Warte kurz zwischen Versuchen (außer beim letzten)
+    if (attempt < max_retries) {
+      Sys.sleep(2)
+    } else {
+      # Letzter Versuch fehlgeschlagen - Fehler werfen
+      error_msg <- sprintf(
+        "Fehler beim Aufbau der SSH-Verbindung nach %d Versuchen: %s\n\nMögliche Lösungen:\n- Überprüfe deine Netzwerkverbindung\n- Stelle sicher, dass du mit dem VPN verbunden bist (falls erforderlich)\n- Überprüfe, ob der SSH-Server erreichbar ist\n- Versuche es später erneut",
+        max_retries,
+        result$error$message
+      )
+      stop(error_msg)
+    }
+  }
 }
 
 #' Pull production tables from a remote PostgreSQL database via SSH

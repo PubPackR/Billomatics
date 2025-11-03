@@ -4,7 +4,13 @@
 \alias{establish_ssh_connection}
 \title{Aufbau einer SSH-Verbindung mit Keyfile und Passphrase}
 \usage{
-establish_ssh_connection(ssh_key_path, remote_user, remote_host, passwd = "")
+establish_ssh_connection(
+  ssh_key_path,
+  remote_user,
+  remote_host,
+  passwd = "",
+  timeout = 60
+)
 }
 \arguments{
 \item{ssh_key_path}{Pfad zum privaten SSH-Key (z. B. \verb{~/.ssh/id_rsa}).}
@@ -12,6 +18,10 @@ establish_ssh_connection(ssh_key_path, remote_user, remote_host, passwd = "")
 \item{remote_user}{Benutzername für den Remote-Login.}
 
 \item{remote_host}{Adresse des Remote-Hosts (z. B. \code{server.example.com}).}
+
+\item{passwd}{Optional. Passphrase für den SSH-Key. Wird interaktiv abgefragt, wenn nicht angegeben.}
+
+\item{timeout}{Timeout in Sekunden für den SSH-Verbindungsaufbau. Standard: 60 Sekunden.}
 }
 \value{
 Ein aktives SSH-Verbindungsobjekt vom Typ \code{ssh::ssh_session}.
@@ -24,7 +34,10 @@ verwendet, dessen Pfad übergeben wird. Die zugehörige Passphrase wird interakt
 \itemize{
 \item Die Funktion verwendet das Paket \code{ssh}, um eine Verbindung zum Remote-Server aufzubauen.
 \item Vor dem Verbindungsaufbau wird geprüft, ob der angegebene SSH-Key existiert.
-\item Tritt ein Fehler beim Verbindungsaufbau auf, wird dieser abgefangen und als Fehlermeldung ausgegeben.
+\item Bei Timeout-Problemen wird automatisch ein Retry-Mechanismus aktiviert. Die Anzahl der Versuche
+wird basierend auf dem \code{timeout}-Parameter berechnet (1 Versuch pro 10 Sekunden).
+\item Zwischen den Versuchen wird eine kurze Pause (2 Sekunden) eingelegt.
+\item Tritt ein Fehler beim Verbindungsaufbau auf, wird eine hilfreiche Fehlermeldung mit Lösungsvorschlägen ausgegeben.
 }
 }
 \examples{
