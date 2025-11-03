@@ -11,7 +11,8 @@ postgres_upsert_data(
   data,
   match_cols = NULL,
   delete_missing = FALSE,
-  returning_cols = NULL
+  returning_cols = NULL,
+  allow_manual_id = FALSE
 )
 }
 \arguments{
@@ -29,6 +30,9 @@ postgres_upsert_data(
 will be deleted (based on the conflict keys).}
 
 \item{returning_cols}{Optional character vector of columns to return after the UPSERT.}
+
+\item{allow_manual_id}{Logical. If \code{TRUE}, the ID column can be manually provided in \code{data} and will be used
+for insert/update operations. If \code{FALSE} (default), the ID column is excluded from updates.}
 }
 \value{
 A \code{data.frame} with the returned columns (if \code{returning_cols} is set), otherwise \code{invisible(NULL)}.
@@ -43,12 +47,14 @@ and automatically generated IDs (e.g., serial) can be returned if requested.
 \item If \code{match_cols} is not specified, the function looks for a typical ID column (e.g., "id").
 \item Columns in \code{data} that do not exist in the target table are ignored with a warning.
 \item Only columns other than \code{created_at}, \code{updated_at}, and \code{match_cols} are updated.
+\item By default, the "id" column is excluded from updates. Set \code{allow_manual_id = TRUE} to include it.
 \item A temporary table is created and used to perform the UPSERT.
 \item If \code{delete_missing = TRUE}, all entries not found in the current data based on \code{match_cols} will be deleted.
 }
 }
 \examples{
 \dontrun{
+  # Standard upsert with auto-generated IDs
   postgres_upsert_data(
     con = my_connection,
     schema = "raw",
@@ -57,6 +63,16 @@ and automatically generated IDs (e.g., serial) can be returned if requested.
     match_cols = c("id"),
     delete_missing = TRUE,
     returning_cols = c("id", "updated_at")
+  )
+
+  # Upsert with manually provided IDs (e.g., from external API)
+  postgres_upsert_data(
+    con = my_connection,
+    schema = "raw",
+    table = "makandra_companies",
+    data = companies_from_api,  # contains 'id' column from API
+    match_cols = c("id"),
+    allow_manual_id = TRUE
   )
 }
 
