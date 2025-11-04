@@ -39,7 +39,7 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql", "gemini", "openrouter"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql", "gemini", "openrouter", "personio"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -55,7 +55,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     cleverreach = authentication_cleverreach,
     postgresql = authentication_postgresql,
     gemini = authentication_gemini,
-    openrouter = authentication_openrouter
+    openrouter = authentication_openrouter,
+    personio = authentication_personio
   )
 
   keys <- list()
@@ -467,3 +468,64 @@ authentication_openrouter <-  function(args) {
 
   safer::decrypt_string(encrypted_api_key, key = decrypt_key)
 }
+
+#' authentication_personio
+#'
+#' This function handles the authentication for the Personio API.
+#' It decrypts the client_id and client_secret, then requests an access token from the Personio API.
+#' It supports manual decryption key input as well as FlowForce arguments.
+#'
+#' @param args Additional input parameter, only needed through FlowForce Job
+#' @return Named list containing decrypted client_id, client_secret, and access_token
+authentication_personio <- function(args) {
+
+  encrypted_client_id <- readLines("../../keys/Personio/personio_client_id.txt")
+  encrypted_client_secret <- readLines("../../keys/Personio/personio_client_secret.txt")
+
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Personio eingeben: ")
+  } else {
+    decrypt_key <- args
+  }
+
+  # Entschlüssele client_id und client_secret
+  client_id <- safer::decrypt_string(encrypted_client_id, key = decrypt_key)
+  client_secret <- safer::decrypt_string(encrypted_client_secret, key = decrypt_key)
+
+  # Erstelle den Request Body als JSON
+  request_body <- jsonlite::toJSON(list(
+    client_id = client_id,
+    client_secret = client_secret
+  ), auto_unbox = TRUE)
+
+  # Führe den API-Call aus
+  tryCatch({
+    response <- httr::POST(
+      url = "https://api.personio.de/v1/auth",
+      httr::add_headers("Content-Type" = "application/json"),
+      body = request_body,
+      encode = "raw"
+    )
+
+    # Prüfe auf erfolgreichen Response
+    if (httr::status_code(response) == 200) {
+      response_content <- httr::content(response, as = "parsed")
+      access_token <- response_content$data$token
+
+      print("Personio authentication successful.")
+
+      return(list(
+        client_id = client_id,
+        client_secret = client_secret,
+        access_token = access_token
+      ))
+    } else {
+      stop(paste("Personio API request failed with status code:", httr::status_code(response)))
+    }
+  },
+  error = function(e) {
+    cat("An error occurred during Personio authentication: ", e$message, "\n")
+    stop(e)
+  })
+}
+

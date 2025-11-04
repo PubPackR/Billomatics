@@ -7,7 +7,7 @@
 authentication_process(
   needed_services = c("billomat", "crm", "crm_lm", "google sheet", "asana", "msgraph",
     "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql",
-    "gemini", "openrouter"),
+    "gemini", "openrouter", "personio"),
   args
 )
 }
