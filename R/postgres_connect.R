@@ -607,18 +607,21 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
 
   # WICHTIG: Immer Chunking verwenden, auch für kleine Tabellen
   # rawToChar() kann bei großen Strings zu Memory-Errors führen
-  num_chunks <- ceiling(total_rows / chunk_size)
+  # Maximal 10 Chunks verwenden - bei großen Tabellen chunk_size entsprechend anpassen
+  max_chunks <- 10
+  num_chunks <- min(max_chunks, ceiling(total_rows / chunk_size))
+  adjusted_chunk_size <- ceiling(total_rows / num_chunks)
   if (verbose) {
-    message(sprintf("📊 Tabelle enthält %d Zeilen - lade in %d Chunks...", total_rows, num_chunks))
+    message(sprintf("📊 Tabelle enthält %d Zeilen - lade in %d Chunks (Chunk-Größe: %d)...", total_rows, num_chunks, adjusted_chunk_size))
   }
 
   all_chunks <- list()
 
   for (chunk_num in seq_len(num_chunks)) {
-    offset <- (chunk_num - 1) * chunk_size
+    offset <- (chunk_num - 1) * adjusted_chunk_size
 
     # Progress anzeigen (überschreibend)
-    rows_loaded <- min(offset + chunk_size, total_rows)
+    rows_loaded <- min(offset + adjusted_chunk_size, total_rows)
     progress_pct <- round(100 * rows_loaded / total_rows)
     progress_bar_length <- 20
     filled <- round(progress_bar_length * rows_loaded / total_rows)
@@ -634,7 +637,7 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
     cmd <- sprintf(
       'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY id LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
       postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
-      table, chunk_size, offset
+      table, adjusted_chunk_size, offset
     )
 
     result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
