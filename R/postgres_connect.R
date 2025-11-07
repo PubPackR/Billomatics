@@ -418,8 +418,8 @@ postgres_pull_production_tables <- function(table = NULL,
 
   } else {
 
-    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys, chunk_size = chunk_size, verbose = verbose)
-
+    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys, ssh_key_path = ssh_key_path, preset_ssh_key = ssh_session[[2]], chunk_size = chunk_size, verbose = verbose)
+    ssh_session <- tables_data$ssh_session
     if (is.null(tables_data)) { return(ssh_session[[2]]) }
 
     # Ziel: lokale PostgreSQL
@@ -554,7 +554,7 @@ EORSCRIPT
   return(split_output)
 }
 
-load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk_size = 10000, verbose = FALSE) {
+load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_key_path = ssh_key_path, preset_ssh_key = preset_ssh_key, chunk_size = 10000, verbose = FALSE) {
   if (!verbose) {
     # Im non-verbose Modus: nur Tabellenname anzeigen
     message(sprintf("📥 %s", table))
@@ -684,6 +684,13 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
 
     # Speicher freigeben nach jedem Chunk
     gc(verbose = FALSE)
+
+    # SSH-Session erneuern nach jedem 5. Chunk um Buffer-Probleme zu vermeiden
+    if (chunk_num %% 5 == 0 && chunk_num < num_chunks) {
+      ssh::ssh_disconnect(ssh_session[[1]])
+      Sys.sleep(1)  # Kurze Pause
+      ssh_session <- connect_to_studyflix_ssh(ssh_key_path = ssh_key_path, preset_ssh_key = preset_ssh_key)
+    }
   }
 
   # Neue Zeile nach Progress-Bar
@@ -707,7 +714,7 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, chunk
     if (verbose) {
       message(sprintf("✅ Tabelle %s erfolgreich geladen (%d Zeilen)", table, nrow(df)))
     }
-    return(list(data = df, metadata = metadata))
+    return(list(data = df, metadata = metadata, ssh_session = ssh_session))
   } else {
     return(NULL)
   }
