@@ -24,6 +24,8 @@
 #'        If `FALSE` (default), only shows table name and progress bar.
 #' @param path_to_keys_db Character. Optional path to the keys database. If `NULL` (default), uses the standard path.
 #' @param path_to_user_db Character. Optional path to the user database. If `NULL` (default), uses the standard path.
+#' @param force_interactive Logical. If `TRUE`, forces interactive mode (local database connection) even if `interactive()` returns `FALSE`.
+#'        If `FALSE`, forces non-interactive mode (production database connection). If `NULL` (default), uses the result of `interactive()`.
 #'
 #' @return Returns a connection object to the local database if a new connection is established.
 #'         If a connection is passed in via `con`, it is returned unchanged.
@@ -53,6 +55,12 @@
 #'     needed_tables = c("raw.crm_leads"),
 #'     verbose = TRUE  # Shows detailed output (functions loaded, ID ranges, etc.)
 #'   )
+#'
+#'   # Force interactive mode (local DB) even when running from a script
+#'   con <- postgres_connect(
+#'     force_interactive = TRUE,
+#'     local_pw = "your_password"
+#'   )
 #' }
 #'
 #' @export
@@ -72,9 +80,17 @@ postgres_connect <- function(postgres_keys = NULL,
                              chunk_size = 10000,
                              verbose = FALSE,
                              path_to_keys_db = NULL,
-                             path_to_user_db = NULL) {
+                             path_to_user_db = NULL,
+                             force_interactive = NULL) {
 
-  if (!interactive())
+  # Determine if we're in interactive mode
+  is_interactive <- if (!is.null(force_interactive)) {
+    force_interactive
+  } else {
+    interactive()
+  }
+
+  if (!is_interactive)
 
   { # Server Modus
 
@@ -83,7 +99,7 @@ postgres_connect <- function(postgres_keys = NULL,
       if (is.null(postgres_keys)) { # Wenn keine Keys übergeben werden, dann stoppe die Funktion
         stop("Bitte entweder eine bestehende Connection übergeben oder die Keys für eine neue Postgres-Verbindung.")
       }
-      con <- postgres_connect_intern_function(postgres_keys = postgres_keys)
+      con <- postgres_connect_intern_function(postgres_keys = postgres_keys, force_interactive = force_interactive)
       return(con)
     }
     message("ℹ️ Server-Modus erkannt und bestehende Connection übergeben. Gebe diese zurück.")
@@ -104,7 +120,7 @@ postgres_connect <- function(postgres_keys = NULL,
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
       }
-      result <- connect_with_retry(postgres_keys = postgres_keys, local_pw = local_pw, local_host = local_host, local_port = local_port, local_user = local_user, local_dbname = local_dbname, ssl_cert_path = ssl_cert_path)
+      result <- connect_with_retry(postgres_keys = postgres_keys, local_pw = local_pw, local_host = local_host, local_port = local_port, local_user = local_user, local_dbname = local_dbname, ssl_cert_path = ssl_cert_path, force_interactive = force_interactive)
 
       con <- result$connection
       local_pw <- result$local_pw  # optional: updated password
@@ -222,7 +238,7 @@ recursive_search <- function(x) {
 #' con <- result$connection
 #' local_pw <- result$local_pw
 #' }
-connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, local_user, local_dbname, ssl_cert_path) {
+connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, local_user, local_dbname, ssl_cert_path, force_interactive = NULL) {
   tryCatch({
     # Erster Verbindungsversuch
     con <- postgres_connect_intern_function(
@@ -232,7 +248,8 @@ connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, 
       local_port = local_port,
       local_user = local_user,
       local_dbname = local_dbname,
-      ssl_cert_path = ssl_cert_path
+      ssl_cert_path = ssl_cert_path,
+      force_interactive = force_interactive
     )
     list(connection = con, local_pw = local_pw)
   }, error = function(e) {
@@ -247,7 +264,8 @@ connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, 
       local_port = local_port,
       local_user = local_user,
       local_dbname = local_dbname,
-      ssl_cert_path = ssl_cert_path
+      ssl_cert_path = ssl_cert_path,
+      force_interactive = force_interactive
     )
     list(connection = con, local_pw = retry_pw)
   })
@@ -2012,9 +2030,18 @@ postgres_connect_intern_function <- function(local_host = "localhost",
                              local_dbname = "studyflix_local",
                              postgres_keys = NULL,
                              local_pw = NULL,
-                             ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem") {
+                             ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
+                             force_interactive = NULL) {
+
+  # Determine if we're in interactive mode
+  is_interactive <- if (!is.null(force_interactive)) {
+    force_interactive
+  } else {
+    interactive()
+  }
+
   tryCatch({
-    if (interactive()) {
+    if (is_interactive) {
 
       if (is.null(local_pw)) {
         message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
