@@ -4,14 +4,24 @@
 \alias{get_central_station_companies}
 \title{get_central_station_companies}
 \usage{
-get_central_station_companies(api_key, positions = TRUE, pages = 2000)
+get_central_station_companies(
+  api_key,
+  company_id = NULL,
+  positions = TRUE,
+  pages = 2000,
+  includes = c("custom_fields", "addrs", "tels", "emails")
+)
 }
 \arguments{
 \item{api_key}{the api key you have to provide}
 
+\item{company_id}{optional company_id to load a single company (default: NULL loads all companies)}
+
 \item{positions}{True if the company positions (and person_ids) should also get exported}
 
 \item{pages}{the setting to set a maximum number of pages to download, with 2000 pages as default (one page includes 250 entries)}
+
+\item{includes}{character vector of includes to request from the API (e.g., c("custom_fields", "addrs", "tels", "emails"))}
 }
 \value{
 the tibble which contains all information, this can be stored in a single vector or lists

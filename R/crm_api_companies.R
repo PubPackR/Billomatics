@@ -16,12 +16,14 @@
 #' this function calls the crm api and downloads the general informations about all companies.
 
 #' @param api_key the api key you have to provide
+#' @param company_id optional company_id to load a single company (default: NULL loads all companies)
 #' @param positions True if the company positions (and person_ids) should also get exported
 #' @param pages the setting to set a maximum number of pages to download, with 2000 pages as default (one page includes 250 entries)
+#' @param includes character vector of includes to request from the API (e.g., c("custom_fields", "addrs", "tels", "emails"))
 #' @return the tibble which contains all information, this can be stored in a single vector or lists
 
 #' @export
-get_central_station_companies <- function (api_key, positions = TRUE, pages = 2000) {
+get_central_station_companies <- function (api_key, company_id = NULL, positions = TRUE, pages = 2000, includes = c("custom_fields", "addrs", "tels", "emails")) {
   # if no page number is set then a maximum of 2000 pages will be downloaded
   # the export stops, when not more data is available
   # if pages is set to a specific number, then this number of pages will maximum be downloaded
@@ -31,6 +33,48 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
       `X-apikey` = api_key,
       Accept = "*/*"
   )
+
+  # if company_id is provided, load single company
+  if (!is.null(company_id)) {
+    # Build includes string from parameter
+    includes_string <- ""
+    if (length(includes) > 0) {
+      includes_string <- paste0("?includes=", paste(includes, collapse = "%20"))
+    }
+
+    # Add positions if needed
+    if(positions) {
+      if(includes_string == "") {
+        includes_string <- "?includes=positions"
+      } else {
+        includes_string <- paste0(includes_string, "%20positions")
+      }
+    }
+
+    url <- paste0("https://api.centralstationcrm.net/api/companies/", company_id, includes_string)
+    response <- httr::GET(url, httr::add_headers(headers))
+    data <- jsonlite::fromJSON(httr::content(response, "text"))
+
+    # data$company contains the actual company data with nested data frames
+    # wrap only multi-value elements in list to create list-columns where needed
+    data$company <- lapply(data$company, function(x) {
+      if(is.null(x)) {
+        NA
+      } else if(is.data.frame(x) || is.list(x) || length(x) > 1) {
+        list(x)
+      } else {
+        x
+      }
+    })
+
+    companies_crm <- tibble::as_tibble(data$company)
+
+    if(positions && "positions" %in% names(companies_crm)) {
+      companies_crm <- tidyr::unnest(companies_crm, positions, names_sep = "_", keep_empty = TRUE)
+    }
+
+    return(companies_crm)
+  }
 
   #get number of companies in CRM and limit download to this number (calculate number of pages)
   response <- httr::GET("https://api.centralstationcrm.net/api/companies/count", httr::add_headers(headers))
@@ -45,6 +89,12 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
     pos <- ""
   }
 
+  # Build includes string from parameter
+  includes_string <- ""
+  if (length(includes) > 0) {
+    includes_string <- paste0("&includes=", paste(includes, collapse = "%20"))
+  }
+
   #request every page of companies from CRM and load them to companies table
   for (i in 1:pages) {
     response <-
@@ -52,7 +102,7 @@ get_central_station_companies <- function (api_key, positions = TRUE, pages = 20
         paste0(
           "https://api.centralstationcrm.net/api/companies?perpage=250&page=",
           i,
-          "&includes=custom_fields%20addrs%20tels%20emails",
+          includes_string,
           pos
         ),
         httr::add_headers(headers)
@@ -205,5 +255,67 @@ create_crm_company <- function(headers, df) {
     return(all_responses)
   } else {
     return(NULL)
+  }
+}
+
+
+#' update_crm_company
+#'
+#' This function calls the CRM API and updates basic company information
+#' (name and potentially other fields).
+#'  attachable_id - id of the company (required)
+#'  action - has to be value "update"
+#'  field_type - has to be value "company"
+#'  name - optional (company name)
+#'
+#' @param headers the header informations you have to send with your request
+#' @param df the dataframe which should include the following fields:
+#' @return no return values
+#'
+#' @export
+update_crm_company <- function(headers, df) {
+  # Filter by field_type and action
+  df <- filter_by_field_and_action(df, "company", "update")
+
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
+  # Validate required columns
+  validate_required_columns(df, c("attachable_id"))
+  validate_attachable_id(df)
+
+  # Iterate over every row
+  for (p in 1:nrow(df)) {
+    # Build company data list - only with fields that have values
+    company_data <- list(company = list())
+
+    # Add optional fields only if they exist and are not NA/empty
+    if (has_valid_value(df, "name", p)) {
+      company_data$company$name <- df$name[p]
+    }
+
+    # Check if we have any updates
+    if (length(company_data$company) == 0) {
+      warning(paste0("⚠️ No company data to update for row ", p, ", skipping"))
+      next
+    }
+
+    # Convert to JSON
+    body_string <- jsonlite::toJSON(company_data, auto_unbox = TRUE)
+
+    # Execute PUT request
+    response <- httr::PUT(
+      paste0("https://api.centralstationcrm.net/api/companies/", df$attachable_id[p]),
+      httr::add_headers(headers),
+      body = body_string,
+      encode = "json"
+    )
+
+    # Check response status
+    if (!httr::status_code(response) %in% c(200, 201, 204)) {
+      warning(paste0("⚠️ Failed to update company ID ", df$attachable_id[p],
+                     " - Status: ", httr::status_code(response)))
+    }
   }
 }

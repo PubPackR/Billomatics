@@ -11,7 +11,8 @@ postgres_connect_intern_function(
   local_dbname = "studyflix_local",
   postgres_keys = NULL,
   local_pw = NULL,
-  ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem"
+  ssl_cert_path = "../../metabase-data/postgres/eu-central-1-bundle.pem",
+  force_interactive = NULL
 )
 }
 \arguments{

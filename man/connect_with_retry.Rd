@@ -11,7 +11,8 @@ connect_with_retry(
   local_port,
   local_user,
   local_dbname,
-  ssl_cert_path
+  ssl_cert_path,
+  force_interactive = NULL
 )
 }
 \arguments{

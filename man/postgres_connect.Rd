@@ -21,7 +21,8 @@ postgres_connect(
   chunk_size = 10000,
   verbose = FALSE,
   path_to_keys_db = NULL,
-  path_to_user_db = NULL
+  path_to_user_db = NULL,
+  force_interactive = NULL
 )
 }
 \arguments{
@@ -56,6 +57,9 @@ If \code{FALSE} (default), only shows table name and progress bar.}
 \item{path_to_keys_db}{Character. Optional path to the keys database. If \code{NULL} (default), uses the standard path.}
 
 \item{path_to_user_db}{Character. Optional path to the user database. If \code{NULL} (default), uses the standard path.}
+
+\item{force_interactive}{Logical. If \code{TRUE}, forces interactive mode (local database connection) even if \code{interactive()} returns \code{FALSE}.
+If \code{FALSE}, forces non-interactive mode (production database connection). If \code{NULL} (default), uses the result of \code{interactive()}.}
 }
 \value{
 Returns a connection object to the local database if a new connection is established.
@@ -92,6 +96,12 @@ The function can be used interactively (e.g., in RStudio) or in a server context
   con <- postgres_connect(
     needed_tables = c("raw.crm_leads"),
     verbose = TRUE  # Shows detailed output (functions loaded, ID ranges, etc.)
+  )
+
+  # Force interactive mode (local DB) even when running from a script
+  con <- postgres_connect(
+    force_interactive = TRUE,
+    local_pw = "your_password"
   )
 }
 
