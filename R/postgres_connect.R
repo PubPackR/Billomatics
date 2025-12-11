@@ -310,7 +310,7 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
     stop("Die angegebene SSH-Key-Datei existiert nicht: ", ssh_key_path)
   }
 
-  if(passwd == "") {
+  if(is.null(passwd) || length(passwd) == 0 || passwd == "") {
     passwd <- getPass("Gib dein Passphrase für den SSH Key ein:")
   }
 
@@ -620,7 +620,7 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
     if (verbose) {
       message(sprintf("✅ Tabelle %s ist leer (0 Zeilen)", table))
     }
-    return(list(data = df, metadata = metadata))
+    return(list(data = df, metadata = metadata, ssh_session = ssh_session))
   }
 
   # WICHTIG: Immer Chunking verwenden, auch für kleine Tabellen
