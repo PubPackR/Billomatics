@@ -141,11 +141,27 @@ postgres_upsert_data <- function(con, schema, table, data,
     if (length(match_cols) == 0) stop("Keine 'match_cols' angegeben und keine typische ID-Spalte gefunden.")
   }
 
+  # List-Spalten in PostgreSQL Array-Format konvertieren
+  data_for_write <- data
+  list_cols <- sapply(data_for_write, is.list)
+  if (any(list_cols)) {
+    for (col_name in names(list_cols)[list_cols]) {
+      data_for_write[[col_name]] <- sapply(data_for_write[[col_name]], function(x) {
+        if (is.null(x) || length(x) == 0) {
+          return(NA_character_)  # NULL wird als NA übergeben
+        } else {
+          # Konvertiere zu PostgreSQL Array-Format: {element1,element2,element3}
+          paste0("{", paste(x, collapse = ","), "}")
+        }
+      })
+    }
+  }
+
   # Temporäre Tabelle erstellen, um die Daten zu übertragen
   temp_table <- paste0("temp_upsert_", format(Sys.time(), "%Y%m%d%H%M%S"), "_",
                        round(as.numeric(Sys.time()) * 1000) %% 1000, "_",
                        sample.int(999999, 1))
-  DBI::dbWriteTable(con, temp_table, data, temporary = TRUE, overwrite = TRUE)
+  DBI::dbWriteTable(con, temp_table, data_for_write, temporary = TRUE, overwrite = TRUE)
 
   # Update-Klausel erstellen
   update_clause <- if (length(update_cols) > 0) {
@@ -195,8 +211,9 @@ postgres_upsert_data <- function(con, schema, table, data,
                          round(as.numeric(Sys.time()) * 1000) %% 1000, "_",
                          sample.int(999999, 1))
 
-    # Temporäre Tabelle erstellen und befüllen
-    DBI::dbWriteTable(con, temp_table, unique(data[match_cols]), temporary = TRUE, overwrite = TRUE)
+    # Temporäre Tabelle erstellen und befüllen (mit konvertierten Daten)
+    delete_data <- unique(data_for_write[match_cols])
+    DBI::dbWriteTable(con, temp_table, delete_data, temporary = TRUE, overwrite = TRUE)
 
     # Bedingung für den JOIN bauen
     join_condition <- paste(

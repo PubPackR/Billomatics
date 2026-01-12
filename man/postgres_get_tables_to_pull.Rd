@@ -4,14 +4,27 @@
 \alias{postgres_get_tables_to_pull}
 \title{Ermittelt Tabellen, die aus der Produktion gezogen werden müssen}
 \usage{
-postgres_get_tables_to_pull(tables, con, update_local_tables)
+postgres_get_tables_to_pull(
+  tables,
+  con,
+  update_local_tables,
+  ssh_session = NULL,
+  postgres_keys = NULL,
+  verbose = FALSE
+)
 }
 \arguments{
 \item{tables}{Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format \code{"schema.tabelle"}.}
 
 \item{con}{Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.}
 
-\item{update_local_tables}{Logisch. Wenn \code{TRUE}, werden alle Tabellen zurückgegeben (vollständiger Refresh).}
+\item{update_local_tables}{Logisch. Wenn \code{TRUE}, werden Tabellen intelligent geprüft (erfordert ssh_session und postgres_keys).}
+
+\item{ssh_session}{Optional. SSH-Session zur Produktionsdatenbank für intelligente Update-Prüfung.}
+
+\item{postgres_keys}{Optional. Credentials für die Produktionsdatenbank.}
+
+\item{verbose}{Logisch. Wenn \code{TRUE}, werden Statusmeldungen ausgegeben.}
 }
 \value{
 Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
@@ -19,6 +32,10 @@ Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werd
 \description{
 Diese Hilfsfunktion prüft basierend auf dem Parameter \code{update_local_tables},
 ob alle oder nur fehlende Tabellen aus der Produktionsdatenbank geholt werden sollen.
-Dazu wird die aktuelle Verbindung zur lokalen Datenbank genutzt, um vorhandene Tabellen zu erkennen.
+Bei \code{update_local_tables = TRUE} werden intelligente Prüfungen durchgeführt (falls SSH-Verbindung verfügbar):
+\itemize{
+\item Tabellen ohne \code{updated_at} Spalte werden übersprungen
+\item Tabellen werden nur aktualisiert wenn max(updated_at) oder Zeilenanzahl unterschiedlich
+}
 }
 \keyword{internal}

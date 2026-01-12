@@ -10,7 +10,8 @@
 #' @param con An existing PostgreSQL connection object. If `NULL`, a new connection will be established.
 #' @param postgres_keys A list of credentials for the production database (required if `con = NULL` in server mode).
 #'        Required fields: `password`, `user`, `dbname`, `host`, `port`.
-#' @param update_local_tables Logical. If `TRUE`, all specified tables will be pulled from production.
+#' @param update_local_tables Logical. If `TRUE`, tables are intelligently updated: only tables with an `updated_at` column
+#'        are checked, and updates occur only when max(updated_at) on server > local or row count differs.
 #'        If `FALSE` (default), only missing local tables will be downloaded.
 #' @param ssh_key_path Path to the SSH key used to access the production database.
 #' @param ssl_cert_path Path to the SSL certificate file for the database connection.
@@ -34,6 +35,9 @@
 #' - In interactive mode, if no connection is passed, the user will be prompted to enter the local database password.
 #' - In server mode, a connection will only be established if `con` is `NULL`.
 #' - If tables are specified, the function checks whether they already exist locally (unless `update_local_tables = TRUE`).
+#' - With `update_local_tables = TRUE`, an SSH connection is established to intelligently check which tables need updating:
+#'   - Tables without an `updated_at` column are skipped
+#'   - Tables are only updated if max(updated_at) differs or row count has changed
 #' - Missing or outdated tables will be automatically synchronized from the production environment.
 #'
 #' @examples
@@ -132,8 +136,37 @@ postgres_connect <- function(postgres_keys = NULL,
       return(con)
     }
 
-    # Bestimme zu downloadende Tabellen
-    tables_to_pull <- postgres_get_tables_to_pull(needed_tables, con, update_local_tables)
+    # Bei update_local_tables = TRUE: SSH-Verbindung für intelligente Prüfung aufbauen
+    ssh_session_for_check <- NULL
+    postgres_keys_for_check <- NULL
+
+    if (update_local_tables) {
+      if (verbose) {
+        message("📡 Baue SSH-Verbindung für intelligente Update-Prüfung auf...")
+      }
+
+      ssh_session_for_check <- connect_to_studyflix_ssh(ssh_key_path = ssh_key_path, preset_ssh_key = "")
+      decrypt_key <- load_postgres_decrypt_key(
+        local_password = local_pw,
+        local_password_is_product = local_password_is_product,
+        path_to_keys_db = path_to_keys_db,
+        path_to_user_db = path_to_user_db
+      )
+      postgres_keys_for_check <- get_postgres_keys_via_ssh(ssh_session = ssh_session_for_check, decrypt_key = decrypt_key)
+
+      # Automatisch trennen bei Funktionsende
+      on.exit({
+        try(ssh::ssh_disconnect(ssh_session_for_check[[1]]), silent = TRUE)
+      }, add = TRUE)
+    }
+
+    # Bestimme zu downloadende Tabellen (mit intelligenter Prüfung falls update_local_tables = TRUE)
+    tables_to_pull <- postgres_get_tables_to_pull(
+      needed_tables, con, update_local_tables,
+      ssh_session = if (!is.null(ssh_session_for_check)) ssh_session_for_check[[1]] else NULL,
+      postgres_keys = postgres_keys_for_check,
+      verbose = verbose
+    )
 
     # Lade Tabellen aus der Produktion nacheinander, so wird der RAM nicht überlastet
     if (length(tables_to_pull) > 0) {
@@ -148,6 +181,11 @@ postgres_connect <- function(postgres_keys = NULL,
           install.packages(pkg)
         }
         suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+      }
+
+      # Verwende bestehende SSH-Session falls verfügbar
+      if (!is.null(ssh_session_for_check)) {
+        results <- ssh_session_for_check[[2]]  # SSH-Key für Wiederverwendung
       }
 
       for (table_name in tables_to_pull) {
@@ -1953,32 +1991,71 @@ apply_column_types <- function(df, type_info) {
 #'
 #' Diese Hilfsfunktion prüft basierend auf dem Parameter `update_local_tables`,
 #' ob alle oder nur fehlende Tabellen aus der Produktionsdatenbank geholt werden sollen.
-#' Dazu wird die aktuelle Verbindung zur lokalen Datenbank genutzt, um vorhandene Tabellen zu erkennen.
+#' Bei `update_local_tables = TRUE` werden intelligente Prüfungen durchgeführt (falls SSH-Verbindung verfügbar):
+#' - Tabellen ohne `updated_at` Spalte werden übersprungen
+#' - Tabellen werden nur aktualisiert wenn max(updated_at) oder Zeilenanzahl unterschiedlich
 #'
 #' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
 #' @param con Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.
-#' @param update_local_tables Logisch. Wenn `TRUE`, werden alle Tabellen zurückgegeben (vollständiger Refresh).
+#' @param update_local_tables Logisch. Wenn `TRUE`, werden Tabellen intelligent geprüft (erfordert ssh_session und postgres_keys).
+#' @param ssh_session Optional. SSH-Session zur Produktionsdatenbank für intelligente Update-Prüfung.
+#' @param postgres_keys Optional. Credentials für die Produktionsdatenbank.
+#' @param verbose Logisch. Wenn `TRUE`, werden Statusmeldungen ausgegeben.
 #'
 #' @return Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
 #'
 #' @keywords internal
-postgres_get_tables_to_pull <- function(tables, con, update_local_tables) {
-  if (update_local_tables) {
-    return(tables)
+postgres_get_tables_to_pull <- function(tables, con, update_local_tables,
+                                       ssh_session = NULL, postgres_keys = NULL,
+                                       verbose = FALSE) {
+
+  # Bei update_local_tables = FALSE: Nur fehlende Tabellen laden
+  if (!update_local_tables) {
+    # Tabellen in der lokalen DB abfragen
+    existing_tables <- DBI::dbGetQuery(
+      con,
+      "
+      SELECT table_schema || '.' || table_name AS full_table_name
+      FROM information_schema.tables
+      WHERE table_schema NOT IN ('information_schema', 'pg_catalog');
+      "
+    )$full_table_name
+
+    missing_tables <- tables[!tables %in% existing_tables]
+    return(missing_tables)
   }
 
-  # Tabellen in der lokalen DB abfragen
-  existing_tables <- DBI::dbGetQuery(
-    con,
-    "
-    SELECT table_schema || '.' || table_name AS full_table_name
-    FROM information_schema.tables
-    WHERE table_schema NOT IN ('information_schema', 'pg_catalog');
-    "
-  )$full_table_name
+  # Bei update_local_tables = TRUE mit SSH-Verbindung: Intelligente Prüfung
+  if (!is.null(ssh_session) && !is.null(postgres_keys)) {
+    tables_to_update <- c()
 
-  missing_tables <- tables[!tables %in% existing_tables]
-  return(missing_tables)
+    # Batched check für alle Tabellen (5*N SSH-Queries → 2-3 SSH-Queries)
+    needs_update_list <- check_tables_needs_update_batched(
+      tables = tables,
+      local_con = con,
+      ssh_session = ssh_session,
+      postgres_keys = postgres_keys,
+      verbose = FALSE
+    )
+
+    # Ausgabe und Filterung
+    for (table in tables) {
+      if (needs_update_list[[table]]) {
+        tables_to_update <- c(tables_to_update, table)
+        message("✓ ", table, " wird aktualisiert (Änderungen erkannt)")
+      } else {
+        message("⊘ ", table, " übersprungen (keine Änderungen)")
+      }
+    }
+
+    return(tables_to_update)
+  }
+
+  # Fallback: Wenn keine SSH-Verbindung verfügbar, alle Tabellen zurückgeben
+  if (verbose) {
+    message("⚠ Keine SSH-Verbindung für intelligente Update-Prüfung verfügbar, alle Tabellen werden aktualisiert")
+  }
+  return(tables)
 }
 
 #' postgres_connect_intern_function
@@ -2109,4 +2186,272 @@ postgres_connect_intern_function <- function(local_host = "localhost",
   }, error = function(e) {
     stop(sprintf("❌ Verbindung zur PostgreSQL-Datenbank fehlgeschlagen: %s", e$message))
   })
+}
+
+#' @title Batch-Update-Check für mehrere Tabellen (Optimiert)
+#'
+#' @description
+#' Prüft für mehrere Tabellen gleichzeitig, ob sie aktualisiert werden müssen.
+#' Diese Funktion reduziert die Anzahl der SSH-Queries drastisch, indem sie
+#' alle Prüfungen in 2-3 kombinierten Queries durchführt statt 5*N einzelne Queries.
+#'
+#' @details
+#' Die Funktion führt folgende Optimierungen durch:
+#' - Batch-Check: Alle Tabellen werden in einem einzigen SSH-Query geprüft
+#' - Reduziert 5*N SSH-Queries auf 2-3 Queries total (N = Anzahl Tabellen)
+#' - Verwendet UNION ALL für effizienten Batch-Query
+#'
+#' Logik für Update-Entscheidung (identisch zur Einzelprüfung):
+#' 1. Tabelle existiert nicht lokal → TRUE (muss geladen werden)
+#' 2. Keine updated_at Spalte lokal oder auf Server → FALSE (nicht aktualisieren)
+#' 3. Server MAX(updated_at) > lokales MAX(updated_at) → TRUE
+#' 4. Server row count ≠ lokaler row count → TRUE
+#' 5. Sonst → FALSE
+#'
+#' @param tables Character vector mit Tabellennamen im Format "schema.table"
+#' @param local_con DBI connection zur lokalen Datenbank
+#' @param ssh_session SSH session object (aus ssh::ssh_connect)
+#' @param postgres_keys Character vector mit [password, user, database, host, port]
+#' @param verbose Logical, ob detaillierte Fortschrittsmeldungen ausgegeben werden
+#'
+#' @return Named list mit Tabellennamen als Namen und TRUE/FALSE als Werte
+#'
+#' @examples
+#' \dontrun{
+#' ssh_session <- ssh::ssh_connect("user@server")
+#' local_con <- DBI::dbConnect(RSQLite::SQLite(), "local.db")
+#' keys <- c("password", "user", "dbname", "localhost", "5432")
+#'
+#' # Prüfe mehrere Tabellen auf einmal
+#' results <- check_tables_needs_update_batched(
+#'   tables = c("public.users", "public.orders", "public.products"),
+#'   local_con = local_con,
+#'   ssh_session = ssh_session,
+#'   postgres_keys = keys,
+#'   verbose = TRUE
+#' )
+#' # results: list(public.users = TRUE, public.orders = FALSE, public.products = TRUE)
+#' }
+#'
+#' @export
+check_tables_needs_update_batched <- function(tables, local_con, ssh_session, postgres_keys, verbose = FALSE) {
+
+  if (length(tables) == 0) {
+    return(list())
+  }
+
+  if (verbose) {
+    message(sprintf("🔍 Prüfe Update-Status für %d Tabellen (batched)...", length(tables)))
+  }
+
+  # Result list initialisieren
+  needs_update <- setNames(vector("list", length(tables)), tables)
+
+  # Step 1: Lokale Checks (schnell, keine SSH)
+  local_info <- lapply(tables, function(table) {
+    split <- strsplit(table, "\\.")[[1]]
+    schema <- split[1]
+    table_name <- split[2]
+
+    # Existiert lokal?
+    local_exists <- DBI::dbExistsTable(local_con, DBI::Id(schema = schema, table = table_name))
+
+    if (!local_exists) {
+      return(list(
+        exists = FALSE,
+        has_updated_at = FALSE,
+        max_updated = NULL,
+        row_count = 0
+      ))
+    }
+
+    # Hat updated_at Spalte?
+    local_has_updated_at <- tryCatch({
+      local_cols <- DBI::dbListFields(local_con, DBI::Id(schema = schema, table = table_name))
+      "updated_at" %in% local_cols
+    }, error = function(e) FALSE)
+
+    if (!local_has_updated_at) {
+      return(list(
+        exists = TRUE,
+        has_updated_at = FALSE,
+        max_updated = NULL,
+        row_count = 0
+      ))
+    }
+
+    # Hole lokale Stats
+    local_stats <- tryCatch({
+      DBI::dbGetQuery(
+        local_con,
+        sprintf(
+          "SELECT COALESCE(MAX(updated_at), '1970-01-01'::timestamp) as max_updated, COUNT(*) as row_count FROM %s.%s",
+          schema, table_name
+        )
+      )
+    }, error = function(e) NULL)
+
+    if (is.null(local_stats)) {
+      return(list(
+        exists = TRUE,
+        has_updated_at = TRUE,
+        max_updated = NULL,
+        row_count = 0
+      ))
+    }
+
+    return(list(
+      exists = TRUE,
+      has_updated_at = TRUE,
+      max_updated = as.character(local_stats$max_updated[1]),
+      row_count = as.integer(local_stats$row_count[1])
+    ))
+  })
+  names(local_info) <- tables
+
+  # Tabellen ohne lokale Existenz → sofort TRUE
+  for (table in tables) {
+    if (!local_info[[table]]$exists) {
+      needs_update[[table]] <- TRUE
+      if (verbose) {
+        message(sprintf("  ✓ %s: Nicht lokal vorhanden → Update erforderlich", table))
+      }
+    } else if (!local_info[[table]]$has_updated_at) {
+      needs_update[[table]] <- FALSE
+      if (verbose) {
+        message(sprintf("  - %s: Keine updated_at Spalte → Kein Update", table))
+      }
+    }
+  }
+
+  # Tabellen die noch geprüft werden müssen
+  tables_to_check <- names(needs_update[sapply(needs_update, is.null)])
+
+  if (length(tables_to_check) == 0) {
+    return(needs_update)
+  }
+
+  if (verbose) {
+    message(sprintf("🔍 Prüfe %d Tabellen auf Server...", length(tables_to_check)))
+  }
+
+  # Step 2: Batched Server Check (1-2 SSH Queries statt 5*N)
+
+  # Query 1: Check welche Tabellen updated_at haben (kombiniert)
+  column_checks <- sapply(tables_to_check, function(table) {
+    split <- strsplit(table, "\\.")[[1]]
+    schema <- split[1]
+    table_name <- split[2]
+    sprintf(
+      "SELECT '%s' as full_table, column_name FROM information_schema.columns WHERE table_schema = '%s' AND table_name = '%s' AND column_name = 'updated_at'",
+      table, schema, table_name
+    )
+  })
+
+  combined_column_query <- sprintf(
+    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
+    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+    paste(column_checks, collapse = " UNION ALL ")
+  )
+
+  column_result <- ssh::ssh_exec_internal(ssh_session, combined_column_query)
+  column_output <- rawToChar(column_result$stdout)
+  column_lines <- strsplit(trimws(column_output), "\n")[[1]]
+  column_lines <- column_lines[nchar(column_lines) > 0]
+
+  # Parse welche Tabellen updated_at haben
+  server_has_updated_at <- character(0)
+  for (line in column_lines) {
+    parts <- strsplit(line, "\\|")[[1]]
+    if (length(parts) >= 1) {
+      server_has_updated_at <- c(server_has_updated_at, parts[1])
+    }
+  }
+
+  # Tabellen ohne updated_at auf Server → FALSE
+  for (table in tables_to_check) {
+    if (!table %in% server_has_updated_at) {
+      needs_update[[table]] <- FALSE
+      if (verbose) {
+        message(sprintf("  - %s: Server hat keine updated_at Spalte → Kein Update", table))
+      }
+    }
+  }
+
+  # Tabellen die noch geprüft werden müssen (haben updated_at auf beiden Seiten)
+  tables_to_compare <- names(needs_update[sapply(needs_update, is.null)])
+
+  if (length(tables_to_compare) == 0) {
+    return(needs_update)
+  }
+
+  # Query 2: Hole Stats für alle verbleibenden Tabellen (kombiniert)
+  stats_queries <- sapply(tables_to_compare, function(table) {
+    sprintf(
+      "SELECT '%s' as full_table, COALESCE(MAX(updated_at), '1970-01-01'::timestamp)::text as max_updated, COUNT(*)::text as row_count FROM %s",
+      table, table
+    )
+  })
+
+  combined_stats_query <- sprintf(
+    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
+    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+    paste(stats_queries, collapse = " UNION ALL ")
+  )
+
+  stats_result <- ssh::ssh_exec_internal(ssh_session, combined_stats_query)
+  stats_output <- rawToChar(stats_result$stdout)
+  stats_lines <- strsplit(trimws(stats_output), "\n")[[1]]
+  stats_lines <- stats_lines[nchar(stats_lines) > 0]
+
+  # Parse Server Stats und vergleiche mit lokalen Stats
+  for (line in stats_lines) {
+    parts <- strsplit(line, "\\|")[[1]]
+    if (length(parts) != 3) next
+
+    table <- parts[1]
+    server_max_updated <- parts[2]
+    server_row_count <- as.integer(parts[3])
+
+    local_max_updated <- local_info[[table]]$max_updated
+    local_row_count <- local_info[[table]]$row_count
+
+    # Vergleiche Timestamps (auf Sekunden gerundet)
+    server_time <- trunc(as.POSIXct(server_max_updated), units = "secs")
+    local_time <- trunc(as.POSIXct(local_max_updated), units = "secs")
+
+    update_needed <- (server_time > local_time) || (server_row_count != local_row_count)
+    needs_update[[table]] <- update_needed
+
+    if (verbose) {
+      if (update_needed) {
+        reason <- if (server_time > local_time) {
+          sprintf("Timestamp: %s > %s", server_max_updated, local_max_updated)
+        } else {
+          sprintf("Row count: %d ≠ %d", server_row_count, local_row_count)
+        }
+        message(sprintf("  ✓ %s: Update erforderlich (%s)", table, reason))
+      } else {
+        message(sprintf("  - %s: Bereits aktuell", table))
+      }
+    }
+  }
+
+  # Sicherheitsnetz: Falls eine Tabelle nicht in der Response war → TRUE
+  for (table in tables_to_compare) {
+    if (is.null(needs_update[[table]])) {
+      needs_update[[table]] <- TRUE
+      if (verbose) {
+        message(sprintf("  ⚠ %s: Keine Server-Response → Update erforderlich (Sicherheit)", table))
+      }
+    }
+  }
+
+  if (verbose) {
+    n_updates <- sum(unlist(needs_update))
+    message(sprintf("✅ Batch-Check abgeschlossen: %d von %d Tabellen benötigen Update",
+                    n_updates, length(tables)))
+  }
+
+  return(needs_update)
 }

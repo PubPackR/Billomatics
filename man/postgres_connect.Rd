@@ -36,7 +36,8 @@ Required fields: \code{password}, \code{user}, \code{dbname}, \code{host}, \code
 
 \item{con}{An existing PostgreSQL connection object. If \code{NULL}, a new connection will be established.}
 
-\item{update_local_tables}{Logical. If \code{TRUE}, all specified tables will be pulled from production.
+\item{update_local_tables}{Logical. If \code{TRUE}, tables are intelligently updated: only tables with an \code{updated_at} column
+are checked, and updates occur only when max(updated_at) on server > local or row count differs.
 If \code{FALSE} (default), only missing local tables will be downloaded.}
 
 \item{ssh_key_path}{Path to the SSH key used to access the production database.}
@@ -75,6 +76,11 @@ The function can be used interactively (e.g., in RStudio) or in a server context
 \item In interactive mode, if no connection is passed, the user will be prompted to enter the local database password.
 \item In server mode, a connection will only be established if \code{con} is \code{NULL}.
 \item If tables are specified, the function checks whether they already exist locally (unless \code{update_local_tables = TRUE}).
+\item With \code{update_local_tables = TRUE}, an SSH connection is established to intelligently check which tables need updating:
+\itemize{
+\item Tables without an \code{updated_at} column are skipped
+\item Tables are only updated if max(updated_at) differs or row count has changed
+}
 \item Missing or outdated tables will be automatically synchronized from the production environment.
 }
 }
