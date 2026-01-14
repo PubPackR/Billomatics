@@ -1677,13 +1677,17 @@ get_table_metadata <- function(table, ssh_session, postgres_keys) {
       WHERE table_name = '%s' AND table_schema = '%s';", table_name, schema)
     data_types <- execute_psql_query(data_type_query, ssh_session, postgres_keys)
 
-    # Abfrage nur für Primary Keys
+    # Abfrage nur für Primary Keys (über constraint_type, nicht Namenskonvention)
     pk_query <- sprintf("
-      SELECT column_name
-      FROM information_schema.key_column_usage
-      WHERE table_name = '%s'
-        AND table_schema = '%s'
-        AND constraint_name LIKE '%%_pkey';", table_name, schema)
+      SELECT kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      WHERE tc.table_name = '%s'
+        AND tc.table_schema = '%s'
+        AND tc.constraint_type = 'PRIMARY KEY'
+      ORDER BY kcu.ordinal_position;", table_name, schema)
     primary_keys <- execute_psql_query(pk_query, ssh_session, postgres_keys)
 
     # Abfrage nur für Identities
