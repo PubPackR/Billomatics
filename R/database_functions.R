@@ -163,6 +163,26 @@ postgres_upsert_data <- function(con, schema, table, data,
                        sample.int(999999, 1))
   DBI::dbWriteTable(con, temp_table, data_for_write, temporary = TRUE, overwrite = TRUE)
 
+  # Spaltentypen der Zieltabelle abfragen für Array-Casts
+  type_query <- glue::glue("
+    SELECT column_name, data_type, udt_name
+    FROM information_schema.columns
+    WHERE table_schema = '{schema}' AND table_name = '{table}'
+  ")
+  col_types <- DBI::dbGetQuery(con, type_query)
+
+  # SELECT-Spalten mit Casts für Array-Typen erstellen
+  select_cols <- sapply(colnames_data, function(col) {
+    col_info <- col_types[col_types$column_name == col, ]
+    if (nrow(col_info) > 0 && col_info$data_type == "ARRAY") {
+      # Array-Typ: z.B. _int8 -> bigint[], _int4 -> integer[], _text -> text[]
+      array_type <- sub("^_", "", col_info$udt_name)
+      paste0(col, "::", array_type, "[]")
+    } else {
+      col
+    }
+  })
+
   # Update-Klausel erstellen
   update_clause <- if (length(update_cols) > 0) {
     paste0(update_cols, " = EXCLUDED.", update_cols, collapse = ",\n  ")
@@ -181,7 +201,7 @@ postgres_upsert_data <- function(con, schema, table, data,
   # Die endgültige SQL-Abfrage zusammenstellen
   query <- glue::glue("
     INSERT INTO {full_table} ({paste(colnames_data, collapse = ', ')})
-    SELECT {paste(colnames_data, collapse = ', ')}
+    SELECT {paste(select_cols, collapse = ', ')}
     FROM {DBI::dbQuoteIdentifier(con, temp_table)}
     ON CONFLICT ({paste(match_cols, collapse = ', ')})
     {conflict_action};
