@@ -2237,7 +2237,7 @@ postgres_connect_intern_function <- function(local_host = "localhost",
 #' # results: list(public.users = TRUE, public.orders = FALSE, public.products = TRUE)
 #' }
 #'
-#' @export
+#' @keywords internal
 check_tables_needs_update_batched <- function(tables, local_con, ssh_session, postgres_keys, verbose = FALSE) {
 
   if (length(tables) == 0) {

@@ -39,16 +39,27 @@ generate_password <- function(length = 10) {
 
 #' save_downloadable_excel
 #'
+#' @description
+#' `r lifecycle::badge("deprecated")`
+#'
+#' This function is deprecated. Please use [save_downloadable_excel_2()] instead.
+#'
 #' This function generates a random password, creates a downloadable Excel file
 #' with the provided filename, and saves it in the specified directory. It also
 #' manages password encryption and updates the password log.
-
-#' @param dashboard_nr the dashboard number to be included in the file path
+#'
+#' @param data A data frame to be saved
+#' @param billomat_key The encryption key for password storage
 #' @param file_name the name of the Excel file to be generated
+#' @param dashboard_nr_string the dashboard number to be included in the file path
+#' @param shiny_download_files Path to the download files directory
 #' @return no return values
-
+#'
 #' @export
 save_downloadable_excel <- function(data, billomat_key, file_name, dashboard_nr_string = "02", shiny_download_files = "../../base-data/shiny_download_files") {
+
+ .Deprecated("save_downloadable_excel_2", package = "Billomatics",
+              msg = "save_downloadable_excel() is deprecated. Please use save_downloadable_excel_2() instead.")
 
   # Generate a random password for Excel file encryption
   pwd_excel <- generate_password(12)
@@ -248,4 +259,60 @@ replace_external_ids_with_internal <- function(external_table, external_id_colum
   }
 
   return(final_table)
+}
+
+#' save_downloadable_excel_2
+#'
+#' This function creates an encrypted RDS file from a data frame and saves it to the
+#' shiny_download_files directory. Additionally, it creates a YAML metadata file
+#' containing the original title and description.
+#'
+#' @param data A data frame to be saved as encrypted RDS file
+#' @param billomat_key The encryption key for the RDS file
+#' @param title The title for the export (used for filename and YAML metadata)
+#' @param description A description of the data (saved in YAML metadata)
+#' @param shiny_download_files Path to the download files directory (default: "../../base-data/shiny_download_files")
+#'
+#' @return Invisibly returns the file path of the created RDS file
+#'
+#' @importFrom yaml write_yaml
+#' @export
+save_downloadable_excel_2 <- function(data,
+                                      billomat_key,
+                                      title,
+                                      description,
+                                      shiny_download_files = "../../base-data/shiny_download_files") {
+
+  # Create filename from title (convert umlauts, remove spaces and special characters)
+  file_name_base <- title %>%
+    stringr::str_replace_all("\u00e4|\u00c4", "ae") %>%
+    stringr::str_replace_all("\u00f6|\u00d6", "oe") %>%
+    stringr::str_replace_all("\u00fc|\u00dc", "ue") %>%
+    stringr::str_replace_all("\u00df", "ss") %>%
+    stringr::str_replace_all("\\s+", "_") %>%
+    stringr::str_replace_all("[^a-zA-Z0-9_-]", "") %>%
+    tolower()
+
+  # Define file paths
+  rds_path <- file.path(shiny_download_files, paste0(file_name_base, ".RDS"))
+  yaml_path <- file.path(shiny_download_files, paste0(file_name_base, ".yaml"))
+
+  # Save encrypted RDS file
+  encrypted_data <- safer::encrypt_object(data, billomat_key)
+  saveRDS(encrypted_data, rds_path)
+
+  # Create and save YAML metadata
+  metadata <- list(
+    title = title,
+    description = description,
+    created_at = as.character(Sys.time()),
+    file_name = paste0(file_name_base, ".RDS")
+  )
+
+  yaml::write_yaml(metadata, yaml_path)
+
+  message("Encrypted RDS file saved: ", rds_path)
+  message("YAML metadata saved: ", yaml_path)
+
+  invisible(rds_path)
 }

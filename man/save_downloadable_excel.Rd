@@ -13,14 +13,24 @@ save_downloadable_excel(
 )
 }
 \arguments{
+\item{data}{A data frame to be saved}
+
+\item{billomat_key}{The encryption key for password storage}
+
 \item{file_name}{the name of the Excel file to be generated}
 
-\item{dashboard_nr}{the dashboard number to be included in the file path}
+\item{dashboard_nr_string}{the dashboard number to be included in the file path}
+
+\item{shiny_download_files}{Path to the download files directory}
 }
 \value{
 no return values
 }
 \description{
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+
+This function is deprecated. Please use \code{\link[=save_downloadable_excel_2]{save_downloadable_excel_2()}} instead.
+
 This function generates a random password, creates a downloadable Excel file
 with the provided filename, and saves it in the specified directory. It also
 manages password encryption and updates the password log.
