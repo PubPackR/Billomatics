@@ -221,6 +221,16 @@ postgres_connect <- function(postgres_keys = NULL,
 
     } else {
       message("✅ Alle Tabellen bereits lokal vorhanden. Kein Download nötig.")
+
+      # Bei update_local_tables = TRUE: Funktionen trotzdem aktualisieren
+      if (update_local_tables && !is.null(ssh_session_for_check)) {
+        message("🔄 Aktualisiere Funktionen...")
+        load_functions_to_new_db(
+          con = con,
+          function_string = get_all_functions(ssh_session_for_check[[1]], postgres_keys_for_check),
+          verbose = verbose
+        )
+      }
     }
 
   }
@@ -2251,8 +2261,57 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
   # Result list initialisieren
   needs_update <- setNames(vector("list", length(tables)), tables)
 
-  # Step 1: Lokale Checks (schnell, keine SSH)
-  local_info <- lapply(tables, function(table) {
+  # Step 0: Views identifizieren (werden immer aktualisiert)
+  # Batched Query um table_type für alle Objekte zu holen
+  view_checks <- sapply(tables, function(table) {
+    split <- strsplit(table, "\\.")[[1]]
+    schema <- split[1]
+    table_name <- split[2]
+    sprintf(
+      "SELECT '%s' as full_table, table_type FROM information_schema.tables WHERE table_schema = '%s' AND table_name = '%s'",
+      table, schema, table_name
+    )
+  })
+
+  combined_view_query <- sprintf(
+    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
+    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+    paste(view_checks, collapse = " UNION ALL ")
+  )
+
+  view_result <- ssh::ssh_exec_internal(ssh_session, combined_view_query)
+  view_output <- rawToChar(view_result$stdout)
+  view_lines <- strsplit(trimws(view_output), "\n")[[1]]
+  view_lines <- view_lines[nchar(view_lines) > 0]
+
+  # Parse welche Objekte Views sind
+  views_on_server <- character(0)
+  for (line in view_lines) {
+    parts <- strsplit(line, "\\|")[[1]]
+    if (length(parts) >= 2 && tolower(parts[2]) == "view") {
+      views_on_server <- c(views_on_server, parts[1])
+    }
+  }
+
+  # Views immer als "needs update" markieren
+  for (table in tables) {
+    if (table %in% views_on_server) {
+      needs_update[[table]] <- TRUE
+      if (verbose) {
+        message(sprintf("  ✓ %s: View → wird immer aktualisiert", table))
+      }
+    }
+  }
+
+  # Nur Nicht-Views weiter prüfen
+  tables_to_check_further <- tables[!tables %in% views_on_server]
+
+  if (length(tables_to_check_further) == 0) {
+    return(needs_update)
+  }
+
+  # Step 1: Lokale Checks (schnell, keine SSH) - nur für Nicht-Views
+  local_info <- lapply(tables_to_check_further, function(table) {
     split <- strsplit(table, "\\.")[[1]]
     schema <- split[1]
     table_name <- split[2]
@@ -2311,10 +2370,10 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
       row_count = as.integer(local_stats$row_count[1])
     ))
   })
-  names(local_info) <- tables
+  names(local_info) <- tables_to_check_further
 
   # Tabellen ohne lokale Existenz → sofort TRUE
-  for (table in tables) {
+  for (table in tables_to_check_further) {
     if (!local_info[[table]]$exists) {
       needs_update[[table]] <- TRUE
       if (verbose) {
