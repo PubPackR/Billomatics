@@ -9,7 +9,9 @@ save_downloadable_excel_2(
   billomat_key,
   title,
   description,
-  shiny_download_files = "../../base-data/shiny_download_files"
+  shiny_download_files = "../../base-data/shiny_download_files",
+  download_encrypted = TRUE,
+  shiny_repos = NULL
 )
 }
 \arguments{
@@ -22,6 +24,10 @@ save_downloadable_excel_2(
 \item{description}{A description of the data (saved in YAML metadata)}
 
 \item{shiny_download_files}{Path to the download files directory (default: "../../base-data/shiny_download_files")}
+
+\item{download_encrypted}{Logical indicating if download is encrypted (default: TRUE, saved in YAML metadata)}
+
+\item{shiny_repos}{Character vector of shiny repository names (saved as comma-separated string in YAML metadata)}
 }
 \value{
 Invisibly returns the file path of the created RDS file

@@ -272,6 +272,8 @@ replace_external_ids_with_internal <- function(external_table, external_id_colum
 #' @param title The title for the export (used for filename and YAML metadata)
 #' @param description A description of the data (saved in YAML metadata)
 #' @param shiny_download_files Path to the download files directory (default: "../../base-data/shiny_download_files")
+#' @param download_encrypted Logical indicating if download is encrypted (default: TRUE, saved in YAML metadata)
+#' @param shiny_repos Character vector of shiny repository names (saved as comma-separated string in YAML metadata)
 #'
 #' @return Invisibly returns the file path of the created RDS file
 #'
@@ -281,7 +283,9 @@ save_downloadable_excel_2 <- function(data,
                                       billomat_key,
                                       title,
                                       description,
-                                      shiny_download_files = "../../base-data/shiny_download_files") {
+                                      shiny_download_files = "../../base-data/shiny_download_files",
+                                      download_encrypted = TRUE,
+                                      shiny_repos = NULL) {
 
   # Create filename from title (convert umlauts, remove spaces and special characters)
   file_name_base <- title %>%
@@ -306,7 +310,9 @@ save_downloadable_excel_2 <- function(data,
     title = title,
     description = description,
     created_at = as.character(Sys.time()),
-    file_name = paste0(file_name_base, ".RDS")
+    file_name = paste0(file_name_base, ".RDS"),
+    download_encrypted = download_encrypted,
+    shiny_repos = if (!is.null(shiny_repos) && length(shiny_repos) > 0) paste(shiny_repos, collapse = ",") else ""
   )
 
   yaml::write_yaml(metadata, yaml_path)
