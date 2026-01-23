@@ -263,19 +263,19 @@ replace_external_ids_with_internal <- function(external_table, external_id_colum
 
 #' save_downloadable_excel_2
 #'
-#' This function creates an encrypted RDS file from a data frame and saves it to the
-#' shiny_download_files directory. Additionally, it creates a YAML metadata file
-#' containing the original title and description.
+#' This function creates a password-protected Excel file (msoc encryption) from a
+#' data frame or openxlsx2 workbook and saves it to the shiny_download_files directory.
+#' Additionally, it creates a YAML metadata file containing the original title and description.
 #'
-#' @param data A data frame to be saved as encrypted RDS file
-#' @param billomat_key The encryption key for the RDS file
+#' @param data A data frame or openxlsx2 wbWorkbook object to be saved
+#' @param billomat_key The password for the Excel file encryption
 #' @param title The title for the export (used for filename and YAML metadata)
 #' @param description A description of the data (saved in YAML metadata)
 #' @param shiny_download_files Path to the download files directory (default: "../../base-data/shiny_download_files")
 #' @param download_encrypted Logical indicating if download is encrypted (default: TRUE, saved in YAML metadata)
 #' @param shiny_repos Character vector of shiny repository names (saved as comma-separated string in YAML metadata)
 #'
-#' @return Invisibly returns the file path of the created RDS file
+#' @return Invisibly returns the file path of the created Excel file
 #'
 #' @importFrom yaml write_yaml
 #' @export
@@ -288,6 +288,7 @@ save_downloadable_excel_2 <- function(data,
                                       shiny_repos = NULL) {
 
   # Create filename from title (convert umlauts, remove spaces and special characters)
+
   file_name_base <- title %>%
     stringr::str_replace_all("\u00e4|\u00c4", "ae") %>%
     stringr::str_replace_all("\u00f6|\u00d6", "oe") %>%
@@ -298,27 +299,40 @@ save_downloadable_excel_2 <- function(data,
     tolower()
 
   # Define file paths
-  rds_path <- file.path(shiny_download_files, paste0(file_name_base, ".RDS"))
+  xlsx_path <- file.path(shiny_download_files, paste0(file_name_base, ".xlsx"))
   yaml_path <- file.path(shiny_download_files, paste0(file_name_base, ".yaml"))
 
-  # Save encrypted RDS file
-  encrypted_data <- safer::encrypt_object(data, billomat_key)
-  saveRDS(encrypted_data, rds_path)
+  # Create or use existing workbook
+  if (inherits(data, "wbWorkbook")) {
+    # data is already an openxlsx2 workbook
+    wb <- data
+  } else if (is.data.frame(data)) {
+    # data is a data.frame, create workbook
+    wb <- openxlsx2::wb_workbook() %>%
+      openxlsx2::wb_add_worksheet(sheet = "Data") %>%
+      openxlsx2::wb_add_data(sheet = "Data", x = data)
+  } else {
+    stop("data must be either a data.frame or an openxlsx2 wbWorkbook object")
+  }
+
+  # Save Excel file and encrypt with msoc
+  openxlsx2::wb_save(wb, file = xlsx_path)
+  msoc::encrypt(xlsx_path, xlsx_path, pass = billomat_key)
 
   # Create and save YAML metadata
   metadata <- list(
     title = title,
     description = description,
     created_at = as.character(Sys.time()),
-    file_name = paste0(file_name_base, ".RDS"),
+    file_name = paste0(file_name_base, ".xlsx"),
     download_encrypted = download_encrypted,
     shiny_repos = if (!is.null(shiny_repos) && length(shiny_repos) > 0) paste(shiny_repos, collapse = ",") else ""
   )
 
   yaml::write_yaml(metadata, yaml_path)
 
-  message("Encrypted RDS file saved: ", rds_path)
+  message("Password-protected Excel file saved: ", xlsx_path)
   message("YAML metadata saved: ", yaml_path)
 
-  invisible(rds_path)
+  invisible(xlsx_path)
 }

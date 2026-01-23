@@ -15,9 +15,9 @@ save_downloadable_excel_2(
 )
 }
 \arguments{
-\item{data}{A data frame to be saved as encrypted RDS file}
+\item{data}{A data frame or openxlsx2 wbWorkbook object to be saved}
 
-\item{billomat_key}{The encryption key for the RDS file}
+\item{billomat_key}{The password for the Excel file encryption}
 
 \item{title}{The title for the export (used for filename and YAML metadata)}
 
@@ -30,10 +30,10 @@ save_downloadable_excel_2(
 \item{shiny_repos}{Character vector of shiny repository names (saved as comma-separated string in YAML metadata)}
 }
 \value{
-Invisibly returns the file path of the created RDS file
+Invisibly returns the file path of the created Excel file
 }
 \description{
-This function creates an encrypted RDS file from a data frame and saves it to the
-shiny_download_files directory. Additionally, it creates a YAML metadata file
-containing the original title and description.
+This function creates a password-protected Excel file (msoc encryption) from a
+data frame or openxlsx2 workbook and saves it to the shiny_download_files directory.
+Additionally, it creates a YAML metadata file containing the original title and description.
 }
