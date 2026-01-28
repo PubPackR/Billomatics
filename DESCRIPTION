@@ -32,7 +32,8 @@ Imports:
     uuid,
     R.utils,
     yaml,
-    openxlsx2
+    openxlsx2,
+    pool
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
