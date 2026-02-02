@@ -9,4 +9,4 @@
 library(testthat)
 library(Billomatics)
 
-
+test_dir("tests/testthat")
