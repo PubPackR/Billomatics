@@ -1,26 +1,26 @@
-#' Classify Order Type (New vs. Recurring Business)
+#' Classify First Order (New vs. Recurring Business)
 #'
-#' This function adds a column `order_type` to the provided dataframe.
-#' It classifies contracts based on the gap between the previous contract's
-#' service end date and the current order date.
+#' This function adds a column `is_first_order` to the provided dataframe.
+#' It classifies contracts as first order (TRUE) or follow-up order (FALSE)
+#' based on the gap between the previous contract's service end date and the current order date.
 #'
-#' A contract is classified as **"Erstauftrag"** (New Business) if:
+#' A contract is classified as first order (TRUE) if:
 #' \enumerate{
 #'   \item The client has no previous contracts within the dataset.
 #'   \item The gap between the previous contract's \code{service_end} and the
 #'         current \code{order_date} is greater than 24 months (indicating no revenue
 #'         in the preceding 24 months).
 #' }
-#' Otherwise, it is classified as **"Folgeauftrag"** (Recurring Business).
+#' Otherwise, it is classified as follow-up order (FALSE).
 #'
 #' @param df A dataframe containing contract data. Must include the columns:
 #'   \code{client_id}, \code{confirmation_number}, \code{order_date},
 #'   \code{service_start}, and \code{service_end}.
 #'
-#' @return The original dataframe with an additional column \code{order_type}.
+#' @return The original dataframe with an additional column \code{is_first_order}.
 #' @export
 #' @importFrom dplyr distinct arrange group_by mutate lag if_else case_when ungroup select left_join %>%
-classify_order_type <- function(df) {
+classify_first_order <- function(df) {
 
   # 1. Validate required columns
   required_cols <- c("client_id", "confirmation_number", "order_date", "service_start", "service_end")
@@ -30,10 +30,9 @@ classify_order_type <- function(df) {
   }
 
   # 2. Get unique contracts with their order and service dates
-  # We select distinct records to avoid duplicates skewing the lag calculation
   contracts <- df %>%
-    dplyr::distinct(client_id, confirmation_number, order_date, service_start, service_end) %>%
-    dplyr::arrange(client_id, order_date)
+    dplyr::distinct(confirmation_number, .keep_all = TRUE) %>%
+    dplyr::arrange(dplyr::desc(is.na(order_date)), client_id, order_date)
 
   # 3. Classify based on revenue gaps (service_end -> next order_date)
   contracts_classified <- contracts %>%
@@ -45,23 +44,25 @@ classify_order_type <- function(df) {
       # Calculate months from previous contract's END to this contract's ORDER
       # Using 30.44 days as the average month length
       months_since_last_revenue = dplyr::if_else(
-        is.na(previous_service_end),
+        is.na(previous_service_end) | is.na(order_date),
         NA_real_,
         as.numeric(difftime(order_date, previous_service_end, units = "days")) / 30.44
       ),
 
       # Apply classification logic:
-      # - No previous contract (NA) -> Erstauftrag
+      # - No previous contract (NA) -> Erstauftrag 
       # - Gap > 24 months -> Erstauftrag
       # - Gap <= 24 months -> Folgeauftrag
-      order_type = dplyr::case_when(
-        is.na(previous_service_end) ~ "Erstauftrag",
-        months_since_last_revenue > 24 ~ "Erstauftrag",
-        TRUE ~ "Folgeauftrag"
+      is_first_order = dplyr::case_when(
+        is.na(order_date) ~ NA,
+        is.na(previous_service_end) ~ TRUE,
+        is.na(months_since_last_revenue) ~ NA,
+        months_since_last_revenue > 24 ~ TRUE,
+        TRUE ~ FALSE
       )
     ) %>%
     dplyr::ungroup() %>%
-    dplyr::select(confirmation_number, order_type)
+    dplyr::select(confirmation_number, is_first_order)
 
   # 4. Join the classification back to the original data
   df %>%
