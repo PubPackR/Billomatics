@@ -1,5 +1,7 @@
 .Rproj.user
 .Rhistory
-tests/
 Billomatics.Rproj
 settings*.json
+*.csv
+*.rds
+*.xlsx
