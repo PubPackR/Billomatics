@@ -229,11 +229,11 @@ create_crm_company <- function(headers, df) {
     body_string <- jsonlite::toJSON(company_data, auto_unbox = TRUE)
 
     # Create company using POST /api/companies
-    response <- httr::POST(
+    response <- crm_POST(
       "https://api.centralstationcrm.net/api/companies",
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status
@@ -305,11 +305,11 @@ update_crm_company <- function(headers, df) {
     body_string <- jsonlite::toJSON(company_data, auto_unbox = TRUE)
 
     # Execute PUT request
-    response <- httr::PUT(
+    response <- crm_PUT(
       paste0("https://api.centralstationcrm.net/api/companies/", df$attachable_id[p]),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status

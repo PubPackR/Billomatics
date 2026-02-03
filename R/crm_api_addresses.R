@@ -167,11 +167,11 @@ add_crm_addresses <- function(headers, df) {
     body_string <- jsonlite::toJSON(addr_data, auto_unbox = TRUE)
 
     # Execute POST request
-    response <- httr::POST(
+    response <- crm_POST(
       paste0("https://api.centralstationcrm.net/api/", df$attachable_type[p], "/", df$attachable_id[p], "/addrs"),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status
@@ -234,11 +234,7 @@ remove_crm_addresses <- function(headers, df) {
     )
 
     # Execute DELETE request
-    response <- httr::DELETE(
-      url,
-      httr::add_headers(headers),
-      encode = "raw"
-    )
+    response <- crm_DELETE(url, headers, "raw")
 
     # Check response status
     if (!httr::status_code(response) %in% c(200, 204)) {

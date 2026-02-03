@@ -106,12 +106,7 @@ mark_crm_task_finished <- function(headers, df) {
 
     # Execute PUT request
     tryCatch({
-      response <- httr::PUT(
-        url,
-        httr::add_headers(headers),
-        body = body_string,
-        encode = "raw"
-      )
+      response <- crm_PUT(url, headers, body_string, "raw")
 
       status_code <- httr::status_code(response)
 

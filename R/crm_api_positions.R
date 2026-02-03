@@ -140,11 +140,11 @@ update_crm_position <- function(headers, df) {
     body_string <- jsonlite::toJSON(position_data, auto_unbox = TRUE)
 
     # Execute PUT request
-    response <- httr::PUT(
+    response <- crm_PUT(
       paste0("https://api.centralstationcrm.net/api/people/", df$attachable_id[p], "/positions/", df$position_id[p]),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status
@@ -211,11 +211,11 @@ create_crm_position <- function(headers, df) {
     body_string <- jsonlite::toJSON(position_data, auto_unbox = TRUE)
 
     # Create position using POST /api/people/{id}/positions
-    response <- httr::POST(
+    response <- crm_POST(
       paste0("https://api.centralstationcrm.net/api/people/", df$attachable_id[p], "/positions"),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status

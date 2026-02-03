@@ -212,11 +212,11 @@ update_crm_person <- function(headers, df) {
     body_string <- jsonlite::toJSON(person_data, auto_unbox = TRUE)
 
     # Execute PUT request
-    response <- httr::PUT(
+    response <- crm_PUT(
       paste0("https://api.centralstationcrm.net/api/people/", df$attachable_id[p]),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status
@@ -274,11 +274,11 @@ create_crm_person <- function(headers, df) {
     body_string <- jsonlite::toJSON(person_data, auto_unbox = TRUE)
 
     # Create person using POST /api/people
-    response <- httr::POST(
+    response <- crm_POST(
       "https://api.centralstationcrm.net/api/people",
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "json"
+      headers,
+      body_string,
+      "json"
     )
 
     # Check response status
@@ -330,9 +330,9 @@ delete_crm_person <- function(headers, df) {
   # Iterate over every row
   for (p in 1:nrow(df)) {
     # Execute DELETE request
-    response <- httr::DELETE(
+    response <- crm_DELETE(
       paste0("https://api.centralstationcrm.net/api/people/", df$attachable_id[p]),
-      httr::add_headers(headers)
+      headers
     )
 
     # Check response status

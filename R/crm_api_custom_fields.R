@@ -156,11 +156,11 @@ add_crm_custom_fields <- function(headers, df) {
         )
 
     # execute post request with predefined header and body
-    response <- httr::POST(
+    response <- crm_POST(
       paste0("https://api.centralstationcrm.net/api/", df$attachable_type[a], "/", df$attachable_id[a],"/custom_fields"),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "raw"
+      headers,
+      body_string,
+      "raw"
     )
 
     # Check response status
@@ -228,9 +228,7 @@ remove_crm_custom_fields <- function(headers, df) {
     )
 
     # execute DELETE Request with predefined variables
-    response <- httr::DELETE(url,
-           httr::add_headers(headers),
-           encode = "raw")
+    response <- crm_DELETE(url, headers, "raw")
 
     # Check response status
     if (!httr::status_code(response) %in% c(200, 204)) {
@@ -289,11 +287,11 @@ update_crm_custom_fields <- function(headers, df) {
         )
 
     # Execute PUT request with predefined header and body
-    response <- httr::PUT(
+    response <- crm_PUT(
       paste0("https://api.centralstationcrm.net/api/", df$attachable_type[u], "/", df$attachable_id[u],"/custom_fields/", df$custom_fields_id[u]),
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "raw"
+      headers,
+      body_string,
+      "raw"
     )
 
     # Check response status

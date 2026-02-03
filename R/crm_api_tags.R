@@ -133,11 +133,11 @@ add_crm_tag <- function(headers, df) {
         )
 
     # execute post request with predefined header and body
-    response <- httr::POST(
+    response <- crm_POST(
       "https://api.centralstationcrm.net/api/tags",
-      httr::add_headers(headers),
-      body = body_string,
-      encode = "raw"
+      headers,
+      body_string,
+      "raw"
     )
 
     # Check response status
@@ -206,11 +206,7 @@ remove_crm_tag <- function(headers, df) {
     )
 
     # execute DELETE Request with predefined variables
-    response <- httr::DELETE(
-      url,
-      httr::add_headers(headers),
-      encode = "raw"
-    )
+    response <- crm_DELETE(url, headers, "raw")
 
     # Check response status
     if (!httr::status_code(response) %in% c(200, 204)) {
