@@ -1623,7 +1623,7 @@ load_functions_to_new_db <- function(function_string, con, verbose = FALSE) {
 parse_pg_meta <- function(text_output) {
   lines <- unlist(strsplit(text_output, "\n"))
   lines <- lines[!grepl("^\\(\\d+ rows?\\)", lines)]         # remove row count
-  lines <- lines[!grepl("^-+\\+", lines)]                    # remove divider line
+  lines <- lines[!grepl("^[-+]+$", lines)]                    # remove divider line (single + multi column)
   lines <- trimws(lines)
   lines <- lines[nzchar(lines)]                              # remove empty lines
 
