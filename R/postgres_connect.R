@@ -631,6 +631,15 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
   # Metadaten abrufen
   metadata <- get_table_metadata(table, ssh_session[[1]], postgres_keys)
 
+  # ORDER BY Spalte dynamisch bestimmen (Primary Key oder erste Spalte als Fallback)
+  if (!is.null(metadata$primary_keys) && nrow(metadata$primary_keys) > 0) {
+    order_column <- metadata$primary_keys$column_name[1]
+  } else if (!is.null(metadata$data_types) && nrow(metadata$data_types) > 0) {
+    order_column <- metadata$data_types$column_name[1]
+  } else {
+    order_column <- "1"  # PostgreSQL erlaubt ORDER BY Spaltennummer
+  }
+
   # Zähle zuerst die Zeilen, um zu entscheiden ob Chunking nötig ist
   count_cmd <- sprintf(
     'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -t -A -c \"SELECT COUNT(*) FROM %s;\" 2>&1; echo \"EXIT_STATUS:$?\"',
@@ -698,12 +707,12 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
 
     # Alle Chunks bekommen HEADER - wir filtern später beim Lesen
     # Befehl für SSH-psql mit LIMIT und OFFSET
-    # Wichtig: ORDER BY id um sicherzustellen, dass LIMIT/OFFSET konsistent ist
+    # Wichtig: ORDER BY Primary Key um sicherzustellen, dass LIMIT/OFFSET konsistent ist
     # NULL wird als \N exportiert (PostgreSQL Standard für CSV NULL)
     cmd <- sprintf(
-      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY id LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
+      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY %s LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
       postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
-      table, adjusted_chunk_size, offset
+      table, order_column, adjusted_chunk_size, offset
     )
 
     result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
