@@ -58,7 +58,7 @@ crm_request <- function(method, url, headers, body = NULL,
 #' @param body Request-Body
 #' @param encode Encoding (default: "json")
 #' @return httr response
-#' @keywords internal
+#' @export
 crm_POST <- function(url, headers, body = NULL, encode = "json") {
   crm_request("POST", url, headers, body, encode)
 }
@@ -70,7 +70,7 @@ crm_POST <- function(url, headers, body = NULL, encode = "json") {
 #' @param body Request-Body
 #' @param encode Encoding (default: "json")
 #' @return httr response
-#' @keywords internal
+#' @export
 crm_PUT <- function(url, headers, body = NULL, encode = "json") {
   crm_request("PUT", url, headers, body, encode)
 }
@@ -81,7 +81,7 @@ crm_PUT <- function(url, headers, body = NULL, encode = "json") {
 #' @param headers Request-Headers
 #' @param encode Encoding (default: "raw")
 #' @return httr response
-#' @keywords internal
+#' @export
 crm_DELETE <- function(url, headers, encode = "raw") {
   crm_request("DELETE", url, headers, NULL, encode)
 }
@@ -91,7 +91,7 @@ crm_DELETE <- function(url, headers, encode = "raw") {
 #' @param url API-Endpunkt URL
 #' @param headers Request-Headers
 #' @return httr response
-#' @keywords internal
+#' @export
 crm_GET <- function(url, headers) {
   crm_request("GET", url, headers)
 }
