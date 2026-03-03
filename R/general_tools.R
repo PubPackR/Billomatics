@@ -317,6 +317,10 @@ save_downloadable_excel_2 <- function(data,
 
   # Save Excel file and encrypt with msoc
   openxlsx2::wb_save(wb, file = xlsx_path)
+
+  if (!requireNamespace("msoc", quietly = TRUE)) {
+    stop("Package 'msoc' is required for Excel encryption but is not installed. Install with: install.packages('msoc')")
+  }
   msoc::encrypt(xlsx_path, xlsx_path, pass = billomat_key)
 
   # Create and save YAML metadata
