@@ -31,9 +31,8 @@ custom_aggregate_data <- function(df,
                Produkt = get(Category_Column)) %>%
       # aggregate by sum
       summarise(Umsatz = sum(get(dependent_variable))) %>%
-      # filter for relevant months between Start_Date and End_Date
       filter(Monat >= Start_Date,
-             Monat <= End_Date) %>%
+             Monat < ceiling_date(End_Date, "month")) %>%
       # use German date format
       mutate(Monat = format(ymd(Monat), "%d.%m.%Y"))
 
@@ -57,9 +56,8 @@ custom_aggregate_data <- function(df,
                Produkt = get(Category_Column)) %>%
       # aggregate by count
       summarise(Anzahl = n_distinct(get(dependent_variable))) %>%
-      # filter for relevant months between Start_Date and End_Date
       filter(Monat >= Start_Date,
-             Monat <= End_Date) %>%
+             Monat < ceiling_date(End_Date, "month")) %>%
       # use German date format
       mutate(Monat = format(ymd(Monat), "%d.%m.%Y"))
 
