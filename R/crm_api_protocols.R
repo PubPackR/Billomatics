@@ -41,67 +41,57 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
 
   if(filter_by == FALSE){
     for (i in 1:pages) {
-      # create an response with httr and the GET function. In the function you paste
-      # url and your endpoint and you also need the headers
-      response <-
-        httr::GET(
-          # set url with "page=" so you can add endpoints
-          paste0(
-            "https://api.centralstationcrm.net/api/protocols?perpage=250&page=",
-            i,
-            "&includes=comments"
-          ),
-          httr::add_headers(headers)
-        )
+      response <- crm_GET(
+        paste0(
+          "https://api.centralstationcrm.net/api/protocols?perpage=250&page=",
+          i,
+          "&includes=comments"
+        ),
+        headers
+      )
 
-      # make response answer readable with jsonlite::fromJSON
-      data <- jsonlite::fromJSON(httr::content(response, "text"))
+      data <- jsonlite::fromJSON(suppressWarnings(httr::content(response, "text")))
 
       # check if data could be loaded for requested page
       if (length(data) == 0) {
-        # stop export if no data could be loaded or everything is already loaded
         break
       } else {
-        #get correct number of exported data
         print(paste0("Exported ", ifelse(nrow(data) == 250, i*250, ((i-1)*250+nrow(data))), " protocols"))
-        # check if the data already exists in "protocols" to avoid duplicates
         if (!identical(data, protocols[nrow(protocols), ])) {
-          # if the data is not yet available then add to protocols
           protocols <- dplyr::bind_rows(protocols, data)
         }
       }
 
       if (i == pages) {
-        # stop export after maximum number of pages was loaded
         print("Only part of the available data was exported")
         break
       }
     }
   } else {
     for (i in 1:length(filter_vector)) {
-      # create an response with httr and the GET function. In the function you paste
-      # url and your endpoint and you also need the headers
       tryCatch({
-        response <-
-          httr::GET(
-            # set url with "page=" so you can add endpoints and defined filter
-            paste0(
-              "https://api.centralstationcrm.net/api/protocols?perpage=250&page=1",
-              filter_option,
-              filter_vector[i],
-              "&includes=comments"
-            ),
-            httr::add_headers(headers)
-          )
+        response <- crm_GET(
+          paste0(
+            "https://api.centralstationcrm.net/api/protocols?perpage=250&page=1",
+            filter_option,
+            filter_vector[i],
+            "&includes=comments"
+          ),
+          headers
+        )
+
+        status_code <- httr::status_code(response)
+        if (status_code != 200) {
+          warning(sprintf("HTTP %d for %s=%s", status_code, filter_by, filter_vector[i]))
+          next
+        }
 
         data <-
-          jsonlite::fromJSON(httr::content(response, "text"))
+          jsonlite::fromJSON(suppressWarnings(httr::content(response, "text")))
         protocols <- dplyr::bind_rows(protocols, data)
       },
       error = function(cond) {
-        message("Person does not exist")
-        # Choose a return value in case of error
-        NA
+        warning(sprintf("Error for %s=%s: %s", filter_by, filter_vector[i], cond$message))
       })
       if (i %% 100 == 0) {
         print(i)
@@ -135,28 +125,28 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
   attachments <- tidyr::tibble()
 
   for (i in 1:length(protocols_vector)) {
-    # create an response with httr and the GET function. In the function you paste
-    # url and your endpoint and you also need the headers
     tryCatch({
-      response <-
-        httr::GET(
-          # set url with "page=" so you can add endpoints and defined filter
-          paste0(
-            "https://api.centralstationcrm.net/api/protocols/",
-            protocols_vector[i],
-            "/attachments?perpage=250&page=1"
-          ),
-          httr::add_headers(headers)
-        )
+      response <- crm_GET(
+        paste0(
+          "https://api.centralstationcrm.net/api/protocols/",
+          protocols_vector[i],
+          "/attachments?perpage=250&page=1"
+        ),
+        headers
+      )
 
-      data <- jsonlite::fromJSON(httr::content(response, "text")) %>%
-        select(-data)
+      status_code <- httr::status_code(response)
+      if (status_code != 200) {
+        warning(sprintf("HTTP %d for protocol_id=%s", status_code, protocols_vector[i]))
+        next
+      }
+
+      data <- jsonlite::fromJSON(suppressWarnings(httr::content(response, "text"))) %>%
+        dplyr::select(-data)
       attachments <- dplyr::bind_rows(attachments, data)
     },
     error = function(cond) {
-      message("Attachments do not exist")
-      # Choose a return value in case of error
-      NA
+      warning(sprintf("Error for protocol_id=%s: %s", protocols_vector[i], cond$message))
     })
     if (i %% 10 == 0) {
       print(i)
