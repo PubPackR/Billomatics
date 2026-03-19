@@ -141,8 +141,14 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
         next
       }
 
-      data <- jsonlite::fromJSON(suppressWarnings(httr::content(response, "text"))) %>%
-        dplyr::select(-data)
+      data <- jsonlite::fromJSON(suppressWarnings(httr::content(response, "text")))
+
+      # API sometimes returns {"message": "..."} instead of attachment data → skip
+      if (!is.data.frame(data) || "message" %in% names(data)) {
+        next
+      }
+
+      data <- data %>% dplyr::select(-data)
       attachments <- dplyr::bind_rows(attachments, data)
     },
     error = function(cond) {
