@@ -10,7 +10,8 @@ crm_request(
   headers,
   body = NULL,
   encode = "json",
-  max_retries = 5
+  max_retries = 5,
+  query = NULL
 )
 }
 \arguments{
@@ -25,6 +26,8 @@ crm_request(
 \item{encode}{Encoding: "json" oder "raw"}
 
 \item{max_retries}{Maximale Retry-Versuche bei 429 (default: 5)}
+
+\item{query}{Named list of query parameters for GET requests (optional)}
 }
 \value{
 httr response Objekt

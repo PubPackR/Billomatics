@@ -9,16 +9,17 @@
 #' @param body Request-Body (optional, für POST/PUT)
 #' @param encode Encoding: "json" oder "raw"
 #' @param max_retries Maximale Retry-Versuche bei 429 (default: 5)
+#' @param query Named list of query parameters for GET requests (optional)
 #'
 #' @return httr response Objekt
 #' @keywords internal
 crm_request <- function(method, url, headers, body = NULL,
-                        encode = "json", max_retries = 5) {
+                        encode = "json", max_retries = 5, query = NULL) {
   attempt <- 1
 
   repeat {
     response <- switch(method,
-      "GET" = httr::GET(url, httr::add_headers(headers)),
+      "GET" = httr::GET(url, httr::add_headers(headers), query = query),
       "POST" = httr::POST(url, httr::add_headers(headers), body = body, encode = encode),
       "PUT" = httr::PUT(url, httr::add_headers(headers), body = body, encode = encode),
       "DELETE" = httr::DELETE(url, httr::add_headers(headers), encode = encode),
@@ -90,8 +91,9 @@ crm_DELETE <- function(url, headers, encode = "raw") {
 #'
 #' @param url API-Endpunkt URL
 #' @param headers Request-Headers
+#' @param query Named list of query parameters (optional)
 #' @return httr response
 #' @export
-crm_GET <- function(url, headers) {
-  crm_request("GET", url, headers)
+crm_GET <- function(url, headers, query = NULL) {
+  crm_request("GET", url, headers, query = query)
 }

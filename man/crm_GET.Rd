@@ -4,12 +4,14 @@
 \alias{crm_GET}
 \title{CRM GET Request with Rate Limit Retry}
 \usage{
-crm_GET(url, headers)
+crm_GET(url, headers, query = NULL)
 }
 \arguments{
 \item{url}{API-Endpunkt URL}
 
 \item{headers}{Request-Headers}
+
+\item{query}{Named list of query parameters (optional)}
 }
 \value{
 httr response

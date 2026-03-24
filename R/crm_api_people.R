@@ -35,7 +35,7 @@ get_central_station_contacts <- function (api_key, pages = "all", person_id = NU
   # if person_id is provided, load single contact
   if (!is.null(person_id)) {
     url <- paste0("https://api.centralstationcrm.net/api/people/", person_id)
-    response <- httr::GET(url, httr::add_headers(headers), query = list(includes = includes, methods = methods))
+    response <- crm_GET(url, headers, query = list(includes = includes, methods = methods))
     data <- jsonlite::fromJSON(httr::content(response, "text"))
 
     # data$person contains the actual person data with nested data frames
