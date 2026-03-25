@@ -97,3 +97,43 @@ crm_DELETE <- function(url, headers, encode = "raw") {
 crm_GET <- function(url, headers, query = NULL) {
   crm_request("GET", url, headers, query = query)
 }
+
+#' Execute CRM API Request with httr2 and Automatic 429 Retry
+#'
+#' httr2-basierter Wrapper mit automatischem Retry bei Rate-Limiting.
+#' Liest den Retry-After Header und wartet entsprechend.
+#'
+#' @param url API-Endpunkt URL
+#' @param headers Named vector mit Request-Headers (z.B. X-apikey)
+#' @param query Named list mit Query-Parametern (optional)
+#' @param max_retries Maximale Retry-Versuche bei 429 (default: 5)
+#'
+#' @return httr2 response Objekt
+#' @keywords internal
+crm_GET2 <- function(url, headers, query = NULL, max_retries = 5) {
+  req <- httr2::request(url) |>
+    httr2::req_headers(!!!as.list(headers))
+
+  if (!is.null(query)) {
+    req <- do.call(httr2::req_url_query, c(list(req), query))
+  }
+
+  req <- req |>
+    httr2::req_error(is_error = \(resp) FALSE) |>
+    httr2::req_retry(
+      max_tries = max_retries + 1,
+      is_transient = function(resp) httr2::resp_status(resp) == 429,
+      after = function(resp) {
+        retry_after <- suppressWarnings(
+          as.numeric(httr2::resp_header(resp, "retry-after"))
+        )
+        if (length(retry_after) == 0 || is.na(retry_after) || retry_after <= 0) {
+          retry_after <- 10
+        }
+        message("Rate limit erreicht (429). Warte ", retry_after, "s...")
+        retry_after
+      }
+    )
+
+  httr2::req_perform(req)
+}

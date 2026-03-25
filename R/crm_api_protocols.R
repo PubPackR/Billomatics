@@ -41,7 +41,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
 
   if(filter_by == FALSE){
     for (i in 1:pages) {
-      response <- crm_GET(
+      response <- crm_GET2(
         paste0(
           "https://api.centralstationcrm.net/api/protocols?perpage=250&page=",
           i,
@@ -50,7 +50,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
         headers
       )
 
-      data <- jsonlite::fromJSON(suppressWarnings(httr::content(response, "text")))
+      data <- jsonlite::fromJSON(suppressWarnings(httr2::resp_body_string(response)))
 
       # check if data could be loaded for requested page
       if (length(data) == 0) {
@@ -70,7 +70,7 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
   } else {
     for (i in 1:length(filter_vector)) {
       tryCatch({
-        response <- crm_GET(
+        response <- crm_GET2(
           paste0(
             "https://api.centralstationcrm.net/api/protocols?perpage=250&page=1",
             filter_option,
@@ -80,14 +80,14 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
           headers
         )
 
-        status_code <- httr::status_code(response)
+        status_code <- httr2::resp_status(response)
         if (status_code != 200) {
           warning(sprintf("HTTP %d for %s=%s", status_code, filter_by, filter_vector[i]))
           next
         }
 
         data <-
-          jsonlite::fromJSON(suppressWarnings(httr::content(response, "text")))
+          jsonlite::fromJSON(suppressWarnings(httr2::resp_body_string(response)))
         protocols <- dplyr::bind_rows(protocols, data)
       },
       error = function(cond) {
@@ -126,7 +126,7 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
 
   for (i in 1:length(protocols_vector)) {
     tryCatch({
-      response <- crm_GET(
+      response <- crm_GET2(
         paste0(
           "https://api.centralstationcrm.net/api/protocols/",
           protocols_vector[i],
@@ -135,13 +135,13 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
         headers
       )
 
-      status_code <- httr::status_code(response)
+      status_code <- httr2::resp_status(response)
       if (status_code != 200) {
         warning(sprintf("HTTP %d for protocol_id=%s", status_code, protocols_vector[i]))
         next
       }
 
-      data <- jsonlite::fromJSON(suppressWarnings(httr::content(response, "text")))
+      data <- jsonlite::fromJSON(suppressWarnings(httr2::resp_body_string(response)))
 
       # API sometimes returns {"message": "..."} instead of attachment data → skip
       if (!is.data.frame(data) || "message" %in% names(data)) {
