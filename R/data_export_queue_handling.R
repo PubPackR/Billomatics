@@ -251,7 +251,7 @@ get_first_queued_request <- function(con, job_name, max_age_seconds = NULL) {
         SELECT request_id
         FROM processed.data_job_events
         WHERE job_name = $1
-          AND action = 'start'
+          AND action IN ('start', 'failure', 'success', 'end')
           AND request_id IS NOT NULL
       )
     ORDER BY executed_at ASC
@@ -308,6 +308,25 @@ job_start_safe <- function(con, job_name, poll_interval = 5, timeout = 600) {
   # Insert our request into the queue
   request_id <- insert_job_request(con, job_name)
 
+  # Track whether we successfully started (wrote 'start' event)
+  started <- FALSE
+
+  # Cleanup: if we exit without starting (error, interrupt, kill), mark request as failure
+  # This ensures the queue is not blocked by a dangling request
+  on.exit({
+    if (!started) {
+      tryCatch({
+        DBI::dbExecute(
+          con,
+          "INSERT INTO processed.data_job_events (job_name, action, request_id) VALUES ($1, 'failure', $2)",
+          params = list(job_name, request_id)
+        )
+      }, error = function(e) {
+        message("Warning: Could not clean up queue request on exit: ", e$message)
+      })
+    }
+  }, add = TRUE)
+
   first_in_queue_since <- NULL  # Track when we became first
   previous_position <- NULL      # Track queue position changes
   message_shown <- FALSE
@@ -362,6 +381,7 @@ job_start_safe <- function(con, job_name, poll_interval = 5, timeout = 600) {
 
   # We have the lock and we're first in queue - start the job
   job_start(con, job_name, request_id = request_id)
+  started <- TRUE
 
   return(request_id)
 }
