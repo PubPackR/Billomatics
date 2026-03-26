@@ -11,6 +11,7 @@
 library(dplyr)
 library(DBI)
 library(jsonlite)
+library(log4r)
 
 ################################################################################-
 # ----- Sanity Check Reporting --------------------------------------------------
@@ -29,7 +30,7 @@ library(jsonlite)
 #' @param check_passed logical. Result of the sanity check (TRUE = OK, FALSE = failed).
 #' @param check_name character. Unique identifier for the check
 #'   (e.g. \code{"revenue_rows_not_empty"}). Used as primary key in DB.
-#' @param message character. Human-readable description of the failure.
+#' @param check_message character. Human-readable description of the failure.
 #' @param con A DBI database connection.
 #' @param asana_api_token character. Asana Personal Access Token.
 #' @param asana_project_gid character. GID of the target Asana project
@@ -43,7 +44,7 @@ library(jsonlite)
 report_sanity_check <- function(
   check_passed,
   check_name,
-  message,
+  check_message,
   con,
   asana_api_token,
   asana_project_gid,
@@ -104,35 +105,9 @@ report_sanity_check <- function(
     NA_character_
   })
 
-  # ----- 6. Upsert log row (preserve existing asana_task_gid) ----------------
-  context_json <- tryCatch(
-    jsonlite::toJSON(context, auto_unbox = TRUE),
-    error = function(e) "{}"
-  )
-
-  log_row <- tibble::tibble(
-    check_name     = check_name,
-    script_name    = script_name,
-    message        = message,
-    context        = as.character(context_json),
-    asana_task_gid = existing_gid,
-    last_seen      = Sys.time()
-  )
-
-  tryCatch({
-    postgres_upsert_data(
-      con         = con,
-      schema      = "raw",
-      table       = "metadata_sanity_check_log",
-      data        = log_row,
-      match_cols  = c("check_name", "script_name")
-    )
-  }, error = function(e) {
-    .log("error", paste("Could not upsert sanity check log:", e$message))
-  })
-
-  # ----- 7. Check Asana: is there an open ticket? -----------------------------
+  # ----- 6. Check Asana: is there an open ticket? -----------------------------
   needs_new_ticket <- TRUE
+  final_gid        <- existing_gid
 
   if (!is.na(existing_gid) && nchar(existing_gid) > 0) {
     task_details <- tryCatch(
@@ -148,10 +123,12 @@ report_sanity_check <- function(
       } else {
         .log("info", paste0("Asana ticket was closed (GID: ", existing_gid, ") — creating new ticket"))
       }
+    } else {
+      .log("warn", paste0("Could not retrieve Asana ticket (GID: ", existing_gid, ") — creating new ticket as fallback"))
     }
   }
 
-  # ----- 8. Create new Asana ticket if needed ---------------------------------
+  # ----- 7. Create new Asana ticket if needed ---------------------------------
   if (needs_new_ticket) {
     task_title <- paste0("[SANITY] ", script_name, " | ", check_name)
 
@@ -164,7 +141,7 @@ report_sanity_check <- function(
     task_notes <- paste0(
       "Script: ", script_name,
       "\nCheck: ", check_name,
-      "\nMessage: ", message,
+      "\nMessage: ", check_message,
       "\nTime: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
       context_text
     )
@@ -183,24 +160,35 @@ report_sanity_check <- function(
       }
     )
 
-    # ----- 9. Update asana_task_gid in DB -------------------------------------
-    if (!is.null(new_gid)) {
-      updated_row <- log_row
-      updated_row$asana_task_gid <- new_gid
-
-      tryCatch({
-        postgres_upsert_data(
-          con        = con,
-          schema     = "raw",
-          table      = "metadata_sanity_check_log",
-          data       = updated_row,
-          match_cols = c("check_name", "script_name")
-        )
-      }, error = function(e) {
-        .log("error", paste("Could not update asana_task_gid in DB:", e$message))
-      })
-    }
+    if (!is.null(new_gid)) final_gid <- new_gid
   }
+
+  # ----- 8. Single upsert with final state ------------------------------------
+  context_json <- tryCatch(
+    jsonlite::toJSON(context, auto_unbox = TRUE),
+    error = function(e) "{}"
+  )
+
+  log_row <- tibble::tibble(
+    check_name     = check_name,
+    script_name    = script_name,
+    message        = check_message,
+    context        = as.character(context_json),
+    asana_task_gid = final_gid,
+    last_seen      = Sys.time()
+  )
+
+  tryCatch({
+    postgres_upsert_data(
+      con        = con,
+      schema     = "raw",
+      table      = "metadata_sanity_check_log",
+      data       = log_row,
+      match_cols = c("check_name", "script_name")
+    )
+  }, error = function(e) {
+    .log("error", paste("Could not upsert sanity check log:", e$message))
+  })
 
   return(invisible(check_passed))
 }

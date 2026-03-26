@@ -1349,12 +1349,12 @@ create_asana_task <- function(project_gid, task_name, notes = NULL, api_token, l
       req_body_json(body, auto_unbox = TRUE) |>
       req_perform()
   }, error = function(e) {
-    error(logger, paste("❌ Network error while creating Asana task:", e$message))
+    log4r::error(logger, paste("❌ Network error while creating Asana task:", e$message))
     return(NULL)
   })
 
   if (is.null(resp)) {
-    error(logger, "🚫 No response received from Asana API when creating task.")
+    log4r::error(logger, "🚫 No response received from Asana API when creating task.")
     return(NULL)
   }
 
@@ -1364,7 +1364,7 @@ create_asana_task <- function(project_gid, task_name, notes = NULL, api_token, l
   if (status_code == 201) {
     parsed <- fromJSON(response_body)
     task_gid <- parsed$data$gid
-    info(logger, paste("✅ Asana task created:", task_name, "| GID:", task_gid))
+    log4r::info(logger, paste("✅ Asana task created:", task_name, "| GID:", task_gid))
     return(task_gid)
   } else {
     error_message <- switch(
@@ -1375,7 +1375,7 @@ create_asana_task <- function(project_gid, task_name, notes = NULL, api_token, l
       "404" = "❌ Not Found: Project GID may be incorrect.",
       paste0("❌ Unexpected error (HTTP ", status_code, ").")
     )
-    error(logger, paste(error_message, "| Response body:", response_body))
+    log4r::error(logger, paste(error_message, "| Response body:", response_body))
     return(NULL)
   }
 }

@@ -7,7 +7,7 @@
 report_sanity_check(
   check_passed,
   check_name,
-  message,
+  check_message,
   con,
   asana_api_token,
   asana_project_gid,
@@ -21,7 +21,7 @@ report_sanity_check(
 \item{check_name}{character. Unique identifier for the check
 (e.g. \code{"revenue_rows_not_empty"}). Used as primary key in DB.}
 
-\item{message}{character. Human-readable description of the failure.}
+\item{check_message}{character. Human-readable description of the failure.}
 
 \item{con}{A DBI database connection.}
 
