@@ -1310,6 +1310,77 @@ update_asana_task_assignee <- function(task_id, assignee_gid, workspace_id, api_
 }
 
 ################################################################################-
+# ----- Create Task -----
+
+#' create_asana_task
+#'
+#' Creates a new task in an Asana project
+#'
+#' @param project_gid The GID of the target Asana project
+#' @param task_name The name/title of the task
+#' @param notes Optional notes/description for the task
+#' @param api_token The Asana personal access token for authentication
+#' @param logger A log4r logger object for logging messages
+#' @param due_on Optional due date as character string in "YYYY-MM-DD" format
+#' @param custom_fields Optional named list of custom field GIDs to values
+#'   (e.g. \code{list("1209106213751972" = 1)} for story points)
+#' @return The GID of the created task (character), or NULL on failure
+#' @export
+create_asana_task <- function(project_gid, task_name, notes = NULL, api_token, logger,
+                              due_on = NULL, custom_fields = NULL) {
+
+  url <- "https://app.asana.com/api/1.0/tasks"
+
+  task_data <- list(
+    name     = task_name,
+    notes    = if (!is.null(notes)) notes else "",
+    projects = list(project_gid)
+  )
+
+  if (!is.null(due_on))        task_data$due_on        <- due_on
+  if (!is.null(custom_fields)) task_data$custom_fields <- custom_fields
+
+  body <- list(data = task_data)
+
+  resp <- tryCatch({
+    request(url) |>
+      req_auth_bearer_token(api_token) |>
+      req_method("POST") |>
+      req_body_json(body, auto_unbox = TRUE) |>
+      req_perform()
+  }, error = function(e) {
+    error(logger, paste("❌ Network error while creating Asana task:", e$message))
+    return(NULL)
+  })
+
+  if (is.null(resp)) {
+    error(logger, "🚫 No response received from Asana API when creating task.")
+    return(NULL)
+  }
+
+  status_code <- resp_status(resp)
+  response_body <- resp_body_string(resp)
+
+  if (status_code == 201) {
+    parsed <- fromJSON(response_body)
+    task_gid <- parsed$data$gid
+    info(logger, paste("✅ Asana task created:", task_name, "| GID:", task_gid))
+    return(task_gid)
+  } else {
+    error_message <- switch(
+      as.character(status_code),
+      "400" = "❌ Bad Request: Invalid task data.",
+      "401" = "❌ Unauthorized: Invalid or missing API token.",
+      "403" = "❌ Forbidden: Insufficient permissions to create tasks.",
+      "404" = "❌ Not Found: Project GID may be incorrect.",
+      paste0("❌ Unexpected error (HTTP ", status_code, ").")
+    )
+    error(logger, paste(error_message, "| Response body:", response_body))
+    return(NULL)
+  }
+}
+
+################################################################################-
 # ----- Move Task to Other Section -----
 
 #' move_asana_task_to_section
