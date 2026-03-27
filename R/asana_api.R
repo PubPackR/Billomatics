@@ -31,6 +31,7 @@ get_asana_task_details <- function(task_id, api_token, logger) {
   resp <- tryCatch(
     request(url) |>
       req_auth_bearer_token(token = api_token) |>
+      req_error(is_error = function(resp) FALSE) |>
       req_perform(),
     error = function(e) {
       error(logger, paste("❌ Network error while retrieving task details:", e$message))
@@ -38,7 +39,6 @@ get_asana_task_details <- function(task_id, api_token, logger) {
     }
   )
 
-  # If we got NULL here, a network error occurred
   if (is.null(resp)) {
     error(logger, paste("🚫 No response received from Asana API for task ID:", task_id))
     return(NULL)

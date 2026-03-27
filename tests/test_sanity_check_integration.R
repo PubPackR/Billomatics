@@ -8,13 +8,13 @@
 # Nach Test 2: Asana-Ticket manuell schliessen, dann Test 4 ausfuehren.
 ################################################################################-
 
-library(Billomatics)
+devtools::load_all()
 
 args <- commandArgs(trailingOnly = TRUE)
 keys <- Billomatics::authentication_process(c("postgresql", "asana"), args)
 
 con <- postgres_connect(
-  needed_tables    = c("raw.metadata_sanity_check_log"),
+  needed_tables    = c(),
   postgres_keys    = keys$postgresql,
   update_local_tables = FALSE
 )
