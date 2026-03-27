@@ -53,7 +53,7 @@ report_sanity_check <- function(
 ) {
 
   # ----- 1. Skip in interactive sessions (local development) ------------------
-  if (interactive()) return(invisible(check_passed))
+  #if (interactive()) return(invisible(check_passed))
 
   # ----- 2. Skip if check passed ----------------------------------------------
   if (isTRUE(check_passed)) return(invisible(check_passed))
@@ -169,23 +169,24 @@ report_sanity_check <- function(
     error = function(e) "{}"
   )
 
-  log_row <- tibble::tibble(
-    check_name     = check_name,
-    script_name    = script_name,
-    message        = check_message,
-    context        = as.character(context_json),
-    asana_task_gid = final_gid,
-    last_seen      = Sys.time()
-  )
-
   tryCatch({
-    postgres_upsert_data(
-      con        = con,
-      schema     = "raw",
-      table      = "metadata_sanity_check_log",
-      data       = log_row,
-      match_cols = c("check_name", "script_name")
-    )
+    DBI::dbExecute(con, "
+      INSERT INTO raw.metadata_sanity_check_log
+        (check_name, script_name, message, context, asana_task_gid, last_seen)
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+      ON CONFLICT (check_name, script_name) DO UPDATE SET
+        message        = EXCLUDED.message,
+        context        = EXCLUDED.context,
+        asana_task_gid = EXCLUDED.asana_task_gid,
+        last_seen      = EXCLUDED.last_seen;
+    ", list(
+      check_name,
+      script_name,
+      check_message,
+      as.character(context_json),
+      final_gid,
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    ))
   }, error = function(e) {
     .log("error", paste("Could not upsert sanity check log:", e$message))
   })
