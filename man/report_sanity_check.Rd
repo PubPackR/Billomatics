@@ -10,7 +10,7 @@ report_sanity_check(
   check_message,
   con,
   asana_api_token,
-  asana_project_gid,
+  asana_project_gid = "1211291490559148",
   context = list(),
   logger = NULL
 )
@@ -27,8 +27,8 @@ report_sanity_check(
 
 \item{asana_api_token}{character. Asana Personal Access Token.}
 
-\item{asana_project_gid}{character. GID of the target Asana project
-(e.g. the "Interne Prozesse" project).}
+\item{asana_project_gid}{character. GID of the target Asana project.
+Defaults to "Interne Prozesse" (\code{"1211291490559148"}).}
 
 \item{context}{list. Optional named list of additional metadata
 (e.g. \code{list(rows = 0, table = "processed.revenue")}). Stored as JSONB.}

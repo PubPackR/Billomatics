@@ -33,8 +33,8 @@ library(log4r)
 #' @param check_message character. Human-readable description of the failure.
 #' @param con A DBI database connection.
 #' @param asana_api_token character. Asana Personal Access Token.
-#' @param asana_project_gid character. GID of the target Asana project
-#'   (e.g. the "Interne Prozesse" project).
+#' @param asana_project_gid character. GID of the target Asana project.
+#'   Defaults to "Interne Prozesse" (\code{"1211291490559148"}).
 #' @param context list. Optional named list of additional metadata
 #'   (e.g. \code{list(rows = 0, table = "processed.revenue")}). Stored as JSONB.
 #' @param logger A log4r logger object. If NULL, messages are written via \code{message()}.
@@ -47,13 +47,13 @@ report_sanity_check <- function(
   check_message,
   con,
   asana_api_token,
-  asana_project_gid,
+  asana_project_gid = "1211291490559148",  # Interne Prozesse
   context = list(),
   logger  = NULL
 ) {
 
   # ----- 1. Skip in interactive sessions (local development) ------------------
-  #if (interactive()) return(invisible(check_passed))
+  if (interactive()) return(invisible(check_passed))
 
   # ----- 2. Skip if check passed ----------------------------------------------
   if (isTRUE(check_passed)) return(invisible(check_passed))
