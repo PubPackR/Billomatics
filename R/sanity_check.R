@@ -80,14 +80,20 @@ report_sanity_check <- function(
   tryCatch({
     DBI::dbExecute(con, "
       CREATE TABLE IF NOT EXISTS raw.metadata_sanity_check_log (
+        id             BIGINT    GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMP NOT NULL DEFAULT NOW(),
         check_name     TEXT      NOT NULL,
         script_name    TEXT      NOT NULL,
         message        TEXT,
         context        JSONB,
         asana_task_gid TEXT,
-        last_seen      TIMESTAMP NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (check_name, script_name)
+        UNIQUE (check_name, script_name)
       );
+
+      CREATE OR REPLACE TRIGGER trigger_set_updated_at
+        BEFORE UPDATE ON raw.metadata_sanity_check_log
+        FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
     ")
   }, error = function(e) {
     .log("error", paste("Could not ensure DB table exists:", e$message))
@@ -170,23 +176,22 @@ report_sanity_check <- function(
   )
 
   tryCatch({
-    DBI::dbExecute(con, "
-      INSERT INTO raw.metadata_sanity_check_log
-        (check_name, script_name, message, context, asana_task_gid, last_seen)
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6)
-      ON CONFLICT (check_name, script_name) DO UPDATE SET
-        message        = EXCLUDED.message,
-        context        = EXCLUDED.context,
-        asana_task_gid = EXCLUDED.asana_task_gid,
-        last_seen      = EXCLUDED.last_seen;
-    ", list(
-      check_name,
-      script_name,
-      check_message,
-      as.character(context_json),
-      final_gid,
-      format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-    ))
+    upsert_data <- data.frame(
+      check_name     = check_name,
+      script_name    = script_name,
+      message        = check_message,
+      context        = as.character(context_json),
+      asana_task_gid = ifelse(is.na(final_gid), NA_character_, final_gid),
+      stringsAsFactors = FALSE
+    )
+
+    postgres_upsert_data(
+      con        = con,
+      schema     = "raw",
+      table      = "metadata_sanity_check_log",
+      data       = upsert_data,
+      match_cols = c("check_name", "script_name")
+    )
   }, error = function(e) {
     .log("error", paste("Could not upsert sanity check log:", e$message))
   })
