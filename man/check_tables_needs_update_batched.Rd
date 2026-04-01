@@ -19,7 +19,7 @@ check_tables_needs_update_batched(
 
 \item{ssh_session}{SSH session object (aus ssh::ssh_connect)}
 
-\item{postgres_keys}{Character vector mit \link{password, user, database, host, port}}
+\item{postgres_keys}{Character vector mit (password, user, database, host, port)}
 
 \item{verbose}{Logical, ob detaillierte Fortschrittsmeldungen ausgegeben werden}
 }

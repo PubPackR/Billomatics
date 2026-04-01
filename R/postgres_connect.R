@@ -2252,7 +2252,7 @@ postgres_connect_intern_function <- function(local_host = "localhost",
 #' @param tables Character vector mit Tabellennamen im Format "schema.table"
 #' @param local_con DBI connection zur lokalen Datenbank
 #' @param ssh_session SSH session object (aus ssh::ssh_connect)
-#' @param postgres_keys Character vector mit [password, user, database, host, port]
+#' @param postgres_keys Character vector mit (password, user, database, host, port)
 #' @param verbose Logical, ob detaillierte Fortschrittsmeldungen ausgegeben werden
 #'
 #' @return Named list mit Tabellennamen als Namen und TRUE/FALSE als Werte

@@ -4,8 +4,15 @@
 \alias{create_asana_task}
 \title{create_asana_task}
 \usage{
-create_asana_task(project_gid, task_name, notes = NULL, api_token, logger,
-  due_on = NULL, custom_fields = NULL)
+create_asana_task(
+  project_gid,
+  task_name,
+  notes = NULL,
+  api_token,
+  logger,
+  due_on = NULL,
+  custom_fields = NULL
+)
 }
 \arguments{
 \item{project_gid}{The GID of the target Asana project}
