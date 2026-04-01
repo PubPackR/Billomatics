@@ -1696,6 +1696,24 @@ get_table_metadata <- function(table, ssh_session, postgres_keys) {
       WHERE table_name = '%s' AND table_schema = '%s';", table_name, schema)
     data_types <- execute_psql_query(data_type_query, ssh_session, postgres_keys)
 
+    # Fallback für Materialized Views (nicht in information_schema enthalten)
+    if (is.null(data_types) || nrow(data_types) == 0) {
+      pg_catalog_type_query <- sprintf("
+        SELECT a.attname AS column_name,
+               pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+               t.typname AS udt_name
+        FROM pg_catalog.pg_attribute a
+        JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+        WHERE c.relname = '%s'
+          AND n.nspname = '%s'
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum;", table_name, schema)
+      data_types <- execute_psql_query(pg_catalog_type_query, ssh_session, postgres_keys)
+    }
+
     # Abfrage nur für Primary Keys (über constraint_type, nicht Namenskonvention)
     pk_query <- sprintf("
       SELECT kcu.column_name
@@ -2295,14 +2313,49 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
 
   # Parse welche Objekte Views sind
   views_on_server <- character(0)
+  tables_found_in_info_schema <- character(0)
   for (line in view_lines) {
     parts <- strsplit(line, "\\|")[[1]]
-    if (length(parts) >= 2 && tolower(parts[2]) == "view") {
-      views_on_server <- c(views_on_server, parts[1])
+    if (length(parts) >= 2) {
+      tables_found_in_info_schema <- c(tables_found_in_info_schema, parts[1])
+      if (tolower(parts[2]) == "view") {
+        views_on_server <- c(views_on_server, parts[1])
+      }
     }
   }
 
-  # Views immer als "needs update" markieren
+  # Materialized Views erkennen (nicht in information_schema.tables enthalten)
+  tables_not_in_info_schema <- setdiff(tables, tables_found_in_info_schema)
+
+  if (length(tables_not_in_info_schema) > 0) {
+    mv_checks <- sapply(tables_not_in_info_schema, function(table) {
+      split <- strsplit(table, "\\.")[[1]]
+      sprintf(
+        "SELECT '%s' as full_table, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE c.relname = '%s' AND n.nspname = '%s'",
+        table, split[2], split[1]
+      )
+    })
+
+    combined_mv_query <- sprintf(
+      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
+      postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+      paste(mv_checks, collapse = " UNION ALL ")
+    )
+
+    mv_result <- ssh::ssh_exec_internal(ssh_session, combined_mv_query)
+    mv_output <- rawToChar(mv_result$stdout)
+    mv_lines <- strsplit(trimws(mv_output), "\n")[[1]]
+    mv_lines <- mv_lines[nchar(mv_lines) > 0]
+
+    for (line in mv_lines) {
+      parts <- strsplit(line, "\\|")[[1]]
+      if (length(parts) >= 2 && parts[2] == "m") {
+        views_on_server <- c(views_on_server, parts[1])
+      }
+    }
+  }
+
+  # Views und Materialized Views immer als "needs update" markieren
   for (table in tables) {
     if (table %in% views_on_server) {
       needs_update[[table]] <- TRUE
