@@ -1,6 +1,6 @@
 Package: Billomatics
 Title: Download and Wrangle Billomat Data
-Version: 0.0.0.9162
+Version: 0.0.0.9163
 Authors@R: 
     person("Johannes", "Leder", , "johannes.leder@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6413-4513"))
@@ -16,6 +16,7 @@ Imports:
     readr,
     DBI,
     httr,
+    httr2,
     jsonlite,
     safer,
     googleAuthR,

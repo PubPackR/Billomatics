@@ -76,28 +76,7 @@ report_sanity_check <- function(
 
   .log("warn", paste0("Sanity check failed | script=", script_name, " | check=", check_name))
 
-  # ----- 4. Ensure DB table exists --------------------------------------------
-  tryCatch({
-    DBI::dbExecute(con, "
-      CREATE TABLE IF NOT EXISTS raw.metadata_sanity_check_log (
-        id             BIGINT    GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-        updated_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-        check_name     TEXT      NOT NULL,
-        script_name    TEXT      NOT NULL,
-        message        TEXT,
-        context        JSONB,
-        asana_task_gid TEXT,
-        UNIQUE (check_name, script_name)
-      );
 
-      CREATE OR REPLACE TRIGGER trigger_set_updated_at
-        BEFORE UPDATE ON raw.metadata_sanity_check_log
-        FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
-    ")
-  }, error = function(e) {
-    .log("error", paste("Could not ensure DB table exists:", e$message))
-  })
 
   # ----- 5. Read current row to preserve asana_task_gid ----------------------
   existing_gid <- tryCatch({
@@ -180,7 +159,6 @@ report_sanity_check <- function(
       check_name     = check_name,
       script_name    = script_name,
       message        = check_message,
-      context        = as.character(context_json),
       asana_task_gid = ifelse(is.na(final_gid), NA_character_, final_gid),
       stringsAsFactors = FALSE
     )
@@ -192,6 +170,13 @@ report_sanity_check <- function(
       data       = upsert_data,
       match_cols = c("check_name", "script_name")
     )
+
+    # Context separat updaten (JSONB-Cast noetig)
+    DBI::dbExecute(con, "
+      UPDATE raw.metadata_sanity_check_log
+      SET context = $1::jsonb
+      WHERE check_name = $2 AND script_name = $3;
+    ", list(as.character(context_json), check_name, script_name))
   }, error = function(e) {
     .log("error", paste("Could not upsert sanity check log:", e$message))
   })
