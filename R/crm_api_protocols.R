@@ -161,3 +161,141 @@ get_central_station_attachments <- function (api_key, protocols_vector) {
 
   return(attachments)
 }
+
+
+#' Move CRM Protocol to Another Person
+#'
+#' Moves a protocol to a different person by updating the attachable_id via PUT.
+#' This is needed as a workaround because the CRM API does not allow direct deletion
+#' of protocols — they must first be moved to a "graveyard" person before deletion.
+#'
+#' @note KNOWN ISSUE (2026-04): The CRM API accepts the request (200/204) but
+#'   the CRM UI does not reflect the change. This is a CRM vendor bug.
+#'   The function is currently not usable for production workflows.
+#'
+#' @param headers Named vector with request headers (content-type, X-apikey, Accept)
+#' @param protocol_ids Vector of CRM protocol IDs (the API-facing IDs, not internal DB IDs)
+#' @param target_person_id The CRM person ID to move the protocols to
+#'
+#' @return Tibble with columns: protocol_id, success (logical), status_code, error_message
+#' @export
+move_crm_protocols <- function(headers, protocol_ids, target_person_id) {
+  if (length(protocol_ids) == 0) {
+    warning("No protocol IDs provided")
+    return(tibble::tibble(
+      protocol_id = character(),
+      success = logical(),
+      status_code = integer(),
+      error_message = character()
+    ))
+  }
+
+  results <- tibble::tibble(
+    protocol_id = as.character(protocol_ids),
+    success = NA,
+    status_code = NA_integer_,
+    error_message = NA_character_
+  )
+
+  for (i in seq_along(protocol_ids)) {
+    tryCatch({
+      body_string <- paste0(
+        '{"protocol": {"person_ids": [', target_person_id, ']}}'
+      )
+
+      response <- crm_PUT2(
+        paste0("https://api.centralstationcrm.net/api/protocols/", protocol_ids[i]),
+        headers,
+        body_string
+      )
+
+      status <- httr2::resp_status(response)
+      results$status_code[i] <- status
+      results$success[i] <- status %in% c(200, 204)
+
+      if (!results$success[i]) {
+        results$error_message[i] <- paste0("HTTP ", status)
+      }
+    },
+    error = function(cond) {
+      results$success[i] <<- FALSE
+      results$error_message[i] <<- cond$message
+    })
+
+    if (i %% 50 == 0) {
+      message(sprintf("Moved %d / %d protocols", i, length(protocol_ids)))
+    }
+  }
+
+  succeeded <- sum(results$success, na.rm = TRUE)
+  failed <- sum(!results$success, na.rm = TRUE)
+  message(sprintf("Move complete: %d succeeded, %d failed", succeeded, failed))
+
+  return(results)
+}
+
+
+#' Delete CRM Protocols
+#'
+#' Deletes protocols from the CRM via the API.
+#' Important: Protocols should first be moved to a "graveyard" person using
+#' move_crm_protocols() before deletion to ensure clean removal.
+#'
+#' @note KNOWN ISSUE (2026-04): The CRM API accepts the request (200/204) but
+#'   the CRM UI does not reflect the change. This is a CRM vendor bug.
+#'   The function is currently not usable for production workflows.
+#'
+#' @param headers Named vector with request headers (content-type, X-apikey, Accept)
+#' @param protocol_ids Vector of CRM protocol IDs to delete
+#'
+#' @return Tibble with columns: protocol_id, success (logical), status_code, error_message
+#' @export
+delete_crm_protocols <- function(headers, protocol_ids) {
+  if (length(protocol_ids) == 0) {
+    warning("No protocol IDs provided")
+    return(tibble::tibble(
+      protocol_id = character(),
+      success = logical(),
+      status_code = integer(),
+      error_message = character()
+    ))
+  }
+
+  results <- tibble::tibble(
+    protocol_id = as.character(protocol_ids),
+    success = NA,
+    status_code = NA_integer_,
+    error_message = NA_character_
+  )
+
+  for (i in seq_along(protocol_ids)) {
+    tryCatch({
+      response <- crm_DELETE2(
+        paste0("https://api.centralstationcrm.net/api/protocols/", protocol_ids[i]),
+        headers
+      )
+
+      status <- httr2::resp_status(response)
+      results$status_code[i] <- status
+      results$success[i] <- status %in% c(200, 204)
+
+      if (!results$success[i]) {
+        results$error_message[i] <- paste0("HTTP ", status)
+      }
+    },
+    error = function(cond) {
+      results$success[i] <<- FALSE
+      results$error_message[i] <<- cond$message
+    })
+
+    if (i %% 50 == 0) {
+      message(sprintf("Deleted %d / %d protocols", i, length(protocol_ids)))
+    }
+  }
+
+  succeeded <- sum(results$success, na.rm = TRUE)
+  failed <- sum(!results$success, na.rm = TRUE)
+  message(sprintf("Delete complete: %d succeeded, %d failed", succeeded, failed))
+
+  return(results)
+}

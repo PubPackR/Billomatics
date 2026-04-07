@@ -137,3 +137,79 @@ crm_GET2 <- function(url, headers, query = NULL, max_retries = 5) {
 
   httr2::req_perform(req)
 }
+
+#' CRM PUT Request with httr2 and Automatic 429 Retry
+#'
+#' httr2-basierter PUT-Wrapper mit automatischem Retry bei Rate-Limiting.
+#'
+#' @param url API-Endpunkt URL
+#' @param headers Named vector mit Request-Headers (z.B. X-apikey)
+#' @param body Request-Body (String oder Liste)
+#' @param max_retries Maximale Retry-Versuche bei 429 (default: 5)
+#'
+#' @return httr2 response Objekt
+#' @export
+crm_PUT2 <- function(url, headers, body = NULL, max_retries = 5) {
+  req <- httr2::request(url) |>
+    httr2::req_method("PUT") |>
+    httr2::req_headers(!!!as.list(headers))
+
+  if (!is.null(body)) {
+    req <- req |>
+      httr2::req_body_raw(body, type = "application/json")
+  }
+
+  req <- req |>
+    httr2::req_error(is_error = \(resp) FALSE) |>
+    httr2::req_retry(
+      max_tries = max_retries + 1,
+      is_transient = function(resp) httr2::resp_status(resp) == 429,
+      after = function(resp) {
+        retry_after <- suppressWarnings(
+          as.numeric(httr2::resp_header(resp, "retry-after"))
+        )
+        if (length(retry_after) == 0 || is.na(retry_after) || retry_after <= 0) {
+          retry_after <- 10
+        }
+        message("Rate limit erreicht (429). Warte ", retry_after, "s...")
+        retry_after
+      }
+    )
+
+  httr2::req_perform(req)
+}
+
+#' CRM DELETE Request with httr2 and Automatic 429 Retry
+#'
+#' httr2-basierter DELETE-Wrapper mit automatischem Retry bei Rate-Limiting.
+#'
+#' @param url API-Endpunkt URL
+#' @param headers Named vector mit Request-Headers (z.B. X-apikey)
+#' @param max_retries Maximale Retry-Versuche bei 429 (default: 5)
+#'
+#' @return httr2 response Objekt
+#' @export
+crm_DELETE2 <- function(url, headers, max_retries = 5) {
+  req <- httr2::request(url) |>
+    httr2::req_method("DELETE") |>
+    httr2::req_headers(!!!as.list(headers))
+
+  req <- req |>
+    httr2::req_error(is_error = \(resp) FALSE) |>
+    httr2::req_retry(
+      max_tries = max_retries + 1,
+      is_transient = function(resp) httr2::resp_status(resp) == 429,
+      after = function(resp) {
+        retry_after <- suppressWarnings(
+          as.numeric(httr2::resp_header(resp, "retry-after"))
+        )
+        if (length(retry_after) == 0 || is.na(retry_after) || retry_after <= 0) {
+          retry_after <- 10
+        }
+        message("Rate limit erreicht (429). Warte ", retry_after, "s...")
+        retry_after
+      }
+    )
+
+  httr2::req_perform(req)
+}
