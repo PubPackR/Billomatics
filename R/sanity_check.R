@@ -52,11 +52,13 @@ report_sanity_check <- function(
   logger  = NULL
 ) {
 
-  # ----- 1. Skip in interactive sessions (local development) ------------------
-  if (interactive()) return(invisible(check_passed))
-
-  # ----- 2. Skip if check passed ----------------------------------------------
+  # ----- 1. Skip if check passed ----------------------------------------------
   if (isTRUE(check_passed)) return(invisible(check_passed))
+
+  # ----- 2. Skip if already reported in this session -------------------------
+  opt_key <- paste0("sanity_check_done_", check_name)
+  if (isTRUE(getOption(opt_key))) return(invisible(check_passed))
+  options(setNames(list(TRUE), opt_key))
 
   # ----- Internal logging helper ----------------------------------------------
   .log <- function(level, msg) {
@@ -78,10 +80,16 @@ report_sanity_check <- function(
 
 
 
+  # ----- Interactive mode: log only, no DB/Asana ------------------------------
+  if (interactive()) {
+    .log("warn", paste0("check_message: ", check_message))
+    return(invisible(check_passed))
+  }
+
   # ----- 5. Read current row to preserve asana_task_gid ----------------------
   existing_gid <- tryCatch({
     existing <- tbl(con, I("raw.metadata_sanity_check_log")) |>
-      filter(check_name == !!check_name, script_name == !!script_name) |>
+      filter(check_name == !!check_name) |>
       select(asana_task_gid) |>
       collect()
     if (nrow(existing) == 0) NA_character_ else existing$asana_task_gid[[1]]
@@ -168,15 +176,15 @@ report_sanity_check <- function(
       schema     = "raw",
       table      = "metadata_sanity_check_log",
       data       = upsert_data,
-      match_cols = c("check_name", "script_name")
+      match_cols = c("check_name")
     )
 
     # Context separat updaten (JSONB-Cast noetig)
     DBI::dbExecute(con, "
       UPDATE raw.metadata_sanity_check_log
       SET context = $1::jsonb
-      WHERE check_name = $2 AND script_name = $3;
-    ", list(as.character(context_json), check_name, script_name))
+      WHERE check_name = $2;
+    ", list(as.character(context_json), check_name))
   }, error = function(e) {
     .log("error", paste("Could not upsert sanity check log:", e$message))
   })
