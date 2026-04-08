@@ -172,7 +172,9 @@ postgres_connect <- function(postgres_keys = NULL,
     if (length(tables_to_pull) > 0) {
       first_table <- TRUE
       results <- ""  # Initialisiere results für den ersten Durchlauf
-      available_tables <- c()  # Liste der bereits heruntergeladenen Tabellen
+      # Tabellen die in needed_tables stehen aber nicht gezogen werden, sind lokal aktuell
+      # → gelten als "available" für FK-Constraints
+      available_tables <- setdiff(needed_tables, tables_to_pull)
 
       required_packages <- c("DBI", "RPostgres", "RSQLite", "ssh", "getPass", "shinymanager", "utils")
 
@@ -1007,20 +1009,15 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
 
 # FOREIGN KEYS
 if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
-  local_tables <- DBI::dbGetQuery(con, "
-    SELECT table_schema || '.' || table_name AS full_name
-    FROM information_schema.tables
-    WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-  ")$full_name
-
   for (i in seq_len(nrow(meta$foreign_keys))) {
     fk <- meta$foreign_keys[i, ]
     ref_table <- fk$referenced_table
     ref_schema <- fk$referenced_schema
     constraint_name <- glue::glue("fk_{table_name}_{fk$constraint_column}")
 
-    # Nur anwenden, wenn die referenzierte Tabelle lokal existiert
-    if (paste0(ref_schema, ".", ref_table) %in% local_tables) {
+    # Nur anwenden, wenn die referenzierte Tabelle in diesem Run bereits geladen wurde
+    # (veraltete lokale Tabellen können FK-Violations verursachen)
+    if (paste0(ref_schema, ".", ref_table) %in% available_tables) {
       # Prüfe, ob Constraint bereits existiert
       constraint_exists_query <- glue::glue("
         SELECT 1 FROM information_schema.table_constraints
@@ -2283,12 +2280,71 @@ postgres_connect_intern_function <- function(local_host = "localhost",
 #' @keywords internal
 check_tables_needs_update_batched <- function(tables, local_con, ssh_session, postgres_keys, verbose = FALSE) {
 
+  tables <- unique(tables)
+
   if (length(tables) == 0) {
     return(list())
   }
 
   if (verbose) {
     message(sprintf("🔍 Prüfe Update-Status für %d Tabellen (batched)...", length(tables)))
+  }
+
+  # Helper: Führt SQL-Queries in Batches über SSH aus (max 10 pro Batch)
+  # Bei Fehler in einem Batch wird dieser übersprungen und eine Warnung ausgegeben
+  execute_batched_ssh_queries <- function(queries, ssh_session, postgres_keys, batch_size = 10) {
+    all_output_lines <- character(0)
+    batches <- split(queries, ceiling(seq_along(queries) / batch_size))
+
+    for (batch in batches) {
+      combined_query <- sprintf(
+        'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
+        postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+        paste(batch, collapse = " UNION ALL ")
+      )
+
+      result <- tryCatch({
+        ssh::ssh_exec_internal(ssh_session, combined_query)
+      }, error = function(e) {
+        NULL
+      })
+
+      if (!is.null(result)) {
+        output <- rawToChar(result$stdout)
+        lines <- strsplit(trimws(output), "\n")[[1]]
+        lines <- lines[nchar(lines) > 0]
+        all_output_lines <- c(all_output_lines, lines)
+      } else if (length(batch) > 1) {
+        # Batch fehlgeschlagen: Einzeln nochmal versuchen um nur die problematische Tabelle zu verlieren
+        for (single_query in batch) {
+          single_cmd <- sprintf(
+            'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
+            postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+            single_query
+          )
+          single_result <- tryCatch({
+            ssh::ssh_exec_internal(ssh_session, single_cmd)
+          }, error = function(e) {
+            # Tabelle aus Query extrahieren für bessere Warnung
+            tbl_match <- regmatches(single_query, regexpr("FROM [^ ]+", single_query))
+            warning(sprintf("SSH-Query fehlgeschlagen (%s): %s", tbl_match, e$message))
+            NULL
+          })
+          if (!is.null(single_result)) {
+            output <- rawToChar(single_result$stdout)
+            lines <- strsplit(trimws(output), "\n")[[1]]
+            lines <- lines[nchar(lines) > 0]
+            all_output_lines <- c(all_output_lines, lines)
+          }
+        }
+      } else {
+        # Einzelne Query fehlgeschlagen
+        tbl_match <- regmatches(batch, regexpr("FROM [^ ]+", batch))
+        warning(sprintf("SSH-Query fehlgeschlagen (%s)", tbl_match))
+      }
+    }
+
+    return(all_output_lines)
   }
 
   # Result list initialisieren
@@ -2306,16 +2362,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     )
   })
 
-  combined_view_query <- sprintf(
-    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
-    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
-    paste(view_checks, collapse = " UNION ALL ")
-  )
-
-  view_result <- ssh::ssh_exec_internal(ssh_session, combined_view_query)
-  view_output <- rawToChar(view_result$stdout)
-  view_lines <- strsplit(trimws(view_output), "\n")[[1]]
-  view_lines <- view_lines[nchar(view_lines) > 0]
+  view_lines <- execute_batched_ssh_queries(view_checks, ssh_session, postgres_keys)
 
   # Parse welche Objekte Views sind
   views_on_server <- character(0)
@@ -2342,16 +2389,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
       )
     })
 
-    combined_mv_query <- sprintf(
-      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
-      postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
-      paste(mv_checks, collapse = " UNION ALL ")
-    )
-
-    mv_result <- ssh::ssh_exec_internal(ssh_session, combined_mv_query)
-    mv_output <- rawToChar(mv_result$stdout)
-    mv_lines <- strsplit(trimws(mv_output), "\n")[[1]]
-    mv_lines <- mv_lines[nchar(mv_lines) > 0]
+    mv_lines <- execute_batched_ssh_queries(mv_checks, ssh_session, postgres_keys)
 
     for (line in mv_lines) {
       parts <- strsplit(line, "\\|")[[1]]
@@ -2479,16 +2517,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     )
   })
 
-  combined_column_query <- sprintf(
-    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
-    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
-    paste(column_checks, collapse = " UNION ALL ")
-  )
-
-  column_result <- ssh::ssh_exec_internal(ssh_session, combined_column_query)
-  column_output <- rawToChar(column_result$stdout)
-  column_lines <- strsplit(trimws(column_output), "\n")[[1]]
-  column_lines <- column_lines[nchar(column_lines) > 0]
+  column_lines <- execute_batched_ssh_queries(column_checks, ssh_session, postgres_keys)
 
   # Parse welche Tabellen updated_at haben
   server_has_updated_at <- character(0)
@@ -2524,16 +2553,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     )
   })
 
-  combined_stats_query <- sprintf(
-    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
-    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
-    paste(stats_queries, collapse = " UNION ALL ")
-  )
-
-  stats_result <- ssh::ssh_exec_internal(ssh_session, combined_stats_query)
-  stats_output <- rawToChar(stats_result$stdout)
-  stats_lines <- strsplit(trimws(stats_output), "\n")[[1]]
-  stats_lines <- stats_lines[nchar(stats_lines) > 0]
+  stats_lines <- execute_batched_ssh_queries(stats_queries, ssh_session, postgres_keys)
 
   # Parse Server Stats und vergleiche mit lokalen Stats
   for (line in stats_lines) {
