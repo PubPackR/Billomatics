@@ -190,6 +190,25 @@ postgres_connect <- function(postgres_keys = NULL,
         results <- ssh_session_for_check[[2]]  # SSH-Key für Wiederverwendung
       }
 
+      # Alle lokalen View-Definitionen sichern
+      # (DROP TABLE CASCADE in write_table_with_metadata kann Views löschen, auch transitiv abhängige)
+      saved_views <- tryCatch({
+        DBI::dbGetQuery(con, "
+          SELECT schemaname, viewname, definition
+          FROM pg_views
+          WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
+        ")
+      }, error = function(e) {
+        if (verbose) message(sprintf("⚠ View-Sicherung fehlgeschlagen: %s", e$message))
+        data.frame(schemaname = character(0), viewname = character(0), definition = character(0))
+      })
+
+      if (nrow(saved_views) > 0 && verbose) {
+        message(sprintf("💾 %d View(s) gesichert: %s",
+          nrow(saved_views),
+          paste0(saved_views$schemaname, ".", saved_views$viewname, collapse = ", ")))
+      }
+
       for (table_name in tables_to_pull) {
 
         if (verbose) {
@@ -214,6 +233,53 @@ postgres_connect <- function(postgres_keys = NULL,
         available_tables <- c(available_tables, table_name)  # Füge die Tabelle der Liste hinzu
         first_table <- FALSE  # Nach dem ersten Durchlauf nicht mehr TRUE setzen
 
+        # Wenn die gerade geladene Tabelle eine View war: frische Definition in saved_views aktualisieren
+        if (nrow(saved_views) > 0 && table_name %in% paste0(saved_views$schemaname, ".", saved_views$viewname)) {
+          fresh_def <- tryCatch({
+            parts <- strsplit(table_name, "\\.")[[1]]
+            DBI::dbGetQuery(con, sprintf(
+              "SELECT definition FROM pg_views WHERE schemaname = '%s' AND viewname = '%s'",
+              parts[1], parts[2]
+            ))$definition
+          }, error = function(e) NULL)
+          if (!is.null(fresh_def) && length(fresh_def) == 1) {
+            idx <- which(paste0(saved_views$schemaname, ".", saved_views$viewname) == table_name)
+            saved_views$definition[idx] <- fresh_def
+          }
+        }
+
+      }
+
+      # Gesicherte Views wiederherstellen (mit Retry für Abhängigkeitsreihenfolge)
+      if (nrow(saved_views) > 0) {
+        remaining <- seq_len(nrow(saved_views))
+        for (attempt in 1:3) {
+          failed <- c()
+          for (i in remaining) {
+            view_schema <- saved_views$schemaname[i]
+            view_name <- saved_views$viewname[i]
+            view_def <- saved_views$definition[i]
+            view_full <- paste0(view_schema, ".", view_name)
+
+            success <- tryCatch({
+              sql <- sprintf('CREATE OR REPLACE VIEW "%s"."%s" AS %s', view_schema, view_name, view_def)
+              DBI::dbExecute(con, sql)
+              if (verbose) message(sprintf("✔ View wiederhergestellt: %s", view_full))
+              TRUE
+            }, error = function(e) FALSE)
+
+            if (!success) failed <- c(failed, i)
+          }
+          if (length(failed) == 0) break
+          remaining <- failed
+        }
+        # Verbliebene Fehler melden
+        for (i in remaining) {
+          if (i %in% failed) {
+            message(sprintf("⚠ View %s.%s konnte nicht wiederhergestellt werden",
+              saved_views$schemaname[i], saved_views$viewname[i]))
+          }
+        }
       }
 
       # Nach dem Laden aller Tabellen: Finale Überprüfung aller Identity-Sequenzen
@@ -2486,9 +2552,9 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
         message(sprintf("  ✓ %s: Nicht lokal vorhanden → Update erforderlich", table))
       }
     } else if (!local_info[[table]]$has_updated_at) {
-      needs_update[[table]] <- FALSE
+      needs_update[[table]] <- TRUE
       if (verbose) {
-        message(sprintf("  - %s: Keine updated_at Spalte → Kein Update", table))
+        message(sprintf("  ✓ %s: Keine updated_at Spalte → wird immer aktualisiert", table))
       }
     }
   }
@@ -2528,12 +2594,12 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     }
   }
 
-  # Tabellen ohne updated_at auf Server → FALSE
+  # Tabellen ohne updated_at auf Server → immer aktualisieren
   for (table in tables_to_check) {
     if (!table %in% server_has_updated_at) {
-      needs_update[[table]] <- FALSE
+      needs_update[[table]] <- TRUE
       if (verbose) {
-        message(sprintf("  - %s: Server hat keine updated_at Spalte → Kein Update", table))
+        message(sprintf("  ✓ %s: Server hat keine updated_at Spalte → wird immer aktualisiert", table))
       }
     }
   }
