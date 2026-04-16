@@ -39,7 +39,7 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql", "gemini", "openrouter", "personio"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "personio"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -52,6 +52,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     `google analytics` = authentication_Google_Analytics,
     bonusDB = authentication_bonus_db,
     BigQuery = authentication_Google_BigQuery,
+    `BigQuery GA4` = authentication_Google_BigQuery_GA4,
     cleverreach = authentication_cleverreach,
     postgresql = authentication_postgresql,
     gemini = authentication_gemini,
@@ -377,8 +378,61 @@ authentication_Google_BigQuery <-  function(args) {
     # Cleanup of private key afterwards
     unlink(decrypted_file)
     print(paste0(decrypted_file, " deleted."))
+  })
+}
 
-    return("No Key")
+#' authentication_Google_BigQuery_GA4
+#'
+#' This function executes the GA4 BigQuery authentication process for the
+#' bigquery@ga4studyflix.iam.gserviceaccount.com service account.
+#' It decrypts the encrypted key file, authenticates via googleAuthR and bigrquery,
+#' verifies the connection, and deletes the decrypted file afterwards.
+#' It can handle manual password inputs as well as Flow Force args Inputs.
+
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return no return values
+authentication_Google_BigQuery_GA4 <- function(args) {
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <-
+      getPass::getPass("Enter the password for BigQuery GA4: ")
+  } else {
+    decrypt_key <- args
+  }
+
+  encrypted_file <-
+    "../../keys/ga4_bigQuery/encrypted_ga4_bigquery.bin"
+  decrypted_file <-
+    "../../keys/ga4_bigQuery/ga4studyflix-c43a79c8c2cb.json"
+
+  project_id <- "ga4studyflix"
+
+  tryCatch({
+    safer::decrypt_file(
+      infile  = encrypted_file,
+      key     = decrypt_key,
+      outfile = decrypted_file
+    )
+    print("Decryption successful. Data saved to ga4studyflix-c43a79c8c2cb.json")
+
+    # Authenticate with GA4 BigQuery service account
+    googleAuthR::gar_auth_service(
+      json_file = decrypted_file,
+      scope     = "https://www.googleapis.com/auth/bigquery"
+    )
+    bigrquery::bq_auth(token = googleAuthR::gar_token())
+
+    # Verify authentication
+    bigrquery::bq_project_datasets(project_id)
+    message("Authentication successful — connected to '", project_id, "'.")
+  },
+  error = function(e) {
+    cat("An error occurred: ", e$message, "\n")
+    print("Please check also if you have ../../keys/ga4_bigQuery/encrypted_ga4_bigquery.bin")
+  },
+  finally = {
+    # Cleanup of decrypted key file
+    unlink(decrypted_file)
+    print(paste0(decrypted_file, " deleted."))
   })
 }
 
