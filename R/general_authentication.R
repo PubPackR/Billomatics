@@ -378,8 +378,6 @@ authentication_Google_BigQuery <-  function(args) {
     # Cleanup of private key afterwards
     unlink(decrypted_file)
     print(paste0(decrypted_file, " deleted."))
-
-    return("No Key")
   })
 }
 
@@ -406,7 +404,7 @@ authentication_Google_BigQuery_GA4 <- function(args) {
   decrypted_file <-
     "../../keys/ga4_bigQuery/ga4studyflix-c43a79c8c2cb.json"
 
-  project_id <- "ga4studyflix-c43a79c8c2cb"
+  project_id <- "ga4studyflix"
 
   tryCatch({
     safer::decrypt_file(
@@ -424,21 +422,8 @@ authentication_Google_BigQuery_GA4 <- function(args) {
     bigrquery::bq_auth(token = googleAuthR::gar_token())
 
     # Verify authentication
-    tryCatch(
-      {
-        bigrquery::bq_project_datasets(project_id)
-        message("Authentication successful — connected to '", project_id, "'.")
-      },
-      error = function(e) {
-        stop(
-          "Authentication failed. Check that '",
-          encrypted_file,
-          "' exists and the service account has BigQuery permissions.\n",
-          "Original error: ",
-          conditionMessage(e)
-        )
-      }
-    )
+    bigrquery::bq_project_datasets(project_id)
+    message("Authentication successful — connected to '", project_id, "'.")
   },
   error = function(e) {
     cat("An error occurred: ", e$message, "\n")
@@ -448,8 +433,6 @@ authentication_Google_BigQuery_GA4 <- function(args) {
     # Cleanup of decrypted key file
     unlink(decrypted_file)
     print(paste0(decrypted_file, " deleted."))
-
-    return("No Key")
   })
 }
 
