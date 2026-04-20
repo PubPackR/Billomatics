@@ -154,7 +154,7 @@ get_responsible_person <- function(persons, employees, o_tag_responsible) {
 #' update_crm_person
 #'
 #' This function calls the CRM API and updates basic person information
-#' (salutation, first_name, last_name, background).
+#' (salutation, first_name, last_name, background, user_id, group_id).
 #'  attachable_id - id of the person (required)
 #'  action - has to be value "update"
 #'  field_type - has to be value "person"
@@ -162,6 +162,8 @@ get_responsible_person <- function(persons, employees, o_tag_responsible) {
 #'  first_name - optional
 #'  last_name - optional (API field: 'name')
 #'  background - optional (description/notes)
+#'  user_id - optional (responsible user in CRM)
+#'  group_id - optional (group assignment in CRM)
 
 #' @param headers the header informations you have to send with your request
 #' @param df the dataframe which should include the following fields:
@@ -200,6 +202,9 @@ update_crm_person <- function(headers, df) {
     }
     if (has_valid_value(df, "user_id", p)) {
       person_data$person$user_id <- df$user_id[p]
+    }
+    if (has_valid_value(df, "group_id", p)) {
+      person_data$person$group_id <- df$group_id[p]
     }
 
     # Check if we have any updates

@@ -16,7 +16,7 @@ no return values
 }
 \description{
 This function calls the CRM API and updates basic person information
-(salutation, first_name, last_name, background).
+(salutation, first_name, last_name, background, user_id, group_id).
 attachable_id - id of the person (required)
 action - has to be value "update"
 field_type - has to be value "person"
@@ -24,4 +24,6 @@ salutation - optional
 first_name - optional
 last_name - optional (API field: 'name')
 background - optional (description/notes)
+user_id - optional (responsible user in CRM)
+group_id - optional (group assignment in CRM)
 }
