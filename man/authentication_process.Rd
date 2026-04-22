@@ -6,8 +6,8 @@
 \usage{
 authentication_process(
   needed_services = c("billomat", "crm", "crm_lm", "google sheet", "asana", "msgraph",
-    "brevo", "google analytics", "bonusDB", "BigQuery", "cleverreach", "postgresql",
-    "gemini", "openrouter", "personio"),
+    "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach",
+    "postgresql", "gemini", "openrouter", "personio"),
   args
 )
 }

@@ -1271,7 +1271,13 @@ if (!is.null(meta$foreign_keys) && nrow(meta$foreign_keys) > 0) {
   # COLUMN COMMENTS
   if (!is.null(meta$column_comments) && nrow(meta$column_comments) > 0) {
     for (i in seq_len(nrow(meta$column_comments))) {
-      column <- DBI::dbQuoteIdentifier(con, meta$column_comments$column_name[i])
+      col_name_raw <- meta$column_comments$column_name[i]
+
+      # Schutz gegen defektes Parsing (z.B. bei '|' oder '\n' in Kommentartext):
+      # gueltige PG-Spaltennamen enthalten kein '|' und keinen Whitespace
+      if (is.na(col_name_raw) || !nzchar(col_name_raw) || grepl("[|[:space:]]", col_name_raw)) next
+
+      column <- DBI::dbQuoteIdentifier(con, col_name_raw)
       comment <- meta$column_comments$column_comment[i]
 
       # Kommentar kann NULL sein
@@ -1708,9 +1714,19 @@ parse_pg_meta <- function(text_output) {
     return(as.data.frame(setNames(replicate(length(header), character(0), simplify = FALSE), header)))
   }
 
-  # Convert to data frame
-  df <- read.table(text = paste(data_lines, collapse = "\n"), quote = "", sep = "|", strip.white = TRUE, stringsAsFactors = FALSE, header = FALSE)
+  # Split jede Zeile selbst — Zeilen mit falscher Feldzahl (z.B. durch '|' oder
+  # Newlines in Daten) werden uebersprungen statt einen harten Abbruch zu werfen.
+  parsed <- strsplit(data_lines, "|", fixed = TRUE)
+  valid <- lengths(parsed) == length(header)
+  parsed <- parsed[valid]
+
+  if (length(parsed) == 0) {
+    return(as.data.frame(setNames(replicate(length(header), character(0), simplify = FALSE), header)))
+  }
+
+  df <- as.data.frame(do.call(rbind, parsed), stringsAsFactors = FALSE)
   names(df) <- header
+  df[] <- lapply(df, trimws)
   return(df)
 }
 
@@ -1736,7 +1752,7 @@ execute_functions_query <- function(query, ssh_session, postgres_keys) {
 # Function to execute a psql query over SSH and retrieve the result
 execute_psql_query <- function(query, ssh_session, postgres_keys) {
   # Build the psql command with provided credentials
-  psql_command <- sprintf("PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"%s\"",
+  psql_command <- sprintf("PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -A -F '|' -P footer=off -c \"%s\"",
                           postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], query)
 
   # Execute the query over SSH

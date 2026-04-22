@@ -21,3 +21,8 @@ Moves a protocol to a different person by updating the attachable_id via PUT.
 This is needed as a workaround because the CRM API does not allow direct deletion
 of protocols — they must first be moved to a "graveyard" person before deletion.
 }
+\note{
+KNOWN ISSUE (2026-04): The CRM API accepts the request (200/204) but
+the CRM UI does not reflect the change. This is a CRM vendor bug.
+The function is currently not usable for production workflows.
+}
