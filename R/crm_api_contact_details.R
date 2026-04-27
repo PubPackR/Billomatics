@@ -40,6 +40,12 @@ add_contact_details <- function(headers, df) {
   # Validate required columns (after filter to ensure they exist)
   validate_required_columns(df, c("attachable_id", "attachable_type", "field_name", "atype", "contact_detail_type"))
 
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
   # Validate using helper functions
   validate_attachable_id(df)
   validate_attachable_type(df)
@@ -107,6 +113,12 @@ remove_contact_details <- function(headers, df) {
 
   # Validate required columns (after filter to ensure they exist)
   validate_required_columns(df, c("attachable_id", "attachable_type", "custom_fields_id"))
+
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
 
   # Validate using helper functions
   validate_attachable_id(df)

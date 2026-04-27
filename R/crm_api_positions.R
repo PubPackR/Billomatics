@@ -97,6 +97,12 @@ update_crm_position <- function(headers, df) {
   validate_attachable_id(df)
   validate_positive_id(df, "position_id", "position_id")
 
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
   # Iterate over every row
   for (p in 1:nrow(df)) {
     # Build position data list with defaults
@@ -181,6 +187,12 @@ create_crm_position <- function(headers, df) {
   validate_required_columns(df, c("attachable_id", "company_id"))
   validate_attachable_id(df)
   validate_positive_id(df, "company_id", "company_id")
+
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
 
   # Iterate over every row and collect responses
   all_responses <- tibble::tibble()

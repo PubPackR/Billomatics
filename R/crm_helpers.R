@@ -12,6 +12,63 @@
 ################################################################################-
 # ----- Start -------------------------------------------------------------------
 
+#' Protected CRM lead IDs that must never receive API mutations
+#'
+#' Test-Leads im CRM, die manuell als "Schaufenster" fuer das Outbound-Team
+#' gepflegt werden und von keiner Automation veraendert werden sollen.
+#' @keywords internal
+PROTECTED_CRM_LEAD_IDS <- c(44595807L)
+
+#' Filter out protected test leads from API mutations
+#'
+#' Removes rows targeting protected CRM lead IDs (people only) so that no
+#' add/remove/update API call is sent for them. Returns NULL if the filter
+#' empties the dataframe (callers should `return(invisible(NULL))` in that case).
+#'
+#' Wired into the following mutating CRM API functions:
+#'   - add_crm_tag, remove_crm_tag
+#'   - add_crm_custom_fields, remove_crm_custom_fields, update_crm_custom_fields
+#'     (manage_crm_custom_fields is covered transitively via the three above)
+#'   - add_crm_addresses, remove_crm_addresses
+#'   - add_contact_details, remove_contact_details
+#'   - update_crm_person, delete_crm_person
+#'   - update_crm_position, create_crm_position
+#'
+#' NOT PROTECTED (no attachable_id available — caller must filter upstream):
+#'   - mark_crm_task_finished (operates on task_id)
+#'   - move_crm_protocols, delete_crm_protocols (operate on protocol_id;
+#'     also affected by a CRM vendor bug — see crm_api_protocols.R)
+#'
+#' OUT OF SCOPE (different ID space — companies, not people):
+#'   - create_crm_company, update_crm_company
+#'   - create_crm_person (no attachable_id; creates a new record)
+#'
+#' @param df dataframe with at least an `attachable_id` column; if
+#'   `attachable_type` is also present, only `people` rows are filtered
+#' @return filtered dataframe, or NULL if no rows remain
+#' @keywords internal
+filter_protected_leads <- function(df) {
+  if (!"attachable_id" %in% names(df)) {
+    return(df)
+  }
+
+  is_protected <- df$attachable_id %in% PROTECTED_CRM_LEAD_IDS
+  if ("attachable_type" %in% names(df)) {
+    is_protected <- is_protected & df$attachable_type == "people"
+  }
+
+  if (any(is_protected)) {
+    message(sprintf(
+      "ℹ Skipping %d row(s) for protected test lead(s): %s",
+      sum(is_protected),
+      paste(unique(df$attachable_id[is_protected]), collapse = ", ")
+    ))
+    df <- df[!is_protected, , drop = FALSE]
+  }
+
+  if (nrow(df) == 0) NULL else df
+}
+
 #' Validate required columns in dataframe
 #' @param df dataframe to validate
 #' @param required_cols character vector of required column names

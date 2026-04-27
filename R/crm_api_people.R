@@ -182,6 +182,12 @@ update_crm_person <- function(headers, df) {
   validate_required_columns(df, c("attachable_id"))
   validate_attachable_id(df)
 
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
   # Iterate over every row
   for (p in 1:nrow(df)) {
     # Build person data list - only with fields that have values
@@ -331,6 +337,12 @@ delete_crm_person <- function(headers, df) {
   # Validate required columns
   validate_required_columns(df, c("attachable_id"))
   validate_attachable_id(df)
+
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
 
   # Iterate over every row
   for (p in 1:nrow(df)) {

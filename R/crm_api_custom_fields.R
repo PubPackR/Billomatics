@@ -129,6 +129,12 @@ add_crm_custom_fields <- function(headers, df) {
   # Validate required columns (after filter to ensure they exist)
   validate_required_columns(df, c("attachable_id", "attachable_type", "field_name", "value"))
 
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
   # Validate using helper functions
   validate_attachable_id(df)
   validate_attachable_type(df)
@@ -214,6 +220,12 @@ remove_crm_custom_fields <- function(headers, df) {
   # Validate required columns (after filter to ensure they exist)
   validate_required_columns(df, c("attachable_id", "attachable_type", "custom_fields_id"))
 
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
+
   # Validate using helper functions
   validate_attachable_id(df)
   validate_attachable_type(df)
@@ -267,6 +279,12 @@ update_crm_custom_fields <- function(headers, df) {
 
   # Validate required columns (after filter to ensure they exist)
   validate_required_columns(df, c("attachable_id", "attachable_type", "custom_fields_id", "field_name", "value"))
+
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
 
   # Validate using helper functions
   validate_attachable_id(df)

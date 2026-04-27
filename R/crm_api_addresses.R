@@ -125,6 +125,12 @@ add_crm_addresses <- function(headers, df) {
 
   # Validate required columns
   validate_required_columns(df, c("attachable_id", "attachable_type", "atype", "street", "city", "zip", "country"))
+
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
   validate_attachable_id(df)
   validate_attachable_type(df)
   validate_atype(df)
@@ -219,6 +225,12 @@ remove_crm_addresses <- function(headers, df) {
 
   # Validate required columns
   validate_required_columns(df, c("attachable_id", "attachable_type", "address_id"))
+
+  # Skip protected test leads
+  df <- filter_protected_leads(df)
+  if (is.null(df)) {
+    return(invisible(NULL))
+  }
   validate_attachable_id(df)
   validate_attachable_type(df)
   validate_positive_id(df, "address_id", "address_id")
