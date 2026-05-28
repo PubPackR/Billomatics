@@ -39,7 +39,7 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "personio"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "personio", "github"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -57,7 +57,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     postgresql = authentication_postgresql,
     gemini = authentication_gemini,
     openrouter = authentication_openrouter,
-    personio = authentication_personio
+    personio = authentication_personio,
+    github = authentication_github
   )
 
   keys <- list()
@@ -583,3 +584,22 @@ authentication_personio <- function(args) {
   })
 }
 
+#' authentication_github
+#'
+#' This function handles the key decryption for the GitHub API authentication.
+#' It supports manual decryption key input as well as FlowForce arguments.
+#'
+#' @param args Additional input parameter, only needed through FlowForce Job
+#' @return GitHub Personal Access Token as String
+authentication_github <- function(args) {
+
+  encrypted_api_key <- readLines("../../keys/github_token.txt")
+
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key für GitHub eingeben: ")
+  } else {
+    decrypt_key <- args
+  }
+
+  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+}
