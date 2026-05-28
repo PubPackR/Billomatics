@@ -593,7 +593,7 @@ authentication_personio <- function(args) {
 #' @return GitHub Personal Access Token as String
 authentication_github <- function(args) {
 
-  encrypted_api_key <- readLines("../../keys/github_token.txt")
+  encrypted_api_key <- readLines("../../keys/Github/github_token.txt")
 
   if (interactive() & (length(args) == 0 | is.na(args[1]))) {
     decrypt_key <- getPass::getPass("Bitte Decryption_Key für GitHub eingeben: ")
