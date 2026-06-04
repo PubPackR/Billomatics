@@ -69,30 +69,39 @@ get_central_station_protocols <- function (api_key, filter_by = FALSE, filter_ve
     }
   } else {
     for (i in 1:length(filter_vector)) {
-      tryCatch({
-        response <- crm_GET2(
-          paste0(
-            "https://api.centralstationcrm.net/api/protocols?perpage=250&page=1",
-            filter_option,
-            filter_vector[i],
-            "&includes=comments"
-          ),
-          headers
-        )
+      for (page in 1:pages) {
+        should_continue <- tryCatch({
+          response <- crm_GET2(
+            paste0(
+              "https://api.centralstationcrm.net/api/protocols?perpage=250&page=",
+              page,
+              filter_option,
+              filter_vector[i],
+              "&includes=comments"
+            ),
+            headers
+          )
 
-        status_code <- httr2::resp_status(response)
-        if (status_code != 200) {
-          warning(sprintf("HTTP %d for %s=%s", status_code, filter_by, filter_vector[i]))
-          next
-        }
-
-        data <-
-          jsonlite::fromJSON(suppressWarnings(httr2::resp_body_string(response)))
-        protocols <- dplyr::bind_rows(protocols, data)
-      },
-      error = function(cond) {
-        warning(sprintf("Error for %s=%s: %s", filter_by, filter_vector[i], cond$message))
-      })
+          status_code <- httr2::resp_status(response)
+          if (status_code != 200) {
+            warning(sprintf("HTTP %d for %s=%s", status_code, filter_by, filter_vector[i]))
+            FALSE
+          } else {
+            data <- jsonlite::fromJSON(suppressWarnings(httr2::resp_body_string(response)))
+            if (length(data) == 0) {
+              FALSE
+            } else {
+              protocols <- dplyr::bind_rows(protocols, data)
+              nrow(data) == 250
+            }
+          }
+        },
+        error = function(cond) {
+          warning(sprintf("Error for %s=%s: %s", filter_by, filter_vector[i], cond$message))
+          FALSE
+        })
+        if (!should_continue) break
+      }
       if (i %% 100 == 0) {
         print(i)
       }
