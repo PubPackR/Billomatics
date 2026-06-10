@@ -267,6 +267,7 @@ create_crm_company <- function(headers, df) {
 #'  action - has to be value "update"
 #'  field_type - has to be value "company"
 #'  name - optional (company name)
+#'  group_id - optional (group assignment in CRM)
 #'
 #' @param headers the header informations you have to send with your request
 #' @param df the dataframe which should include the following fields:
@@ -293,6 +294,9 @@ update_crm_company <- function(headers, df) {
     # Add optional fields only if they exist and are not NA/empty
     if (has_valid_value(df, "name", p)) {
       company_data$company$name <- df$name[p]
+    }
+    if (has_valid_value(df, "group_id", p)) {
+      company_data$company$group_id <- df$group_id[p]
     }
 
     # Check if we have any updates
