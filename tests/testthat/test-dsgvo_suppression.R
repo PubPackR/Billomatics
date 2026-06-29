@@ -25,3 +25,36 @@ test_that("get_deletion_pepper reads env then key-file, errors when neither", {
     expect_error(Billomatics::get_deletion_pepper())
   })
 })
+
+make_cmr <- function() data.frame(
+  callId = c("c1", "c2"),
+  call_identity_mail = c("target@x.de", "keep@x.de"),
+  call_identity_name = c("Target Person", "Keep Person"),
+  stringsAsFactors = FALSE
+)
+
+test_that("dsgvo_suppress_msgraph_record tombstones matched mail + nulls name, leaves rest", {
+  pepper <- "p"
+  blocked <- Billomatics::dsgvo_hash_email("target@x.de", pepper)
+  out <- Billomatics::dsgvo_suppress_msgraph_record(make_cmr(), blocked, pepper)
+  expect_equal(out$call_identity_mail[1], Billomatics::dsgvo_email_tombstone(blocked))
+  expect_true(is.na(out$call_identity_name[1]))
+  expect_equal(out$call_identity_mail[2], "keep@x.de")
+  expect_equal(out$call_identity_name[2], "Keep Person")
+  expect_equal(nrow(out), 2L)
+})
+
+test_that("dsgvo_suppress_msgraph_record is a no-op for an empty blocklist", {
+  out <- Billomatics::dsgvo_suppress_msgraph_record(make_cmr(), character(0), "p")
+  expect_equal(out$call_identity_mail, c("target@x.de", "keep@x.de"))
+})
+
+test_that("dsgvo_load_suppression returns email + phone hash sets", {
+  con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:"); on.exit(DBI::dbDisconnect(con))
+  DBI::dbExecute(con, "ATTACH DATABASE ':memory:' AS config")
+  DBI::dbExecute(con, "CREATE TABLE config.privacy_deletion_log (id INTEGER, email_hash TEXT, phone_hashes TEXT)")
+  DBI::dbExecute(con, "INSERT INTO config.privacy_deletion_log VALUES (1,'he1','{hp1,hp2}'),(2,'he2','{}')")
+  sup <- Billomatics::dsgvo_load_suppression(con)
+  expect_setequal(sup$email_hashes, c("he1", "he2"))
+  expect_setequal(sup$phone_hashes, c("hp1", "hp2"))
+})
