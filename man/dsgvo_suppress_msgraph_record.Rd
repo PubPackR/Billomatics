@@ -2,22 +2,33 @@
 % Please edit documentation in R/dsgvo_suppression.R
 \name{dsgvo_suppress_msgraph_record}
 \alias{dsgvo_suppress_msgraph_record}
-\title{Ersetzt PII gesperrter Personen in einem MS-Graph call_meeting_record}
+\title{Ersetzt PII gesperrter Personen in einem MS-Graph-Record (calls ODER events/booking)}
 \usage{
-dsgvo_suppress_msgraph_record(cmr, email_hashes, pepper)
+dsgvo_suppress_msgraph_record(
+  cmr,
+  email_hashes,
+  pepper,
+  mail_col = "call_identity_mail",
+  name_col = "call_identity_name"
+)
 }
 \arguments{
-\item{cmr}{data.frame mit Spalten call_identity_mail, call_identity_name.}
+\item{cmr}{data.frame mit der Mail- und Name-Spalte.}
 
 \item{email_hashes}{Character-Vektor gesperrter E-Mail-Hashes.}
 
 \item{pepper}{Pepper-Geheimnis.}
+
+\item{mail_col}{Name der E-Mail-Spalte (Default "call_identity_mail").}
+
+\item{name_col}{Name der Namens-Spalte (Default "call_identity_name").}
 }
 \value{
 data.frame gleicher Zeilenzahl mit transformierten Spalten.
 }
 \description{
-Setzt call_identity_mail gesperrter E-Mails auf den stabilen Tombstone und
-call_identity_name auf NA. Reine Transformation (kein DB-Zugriff). Keine Zeile
-wird entfernt -> Participant-Join bleibt auflösbar.
+Setzt die Mail-Spalte gesperrter E-Mails auf den stabilen Tombstone und die Name-Spalte
+auf NA. Reine Transformation (kein DB-Zugriff). Keine Zeile wird entfernt ->
+Participant-Join bleibt auflösbar. Spaltennamen sind parametrisierbar:
+calls = call_identity_mail/_name (Default), events/booking = attendees_emailAddress_address/_name.
 }

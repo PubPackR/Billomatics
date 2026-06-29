@@ -109,24 +109,29 @@ dsgvo_parse_pg_array <- function(s) {
   trimws(strsplit(inner, ",", fixed = TRUE)[[1]])
 }
 
-#' Ersetzt PII gesperrter Personen in einem MS-Graph call_meeting_record
+#' Ersetzt PII gesperrter Personen in einem MS-Graph-Record (calls ODER events/booking)
 #'
-#' Setzt call_identity_mail gesperrter E-Mails auf den stabilen Tombstone und
-#' call_identity_name auf NA. Reine Transformation (kein DB-Zugriff). Keine Zeile
-#' wird entfernt -> Participant-Join bleibt auflösbar.
+#' Setzt die Mail-Spalte gesperrter E-Mails auf den stabilen Tombstone und die Name-Spalte
+#' auf NA. Reine Transformation (kein DB-Zugriff). Keine Zeile wird entfernt ->
+#' Participant-Join bleibt auflösbar. Spaltennamen sind parametrisierbar:
+#' calls = call_identity_mail/_name (Default), events/booking = attendees_emailAddress_address/_name.
 #'
-#' @param cmr data.frame mit Spalten call_identity_mail, call_identity_name.
+#' @param cmr data.frame mit der Mail- und Name-Spalte.
 #' @param email_hashes Character-Vektor gesperrter E-Mail-Hashes.
 #' @param pepper Pepper-Geheimnis.
+#' @param mail_col Name der E-Mail-Spalte (Default "call_identity_mail").
+#' @param name_col Name der Namens-Spalte (Default "call_identity_name").
 #' @return data.frame gleicher Zeilenzahl mit transformierten Spalten.
 #' @export
-dsgvo_suppress_msgraph_record <- function(cmr, email_hashes, pepper) {
+dsgvo_suppress_msgraph_record <- function(cmr, email_hashes, pepper,
+                                          mail_col = "call_identity_mail",
+                                          name_col = "call_identity_name") {
   # ---- start ---- #
   if (nrow(cmr) == 0 || length(email_hashes) == 0) return(cmr)
-  h <- dsgvo_hash_email(cmr$call_identity_mail, pepper)
+  h <- dsgvo_hash_email(cmr[[mail_col]], pepper)
   hit <- !is.na(h) & h %in% email_hashes
-  cmr$call_identity_name[hit] <- NA_character_
-  cmr$call_identity_mail[hit] <- dsgvo_email_tombstone(h[hit])
+  cmr[[name_col]][hit] <- NA_character_
+  cmr[[mail_col]][hit] <- dsgvo_email_tombstone(h[hit])
   cmr
 }
 

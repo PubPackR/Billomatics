@@ -107,3 +107,17 @@ test_that("dsgvo_suppress_sipgate_calls tombstones the TARGET side when its numb
   expect_equal(out$source_number[1], "+49301111111")                # source side untouched
   expect_false(is.na(out$source_contact_name[1]))
 })
+
+test_that("dsgvo_suppress_msgraph_record works on the events column shape (attendees_*)", {
+  pepper <- "p"
+  blocked <- Billomatics::dsgvo_hash_email("ev-target@x.de", pepper)
+  ev <- data.frame(
+    event_id = c("e1", "e2"),
+    attendees_emailAddress_address = c("ev-target@x.de", "keep@x.de"),
+    attendees_emailAddress_name = c("Ev Target", "Keep"), stringsAsFactors = FALSE)
+  out <- Billomatics::dsgvo_suppress_msgraph_record(ev, blocked, pepper,
+           mail_col = "attendees_emailAddress_address", name_col = "attendees_emailAddress_name")
+  expect_equal(out$attendees_emailAddress_address[1], Billomatics::dsgvo_email_tombstone(blocked))
+  expect_true(is.na(out$attendees_emailAddress_name[1]))
+  expect_equal(out$attendees_emailAddress_address[2], "keep@x.de")   # unmatched unverändert
+})
