@@ -34,16 +34,20 @@ dsgvo_hash_peppered <- function(x, pepper) {
   }, character(1), USE.NAMES = FALSE)
 }
 
-#' @rdname dsgvo_hash_peppered
-#' @param email Roh-E-Mail (wird normalisiert).
+#' Gepfefferter SHA-256-Hash einer E-Mail (normalisiert die Eingabe)
+#' @param email Roh-E-Mail (wird via dsgvo_normalize_email normalisiert).
+#' @param pepper Pepper-Geheimnis.
+#' @return 64-Hex je Element; NA bleibt NA.
 #' @export
 dsgvo_hash_email <- function(email, pepper) {
   # ---- start ---- #
   dsgvo_hash_peppered(dsgvo_normalize_email(email), pepper)
 }
 
-#' @rdname dsgvo_hash_peppered
-#' @param phone Roh-Telefonnummer (wird normalisiert).
+#' Gepfefferter SHA-256-Hash einer Telefonnummer (normalisiert die Eingabe)
+#' @param phone Roh-Telefonnummer (wird via dsgvo_normalize_phone normalisiert).
+#' @param pepper Pepper-Geheimnis.
+#' @return 64-Hex je Element; NA bleibt NA.
 #' @export
 dsgvo_hash_phone <- function(phone, pepper) {
   # ---- start ---- #

@@ -2,24 +2,14 @@
 % Please edit documentation in R/dsgvo_suppression.R
 \name{dsgvo_hash_peppered}
 \alias{dsgvo_hash_peppered}
-\alias{dsgvo_hash_email}
-\alias{dsgvo_hash_phone}
 \title{Gepfefferter, deterministischer SHA-256 eines normalisierten Strings}
 \usage{
 dsgvo_hash_peppered(x, pepper)
-
-dsgvo_hash_email(email, pepper)
-
-dsgvo_hash_phone(phone, pepper)
 }
 \arguments{
 \item{x}{Bereits normalisierter Character.}
 
 \item{pepper}{Pepper-Geheimnis.}
-
-\item{email}{Roh-E-Mail (wird normalisiert).}
-
-\item{phone}{Roh-Telefonnummer (wird normalisiert).}
 }
 \value{
 64-Hex je Element; NA bleibt NA.
