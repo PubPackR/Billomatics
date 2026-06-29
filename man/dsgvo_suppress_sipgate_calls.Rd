@@ -18,6 +18,6 @@ data.frame gleicher Zeilenzahl mit transformierten Spalten.
 }
 \description{
 Tombstoned je Anruf die source- und/oder target-Seite, deren Nummer gesperrt ist
-(Nummer -> '\link{geloescht}', zugehöriger contact_name -> NA). Reine Transformation;
+(Nummer -> \verb{[geloescht]}, zugehöriger contact_name -> NA). Reine Transformation;
 keine Zeile wird entfernt (Match läuft auf sipgate_call_id, nicht Telefon).
 }

@@ -133,7 +133,7 @@ dsgvo_suppress_msgraph_record <- function(cmr, email_hashes, pepper) {
 #' Ersetzt gesperrte Telefonnummern in einem Sipgate-Calls-DataFrame
 #'
 #' Tombstoned je Anruf die source- und/oder target-Seite, deren Nummer gesperrt ist
-#' (Nummer -> '[geloescht]', zugehöriger contact_name -> NA). Reine Transformation;
+#' (Nummer -> `[geloescht]`, zugehöriger contact_name -> NA). Reine Transformation;
 #' keine Zeile wird entfernt (Match läuft auf sipgate_call_id, nicht Telefon).
 #'
 #' @param calls_df data.frame mit source_number/target_number (+ *_contact_name).

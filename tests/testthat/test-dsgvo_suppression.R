@@ -97,3 +97,13 @@ test_that("dsgvo_suppress_sipgate_calls is a no-op for empty blocklist", {
   out <- Billomatics::dsgvo_suppress_sipgate_calls(make_calls(), character(0), "p")
   expect_equal(out$source_number, c("+49301111111", "+49302222222"))
 })
+
+test_that("dsgvo_suppress_sipgate_calls tombstones the TARGET side when its number is blocked", {
+  pepper <- "p"
+  blocked <- Billomatics::dsgvo_hash_phone("+49309999999", pepper)   # target of s1
+  out <- Billomatics::dsgvo_suppress_sipgate_calls(make_calls(), blocked, pepper)
+  expect_equal(out$target_number[1], "[geloescht]")
+  expect_true(is.na(out$target_contact_name[1]))
+  expect_equal(out$source_number[1], "+49301111111")                # source side untouched
+  expect_false(is.na(out$source_contact_name[1]))
+})
