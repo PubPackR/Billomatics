@@ -49,6 +49,20 @@ test_that("dsgvo_suppress_msgraph_record is a no-op for an empty blocklist", {
   expect_equal(out$call_identity_mail, c("target@x.de", "keep@x.de"))
 })
 
+test_that("dsgvo_suppress_msgraph_record tombstones MULTIPLE rows matching the same blocked mail", {
+  pepper <- "p"
+  blocked <- Billomatics::dsgvo_hash_email("target@x.de", pepper)
+  cmr <- data.frame(
+    callId = c("c1", "c2", "c3"),
+    call_identity_mail = c("target@x.de", "target@x.de", "keep@x.de"),
+    call_identity_name = c("T1", "T2", "K"), stringsAsFactors = FALSE)
+  out <- Billomatics::dsgvo_suppress_msgraph_record(cmr, blocked, pepper)
+  ts <- Billomatics::dsgvo_email_tombstone(blocked)
+  expect_equal(out$call_identity_mail[1:2], c(ts, ts))   # beide getombstoned (Vektorisierung)
+  expect_true(all(is.na(out$call_identity_name[1:2])))
+  expect_equal(out$call_identity_mail[3], "keep@x.de")   # nicht-gesperrt unverändert
+})
+
 test_that("dsgvo_load_suppression returns email + phone hash sets", {
   con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:"); on.exit(DBI::dbDisconnect(con))
   DBI::dbExecute(con, "ATTACH DATABASE ':memory:' AS config")
