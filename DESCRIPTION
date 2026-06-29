@@ -44,5 +44,7 @@ Suggests:
     testthat (>= 3.0.0),
     mockery,
     DT,
-    msoc
+    msoc,
+    RSQLite,
+    withr
 Config/testthat/edition: 3
