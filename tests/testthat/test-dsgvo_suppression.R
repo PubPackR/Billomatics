@@ -72,3 +72,28 @@ test_that("dsgvo_load_suppression returns email + phone hash sets", {
   expect_setequal(sup$email_hashes, c("he1", "he2"))
   expect_setequal(sup$phone_hashes, c("hp1", "hp2"))
 })
+
+make_calls <- function() data.frame(
+  sipgate_call_id = c("s1", "s2"),
+  source_number = c("+49301111111", "+49302222222"),
+  target_number = c("+49309999999", "+49308888888"),
+  source_contact_name = c("Caller A", "Caller B"),
+  target_contact_name = c("Callee A", "Callee B"),
+  stringsAsFactors = FALSE
+)
+
+test_that("dsgvo_suppress_sipgate_calls tombstones only the blocked side(s)", {
+  pepper <- "p"
+  blocked <- Billomatics::dsgvo_hash_phone("+49301111111", pepper)   # source of s1
+  out <- Billomatics::dsgvo_suppress_sipgate_calls(make_calls(), blocked, pepper)
+  expect_equal(out$source_number[1], "[geloescht]")
+  expect_true(is.na(out$source_contact_name[1]))
+  expect_equal(out$target_number[1], "+49309999999")                # other side untouched
+  expect_equal(out$source_number[2], "+49302222222")                # other call untouched
+  expect_equal(nrow(out), 2L)
+})
+
+test_that("dsgvo_suppress_sipgate_calls is a no-op for empty blocklist", {
+  out <- Billomatics::dsgvo_suppress_sipgate_calls(make_calls(), character(0), "p")
+  expect_equal(out$source_number, c("+49301111111", "+49302222222"))
+})

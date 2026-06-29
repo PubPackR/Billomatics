@@ -129,3 +129,28 @@ dsgvo_suppress_msgraph_record <- function(cmr, email_hashes, pepper) {
   cmr$call_identity_mail[hit] <- dsgvo_email_tombstone(h[hit])
   cmr
 }
+
+#' Ersetzt gesperrte Telefonnummern in einem Sipgate-Calls-DataFrame
+#'
+#' Tombstoned je Anruf die source- und/oder target-Seite, deren Nummer gesperrt ist
+#' (Nummer -> '[geloescht]', zugehöriger contact_name -> NA). Reine Transformation;
+#' keine Zeile wird entfernt (Match läuft auf sipgate_call_id, nicht Telefon).
+#'
+#' @param calls_df data.frame mit source_number/target_number (+ *_contact_name).
+#' @param phone_hashes Character-Vektor gesperrter Telefon-Hashes.
+#' @param pepper Pepper-Geheimnis.
+#' @return data.frame gleicher Zeilenzahl mit transformierten Spalten.
+#' @export
+dsgvo_suppress_sipgate_calls <- function(calls_df, phone_hashes, pepper) {
+  # ---- start ---- #
+  if (nrow(calls_df) == 0 || length(phone_hashes) == 0) return(calls_df)
+  src_hit <- !is.na(calls_df$source_number) &
+    dsgvo_hash_phone(calls_df$source_number, pepper) %in% phone_hashes
+  tgt_hit <- !is.na(calls_df$target_number) &
+    dsgvo_hash_phone(calls_df$target_number, pepper) %in% phone_hashes
+  calls_df$source_number[src_hit] <- "[geloescht]"
+  calls_df$source_contact_name[src_hit] <- NA_character_
+  calls_df$target_number[tgt_hit] <- "[geloescht]"
+  calls_df$target_contact_name[tgt_hit] <- NA_character_
+  calls_df
+}
