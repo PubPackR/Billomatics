@@ -121,3 +121,21 @@ test_that("dsgvo_suppress_msgraph_record works on the events column shape (atten
   expect_true(is.na(out$attendees_emailAddress_name[1]))
   expect_equal(out$attendees_emailAddress_address[2], "keep@x.de")   # unmatched unverändert
 })
+
+test_that("dsgvo_normalize_email reduces the MS-Graph #EXT# UPN form to the real email (calls convergence)", {
+  upn <- "john.doe_gmail.com#EXT#@studyflix.onmicrosoft.com"
+  expect_equal(Billomatics::dsgvo_normalize_email(upn), "john.doe@gmail.com")
+  # Konvergenz: UPN und echte Mail erzeugen denselben Hash (sonst leakt Calls-Ingest)
+  expect_equal(Billomatics::dsgvo_hash_email(upn, "p"),
+               Billomatics::dsgvo_hash_email("john.doe@gmail.com", "p"))
+})
+
+test_that("dsgvo_suppress_msgraph_record matches a UPN-form mail against the real-email hash (calls path)", {
+  blocked <- Billomatics::dsgvo_hash_email("john.doe@gmail.com", "p")
+  cmr <- data.frame(
+    call_identity_mail = "john.doe_gmail.com#EXT#@studyflix.onmicrosoft.com",
+    call_identity_name = "John Doe", stringsAsFactors = FALSE)
+  out <- Billomatics::dsgvo_suppress_msgraph_record(cmr, blocked, "p")
+  expect_equal(out$call_identity_mail, Billomatics::dsgvo_email_tombstone(blocked))
+  expect_true(is.na(out$call_identity_name))
+})

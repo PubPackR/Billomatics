@@ -2,7 +2,7 @@
 % Please edit documentation in R/dsgvo_suppression.R
 \name{dsgvo_normalize_email}
 \alias{dsgvo_normalize_email}
-\title{Normalisiert eine E-Mail-Adresse (lowercase + trim)}
+\title{Normalisiert eine E-Mail-Adresse (lowercase + trim; MS-Graph #EXT#-UPN -> echte Mail)}
 \usage{
 dsgvo_normalize_email(email)
 }
@@ -13,5 +13,9 @@ dsgvo_normalize_email(email)
 Character; NA bleibt NA.
 }
 \description{
-Normalisiert eine E-Mail-Adresse (lowercase + trim)
+Reduziert die MS-Graph-UPN-Foederationsform (z.B.
+john.doe_gmail.com#EXT#@tenant.onmicrosoft.com) auf die echte Adresse
+(john.doe@gmail.com) — identisch zur Normalisierung im Kontakt-Write
+(update_contacts_from_calls), damit Writer (Loeschung) und Reader (Ingest-Suppression)
+denselben Hash erzeugen.
 }

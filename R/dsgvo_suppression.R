@@ -1,10 +1,20 @@
-#' Normalisiert eine E-Mail-Adresse (lowercase + trim)
+#' Normalisiert eine E-Mail-Adresse (lowercase + trim; MS-Graph #EXT#-UPN -> echte Mail)
+#'
+#' Reduziert die MS-Graph-UPN-Foederationsform (z.B.
+#' john.doe_gmail.com#EXT#@tenant.onmicrosoft.com) auf die echte Adresse
+#' (john.doe@gmail.com) — identisch zur Normalisierung im Kontakt-Write
+#' (update_contacts_from_calls), damit Writer (Loeschung) und Reader (Ingest-Suppression)
+#' denselben Hash erzeugen.
+#'
 #' @param email Character (Skalar/Vektor).
 #' @return Character; NA bleibt NA.
 #' @export
 dsgvo_normalize_email <- function(email) {
   # ---- start ---- #
-  ifelse(is.na(email), NA_character_, tolower(trimws(email)))
+  e <- tolower(trimws(email))
+  e <- ifelse(grepl("#ext#", e, ignore.case = TRUE),
+              sub("_", "@", sub("(?i)#ext#.*", "", e), fixed = TRUE), e)
+  ifelse(is.na(email), NA_character_, e)
 }
 
 #' Normalisiert eine Telefonnummer auf kanonische Ziffernform
