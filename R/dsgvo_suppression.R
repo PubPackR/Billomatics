@@ -100,7 +100,7 @@ get_deletion_pepper <- function(env_var = "DELETION_LOG_PEPPER", key_file = NULL
 #' @export
 dsgvo_load_suppression <- function(con, table = "config.privacy_deletion_log") {
   # ---- start ---- #
-  raw <- dplyr::collect(dplyr::tbl(con, dplyr::sql(paste0("SELECT email_hash, phone_hashes FROM ", table))))
+  raw <- dplyr::collect(dplyr::select(dplyr::tbl(con, I(table)), "email_hash", "phone_hashes"))
   emails <- unique(raw$email_hash[!is.na(raw$email_hash) & nzchar(raw$email_hash)])
   phones <- unique(unlist(lapply(raw$phone_hashes, dsgvo_parse_pg_array)))
   list(email_hashes = as.character(emails), phone_hashes = as.character(phones))
