@@ -1011,28 +1011,32 @@ write_table_with_metadata <- function(con, schema, table_name, table_data_with_m
   table_name_quoted <- DBI::dbQuoteIdentifier(con, table_name)
 
   # PRIMARY KEY
-  if (!is.null(meta$primary_keys) && nrow(meta$primary_keys) > 0) {
-    # Tabelle und Spalten korrekt zitieren
-    columns <- meta$primary_keys$column
-    columns <- columns[-1]  # Entfernen des ersten Elements, falls nötig
-    for (col in columns) {
-      # Spaltennamen mit dbQuoteIdentifier zitieren
-      pk_cols <- DBI::dbQuoteIdentifier(con, col)
+  # generate_pg_create_table_simple() legt bereits einen PRIMARY KEY inline an,
+  # WENN eine Identity-Spalte existiert (dann ist col_name != NULL). Fehlt eine
+  # Identity-Spalte (natuerliche PK, z.B. eine Quellsystem-ID), wird kein Inline-PK
+  # erzeugt -> hier den vollstaendigen PK aus den Metadaten nachziehen.
+  # Hinweis: Der Fall "Identity-PK + zusaetzliche natuerliche PK-Spalten" (zusammengesetzter
+  # PK inkl. Identity) wird bewusst nicht behandelt und kommt im Schema-Standard nicht vor.
+  if (is.null(col_name) &&
+      !is.null(meta$primary_keys) && nrow(meta$primary_keys) > 0) {
 
-      # Erstellen der SQL-Abfrage mit glue_sql
-      query <- glue::glue_sql(
-        "ALTER TABLE {schema_quoted}.{table_name_quoted} ADD PRIMARY KEY ({pk_cols})",
-        .con = con
-      )
+    # PK-Spaltennamen (ggf. mehrspaltig) in Metadaten-Reihenfolge, korrekt zitiert
+    pk_cols <- DBI::SQL(paste(
+      DBI::dbQuoteIdentifier(con, meta$primary_keys$column_name),
+      collapse = ", "
+    ))
 
-      # Ausführen der Abfrage
-      tryCatch({
-        DBI::dbExecute(con, query)
-      }, error = function(e) {
-        # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
-        cat(sprintf("Fehler beim Erstellen eines Primary Keys: %s\n", e$message))
-      })
-    }
+    query <- glue::glue_sql(
+      "ALTER TABLE {schema_quoted}.{table_name_quoted} ADD PRIMARY KEY ({pk_cols})",
+      .con = con
+    )
+
+    tryCatch({
+      DBI::dbExecute(con, query)
+    }, error = function(e) {
+      # Fehlerbehandlung: Gebe eine Nachricht aus, anstatt die Funktion abzubrechen
+      cat(sprintf("Fehler beim Erstellen eines Primary Keys: %s\n", e$message))
+    })
   }
 
 
