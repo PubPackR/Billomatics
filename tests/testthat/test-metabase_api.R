@@ -178,6 +178,68 @@ test_that("metabase_request meldet 401 verstaendlich und OHNE den Key", {
   expect_false(grepl("SUPERGEHEIM", conditionMessage(err), fixed = TRUE))
 })
 
+test_that("metabase_request setzt den Timeout (Default 30s) auf dem Request", {
+  captured <- NULL
+
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured <<- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+
+  metabase_request(
+    "GET", c("api", "card", "42"),
+    api_key  = "geheim",
+    base_url = "https://metabase.example.com"
+  )
+
+  expect_equal(captured$options$timeout_ms, 30000)
+})
+
+test_that("metabase_request uebernimmt einen abweichenden timeout_s", {
+  captured <- NULL
+
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured <<- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+
+  metabase_request(
+    "GET", c("api", "card", "42"),
+    api_key   = "geheim",
+    base_url  = "https://metabase.example.com",
+    timeout_s = 5
+  )
+
+  expect_equal(captured$options$timeout_ms, 5000)
+})
+
+test_that("metabase_request lehnt ungueltige timeout_s-Werte ab", {
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k", base_url = "https://x",
+                     timeout_s = 0),
+    "timeout_s"
+  )
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k", base_url = "https://x",
+                     timeout_s = -1),
+    "timeout_s"
+  )
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k", base_url = "https://x",
+                     timeout_s = NA),
+    "timeout_s"
+  )
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k", base_url = "https://x",
+                     timeout_s = "abc"),
+    "timeout_s"
+  )
+})
+
 test_that("metabase_request verlangt Key und Base-URL", {
   expect_error(
     metabase_request("GET", c("api", "card"), api_key = "", base_url = "https://x"),

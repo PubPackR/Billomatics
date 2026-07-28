@@ -46,10 +46,15 @@ metabase_sanitize_card <- function(card, dynamic_fields = METABASE_DYNAMIC_FIELD
 #' @param query Optionale Named List mit Query-Parametern.
 #' @param body Optionaler Request-Body (wird als JSON gesendet).
 #' @param max_retries Maximale Wiederholungen bei transienten Fehlern.
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle
+#'   Versuche hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen
+#'   kann, ist die maximal moegliche Gesamtwartezeit ein Vielfaches von
+#'   \code{timeout_s}.
 #' @return Geparste JSON-Antwort als Liste.
 #' @keywords internal
 metabase_request <- function(method, path, api_key, base_url,
-                             query = NULL, body = NULL, max_retries = 3) {
+                             query = NULL, body = NULL, max_retries = 3,
+                             timeout_s = 30) {
 
   if (is.null(api_key) || length(api_key) == 0 || !nzchar(api_key[1])) {
     stop("Metabase-API-Key fehlt oder ist leer.", call. = FALSE)
@@ -60,11 +65,16 @@ metabase_request <- function(method, path, api_key, base_url,
   if (is.null(path) || length(path) == 0) {
     stop("Metabase-API-Pfad fehlt oder ist leer.", call. = FALSE)
   }
+  if (is.null(timeout_s) || length(timeout_s) == 0 || anyNA(timeout_s) ||
+      !is.numeric(timeout_s) || timeout_s[1] <= 0) {
+    stop("Metabase-Timeout (timeout_s) muss eine positive Zahl sein.", call. = FALSE)
+  }
 
   req <- httr2::request(base_url)
   req <- do.call(httr2::req_url_path_append, c(list(req), as.list(path)))
   req <- httr2::req_headers_redacted(req, "X-API-Key" = api_key[1])
   req <- httr2::req_method(req, method)
+  req <- httr2::req_timeout(req, timeout_s[1])
 
   if (!is.null(query)) {
     req <- do.call(httr2::req_url_query, c(list(req), query, list(.multi = "explode")))

@@ -11,7 +11,8 @@ metabase_request(
   base_url,
   query = NULL,
   body = NULL,
-  max_retries = 3
+  max_retries = 3,
+  timeout_s = 30
 )
 }
 \arguments{
@@ -28,6 +29,11 @@ metabase_request(
 \item{body}{Optionaler Request-Body (wird als JSON gesendet).}
 
 \item{max_retries}{Maximale Wiederholungen bei transienten Fehlern.}
+
+\item{timeout_s}{Timeout in Sekunden PRO Versuch (nicht ueber alle
+Versuche hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen
+kann, ist die maximal moegliche Gesamtwartezeit ein Vielfaches von
+\code{timeout_s}.}
 }
 \value{
 Geparste JSON-Antwort als Liste.
