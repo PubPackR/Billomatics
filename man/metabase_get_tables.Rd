@@ -4,12 +4,24 @@
 \alias{metabase_get_tables}
 \title{Tabellen-Metadaten lesen}
 \usage{
-metabase_get_tables(api_key, base_url = "https://metabase.studyflix.info")
+metabase_get_tables(
+  api_key,
+  base_url = "https://metabase.studyflix.info",
+  timeout_s = 30,
+  max_retries = 3
+)
 }
 \arguments{
 \item{api_key}{Metabase-API-Key.}
 
 \item{base_url}{Basis-URL der Metabase-Instanz.}
+
+\item{timeout_s}{Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.}
+
+\item{max_retries}{Maximale Anzahl zusaetzlicher Versuche bei transienten
+Fehlern (429/5xx), nach dem ersten Versuch.}
 }
 \value{
 Liste der Tabellen.

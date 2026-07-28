@@ -8,7 +8,9 @@ metabase_update_card(
   card_id,
   body,
   api_key,
-  base_url = "https://metabase.studyflix.info"
+  base_url = "https://metabase.studyflix.info",
+  timeout_s = 30,
+  max_retries = 3
 )
 }
 \arguments{
@@ -19,6 +21,13 @@ metabase_update_card(
 \item{api_key}{Metabase-API-Key.}
 
 \item{base_url}{Basis-URL der Metabase-Instanz.}
+
+\item{timeout_s}{Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.}
+
+\item{max_retries}{Maximale Anzahl zusaetzlicher Versuche bei transienten
+Fehlern (429/5xx), nach dem ersten Versuch.}
 }
 \value{
 Liste mit der aktualisierten Card.

@@ -267,6 +267,68 @@ test_that("metabase_get_card ruft den richtigen Pfad auf", {
   expect_equal(res$id, 42)
 })
 
+test_that("metabase_get_card reicht einen abweichenden timeout_s/max_retries durch", {
+  args <- NULL
+  mockery::stub(metabase_get_card, "metabase_request",
+                function(method, path, api_key, base_url, ..., timeout_s = 30, max_retries = 3) {
+                  args <<- list(timeout_s = timeout_s, max_retries = max_retries)
+                  list(id = 42)
+                })
+
+  metabase_get_card(42, api_key = "k", base_url = "https://mb.example.com",
+                    timeout_s = 5, max_retries = 0)
+
+  expect_equal(args$timeout_s, 5)
+  expect_equal(args$max_retries, 0)
+})
+
+test_that("metabase_get_card reicht die Default-Werte fuer timeout_s/max_retries durch", {
+  args <- NULL
+  mockery::stub(metabase_get_card, "metabase_request",
+                function(method, path, api_key, base_url, ..., timeout_s = 30, max_retries = 3) {
+                  args <<- list(timeout_s = timeout_s, max_retries = max_retries)
+                  list(id = 42)
+                })
+
+  metabase_get_card(42, api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$timeout_s, 30)
+  expect_equal(args$max_retries, 3)
+})
+
+test_that("metabase_update_card reicht einen abweichenden timeout_s/max_retries durch", {
+  args <- NULL
+  mockery::stub(metabase_update_card, "metabase_request",
+                function(method, path, api_key, base_url, query = NULL, body = NULL, ...,
+                         timeout_s = 30, max_retries = 3) {
+                  args <<- list(timeout_s = timeout_s, max_retries = max_retries)
+                  list(id = 9)
+                })
+
+  metabase_update_card(9, body = list(name = "Neu"),
+                       api_key = "k", base_url = "https://mb.example.com",
+                       timeout_s = 5, max_retries = 0)
+
+  expect_equal(args$timeout_s, 5)
+  expect_equal(args$max_retries, 0)
+})
+
+test_that("metabase_update_card reicht die Default-Werte fuer timeout_s/max_retries durch", {
+  args <- NULL
+  mockery::stub(metabase_update_card, "metabase_request",
+                function(method, path, api_key, base_url, query = NULL, body = NULL, ...,
+                         timeout_s = 30, max_retries = 3) {
+                  args <<- list(timeout_s = timeout_s, max_retries = max_retries)
+                  list(id = 9)
+                })
+
+  metabase_update_card(9, body = list(name = "Neu"),
+                       api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$timeout_s, 30)
+  expect_equal(args$max_retries, 3)
+})
+
 test_that("metabase_get_collection_items reicht den models-Filter als Query durch", {
   args <- NULL
   mockery::stub(metabase_get_collection_items, "metabase_request",

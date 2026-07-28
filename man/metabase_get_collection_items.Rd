@@ -8,7 +8,9 @@ metabase_get_collection_items(
   collection_id,
   api_key,
   base_url = "https://metabase.studyflix.info",
-  models = NULL
+  models = NULL,
+  timeout_s = 30,
+  max_retries = 3
 )
 }
 \arguments{
@@ -19,6 +21,13 @@ metabase_get_collection_items(
 \item{base_url}{Basis-URL der Metabase-Instanz.}
 
 \item{models}{Optionaler Filter, z.B. "card" oder "dataset".}
+
+\item{timeout_s}{Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.}
+
+\item{max_retries}{Maximale Anzahl zusaetzlicher Versuche bei transienten
+Fehlern (429/5xx), nach dem ersten Versuch.}
 }
 \value{
 Paging-Envelope als Liste (\code{$data}, \code{$total}, \code{$models},

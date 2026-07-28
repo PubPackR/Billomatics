@@ -123,11 +123,18 @@ metabase_request <- function(method, path, api_key, base_url,
 #'
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste der Collections.
 #' @export
 metabase_get_collections <- function(api_key,
-                                     base_url = "https://metabase.studyflix.info") {
-  metabase_request("GET", c("api", "collection"), api_key, base_url)
+                                     base_url = "https://metabase.studyflix.info",
+                                     timeout_s = 30, max_retries = 3) {
+  metabase_request("GET", c("api", "collection"), api_key, base_url,
+                   timeout_s = timeout_s, max_retries = max_retries)
 }
 
 #' Inhalte einer Collection lesen
@@ -136,6 +143,11 @@ metabase_get_collections <- function(api_key,
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
 #' @param models Optionaler Filter, z.B. "card" oder "dataset".
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Paging-Envelope als Liste (\code{$data}, \code{$total}, \code{$models},
 #'   \code{$limit}, \code{$offset}). Die eigentlichen Items liegen unter
 #'   \code{$data}; \code{$total} nennt die Gesamtzahl (inkl. ggf. nicht
@@ -143,21 +155,30 @@ metabase_get_collections <- function(api_key,
 #' @export
 metabase_get_collection_items <- function(collection_id, api_key,
                                           base_url = "https://metabase.studyflix.info",
-                                          models = NULL) {
+                                          models = NULL,
+                                          timeout_s = 30, max_retries = 3) {
   query <- if (is.null(models)) NULL else list(models = models)
   metabase_request("GET", c("api", "collection", as.character(collection_id), "items"),
-                   api_key, base_url, query = query)
+                   api_key, base_url, query = query,
+                   timeout_s = timeout_s, max_retries = max_retries)
 }
 
 #' Uebersicht aller Cards lesen
 #'
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste der Cards.
 #' @export
 metabase_get_cards <- function(api_key,
-                               base_url = "https://metabase.studyflix.info") {
-  metabase_request("GET", c("api", "card"), api_key, base_url)
+                               base_url = "https://metabase.studyflix.info",
+                               timeout_s = 30, max_retries = 3) {
+  metabase_request("GET", c("api", "card"), api_key, base_url,
+                   timeout_s = timeout_s, max_retries = max_retries)
 }
 
 #' Vollstaendige Definition einer Card lesen
@@ -165,11 +186,18 @@ metabase_get_cards <- function(api_key,
 #' @param card_id ID der Card.
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste mit der Card-Definition inklusive dataset_query.
 #' @export
 metabase_get_card <- function(card_id, api_key,
-                              base_url = "https://metabase.studyflix.info") {
-  metabase_request("GET", c("api", "card", as.character(card_id)), api_key, base_url)
+                              base_url = "https://metabase.studyflix.info",
+                              timeout_s = 30, max_retries = 3) {
+  metabase_request("GET", c("api", "card", as.character(card_id)), api_key, base_url,
+                   timeout_s = timeout_s, max_retries = max_retries)
 }
 
 #' Tabellen-Metadaten lesen
@@ -179,11 +207,18 @@ metabase_get_card <- function(card_id, api_key,
 #'
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste der Tabellen.
 #' @export
 metabase_get_tables <- function(api_key,
-                                base_url = "https://metabase.studyflix.info") {
-  metabase_request("GET", c("api", "table"), api_key, base_url)
+                                base_url = "https://metabase.studyflix.info",
+                                timeout_s = 30, max_retries = 3) {
+  metabase_request("GET", c("api", "table"), api_key, base_url,
+                   timeout_s = timeout_s, max_retries = max_retries)
 }
 
 #' Card aktualisieren
@@ -198,10 +233,17 @@ metabase_get_tables <- function(api_key,
 #' @param body Liste mit den zu setzenden Feldern.
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
+#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
+#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
+#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste mit der aktualisierten Card.
 #' @export
 metabase_update_card <- function(card_id, body, api_key,
-                                 base_url = "https://metabase.studyflix.info") {
+                                 base_url = "https://metabase.studyflix.info",
+                                 timeout_s = 30, max_retries = 3) {
   metabase_request("PUT", c("api", "card", as.character(card_id)),
-                   api_key, base_url, body = body)
+                   api_key, base_url, body = body,
+                   timeout_s = timeout_s, max_retries = max_retries)
 }
