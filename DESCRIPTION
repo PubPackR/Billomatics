@@ -16,7 +16,7 @@ Imports:
     readr,
     DBI,
     httr,
-    httr2,
+    httr2 (>= 1.0.0),
     jsonlite,
     safer,
     googleAuthR,

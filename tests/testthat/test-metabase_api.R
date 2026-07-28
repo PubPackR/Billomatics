@@ -25,6 +25,10 @@ test_that("metabase_sanitize_card lehnt Nicht-Listen ab", {
   expect_error(metabase_sanitize_card("kein card objekt"), "Liste")
 })
 
+test_that("metabase_sanitize_card lehnt unbenannte Listen ab", {
+  expect_error(metabase_sanitize_card(list(1, 2, 3)), "benannte Liste")
+})
+
 test_that("metabase_request baut Pfad und X-API-Key-Header korrekt", {
   captured <- NULL
 
@@ -53,6 +57,110 @@ test_that("metabase_request baut Pfad und X-API-Key-Header korrekt", {
   printed <- paste(utils::capture.output(print(captured)), collapse = "\n")
   expect_true(grepl("REDACTED", printed, fixed = TRUE))
   expect_false(grepl("geheim", printed, fixed = TRUE))
+})
+
+test_that("metabase_request baut eine einwertige Query korrekt in die URL", {
+  captured <- NULL
+
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured <<- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+
+  metabase_request(
+    "GET", c("api", "collection", "7", "items"),
+    api_key  = "geheim",
+    base_url = "https://metabase.example.com",
+    query    = list(models = "card")
+  )
+
+  expect_equal(captured$url, "https://metabase.example.com/api/collection/7/items?models=card")
+})
+
+test_that("metabase_request baut eine mehrwertige Query mit allen Werten in die URL (Regression fuer .multi='explode')", {
+  captured <- NULL
+
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured <<- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+
+  metabase_request(
+    "GET", c("api", "collection", "7", "items"),
+    api_key  = "geheim",
+    base_url = "https://metabase.example.com",
+    query    = list(models = c("card", "dataset"))
+  )
+
+  expect_equal(
+    captured$url,
+    "https://metabase.example.com/api/collection/7/items?models=card&models=dataset"
+  )
+})
+
+test_that("metabase_request setzt den Body bei PUT-Requests", {
+  captured <- NULL
+
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured <<- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+
+  metabase_request(
+    "PUT", c("api", "card", "9"),
+    api_key  = "geheim",
+    base_url = "https://metabase.example.com",
+    body     = list(name = "Neu")
+  )
+
+  # Der serialisierte Body selbst ist ueber das request-Objekt nicht direkt
+  # einsehbar (httr2 haelt ihn intern als Roh-Datenstruktur + Typ vor), daher
+  # pruefen wir Praesenz und Typ des Body-Elements auf dem gebauten Request.
+  expect_false(is.null(captured$body))
+  expect_equal(captured$body$type, "json")
+  expect_equal(captured$body$data$name, "Neu")
+})
+
+test_that("metabase_request verlangt einen Pfad", {
+  expect_error(
+    metabase_request("GET", NULL, api_key = "k", base_url = "https://x"),
+    "Pfad"
+  )
+  expect_error(
+    metabase_request("GET", character(0), api_key = "k", base_url = "https://x"),
+    "Pfad"
+  )
+})
+
+test_that("metabase_request verlangt Key und Base-URL (character(0)-Base-URL)", {
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k", base_url = character(0)),
+    "Base-URL"
+  )
+})
+
+test_that("metabase_request haengt bei Fehlern >=400 (ausser 401/403) den Response-Body an", {
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 400L)
+  mockery::stub(metabase_request, "httr2::resp_body_string",
+                function(resp, ...) '{"errors":{"name":"darf nicht leer sein"}}')
+
+  err <- expect_error(
+    metabase_request("PUT", c("api", "card", "9"),
+                     api_key = "geheim", base_url = "https://metabase.example.com")
+  )
+
+  expect_match(conditionMessage(err), "400")
+  expect_match(conditionMessage(err), "darf nicht leer sein", fixed = TRUE)
+  expect_false(grepl("geheim", conditionMessage(err), fixed = TRUE))
 })
 
 test_that("metabase_request meldet 401 verstaendlich und OHNE den Key", {
@@ -129,32 +237,44 @@ test_that("metabase_update_card sendet PUT mit Body", {
 test_that("metabase_get_collections ruft den richtigen Pfad auf", {
   args <- NULL
   mockery::stub(metabase_get_collections, "metabase_request",
-                function(method, path, ...) { args <<- list(method = method, path = path); list() })
+                function(method, path, ...) {
+                  args <<- list(method = method, path = path)
+                  list(id = 1, name = "Sales")
+                })
 
-  metabase_get_collections(api_key = "k", base_url = "https://mb.example.com")
+  res <- metabase_get_collections(api_key = "k", base_url = "https://mb.example.com")
 
   expect_equal(args$method, "GET")
   expect_equal(args$path, c("api", "collection"))
+  expect_equal(res, list(id = 1, name = "Sales"))
 })
 
 test_that("metabase_get_cards ruft den richtigen Pfad auf", {
   args <- NULL
   mockery::stub(metabase_get_cards, "metabase_request",
-                function(method, path, ...) { args <<- list(method = method, path = path); list() })
+                function(method, path, ...) {
+                  args <<- list(method = method, path = path)
+                  list(id = 2, name = "Umsatz")
+                })
 
-  metabase_get_cards(api_key = "k", base_url = "https://mb.example.com")
+  res <- metabase_get_cards(api_key = "k", base_url = "https://mb.example.com")
 
   expect_equal(args$method, "GET")
   expect_equal(args$path, c("api", "card"))
+  expect_equal(res, list(id = 2, name = "Umsatz"))
 })
 
 test_that("metabase_get_tables ruft den richtigen Pfad auf", {
   args <- NULL
   mockery::stub(metabase_get_tables, "metabase_request",
-                function(method, path, ...) { args <<- list(method = method, path = path); list() })
+                function(method, path, ...) {
+                  args <<- list(method = method, path = path)
+                  list(id = 3, name = "orders")
+                })
 
-  metabase_get_tables(api_key = "k", base_url = "https://mb.example.com")
+  res <- metabase_get_tables(api_key = "k", base_url = "https://mb.example.com")
 
   expect_equal(args$method, "GET")
   expect_equal(args$path, c("api", "table"))
+  expect_equal(res, list(id = 3, name = "orders"))
 })
