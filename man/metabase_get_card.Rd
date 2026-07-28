@@ -19,9 +19,17 @@ metabase_get_card(
 
 \item{base_url}{Basis-URL der Metabase-Instanz.}
 
-\item{timeout_s}{Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.}
+\item{timeout_s}{Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+dass die maximale Gesamtwartezeit NICHT nur
+\code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+\code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+(~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+\code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.}
 
 \item{max_retries}{Maximale Anzahl zusaetzlicher Versuche bei transienten
 Fehlern (429/5xx), nach dem ersten Versuch.}

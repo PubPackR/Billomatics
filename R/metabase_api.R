@@ -46,10 +46,22 @@ metabase_sanitize_card <- function(card, dynamic_fields = METABASE_DYNAMIC_FIELD
 #' @param query Optionale Named List mit Query-Parametern.
 #' @param body Optionaler Request-Body (wird als JSON gesendet).
 #' @param max_retries Maximale Wiederholungen bei transienten Fehlern.
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle
-#'   Versuche hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen
-#'   kann, ist die maximal moegliche Gesamtwartezeit ein Vielfaches von
-#'   \code{timeout_s}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle
+#'   Versuche hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch \code{i} (i = 1, 2, ...) eine randomisierte
+#'   Exponential-Backoff-Pause von bis zu \code{min(2^i, 60)} Sekunden ein.
+#'   Die maximal moegliche Gesamtwartezeit ist daher NICHT nur
+#'   \code{timeout_s * (max_retries + 1)}, sondern dieser Wert PLUS die Summe
+#'   dieser Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall rund 120 s reine
+#'   Timeouts plus bis zu ca. 14 s Backoff (2 + 4 + 8 s), also insgesamt bis
+#'   zu ca. 134 s (~2,3 Minuten). Die 60-Sekunden-Deckelung pro Backoff-Pause
+#'   greift erst bei deutlich hoeheren \code{max_retries} (ab \code{2^i > 60},
+#'   also ab dem 6./7. Wiederholungsversuch) und spielt bei den Defaults noch
+#'   keine Rolle. Wer eine enge Obergrenze fuer die Gesamtwartezeit braucht,
+#'   sollte sowohl \code{timeout_s} als auch \code{max_retries} senken;
+#'   \code{max_retries = 0} entfernt den Backoff vollstaendig (nur ein
+#'   einziger Versuch, keine Wiederholung).
 #' @return Geparste JSON-Antwort als Liste.
 #' @keywords internal
 metabase_request <- function(method, path, api_key, base_url,
@@ -123,9 +135,17 @@ metabase_request <- function(method, path, api_key, base_url,
 #'
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+#'   hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+#'   dass die maximale Gesamtwartezeit NICHT nur
+#'   \code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+#'   Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+#'   (~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+#'   \code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+#'   enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+#'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste der Collections.
@@ -143,9 +163,17 @@ metabase_get_collections <- function(api_key,
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
 #' @param models Optionaler Filter, z.B. "card" oder "dataset".
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+#'   hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+#'   dass die maximale Gesamtwartezeit NICHT nur
+#'   \code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+#'   Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+#'   (~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+#'   \code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+#'   enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+#'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Paging-Envelope als Liste (\code{$data}, \code{$total}, \code{$models},
@@ -167,9 +195,17 @@ metabase_get_collection_items <- function(collection_id, api_key,
 #'
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+#'   hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+#'   dass die maximale Gesamtwartezeit NICHT nur
+#'   \code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+#'   Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+#'   (~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+#'   \code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+#'   enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+#'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste der Cards.
@@ -186,9 +222,17 @@ metabase_get_cards <- function(api_key,
 #' @param card_id ID der Card.
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+#'   hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+#'   dass die maximale Gesamtwartezeit NICHT nur
+#'   \code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+#'   Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+#'   (~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+#'   \code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+#'   enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+#'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste mit der Card-Definition inklusive dataset_query.
@@ -207,9 +251,17 @@ metabase_get_card <- function(card_id, api_key,
 #'
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+#'   hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+#'   dass die maximale Gesamtwartezeit NICHT nur
+#'   \code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+#'   Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+#'   (~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+#'   \code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+#'   enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+#'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste der Tabellen.
@@ -233,9 +285,17 @@ metabase_get_tables <- function(api_key,
 #' @param body Liste mit den zu setzenden Feldern.
 #' @param api_key Metabase-API-Key.
 #' @param base_url Basis-URL der Metabase-Instanz.
-#' @param timeout_s Timeout in Sekunden PRO Versuch (nicht ueber alle Versuche
-#'   hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen kann, ist
-#'   die maximale Gesamtwartezeit ungefaehr \code{timeout_s * (max_retries + 1)}.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH (nicht ueber alle Versuche
+#'   hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+#'   Wiederholungsversuch eine randomisierte Exponential-Backoff-Pause ein, so
+#'   dass die maximale Gesamtwartezeit NICHT nur
+#'   \code{timeout_s * (max_retries + 1)} ist, sondern dieser Wert plus die
+#'   Summe der Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+#'   \code{max_retries = 3}) sind das im schlechtesten Fall bis zu ca. 134 s
+#'   (~2,3 Minuten) statt der reinen 120 s Timeout-Summe (siehe
+#'   \code{\link{metabase_request}} fuer die genaue Herleitung). Fuer eine
+#'   enge Obergrenze sowohl \code{timeout_s} als auch \code{max_retries}
+#'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
 #' @return Liste mit der aktualisierten Card.

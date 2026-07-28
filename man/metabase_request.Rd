@@ -30,10 +30,22 @@ metabase_request(
 
 \item{max_retries}{Maximale Wiederholungen bei transienten Fehlern.}
 
-\item{timeout_s}{Timeout in Sekunden PRO Versuch (nicht ueber alle
-Versuche hinweg). Da \code{max_retries} zusaetzliche Versuche ausloesen
-kann, ist die maximal moegliche Gesamtwartezeit ein Vielfaches von
-\code{timeout_s}.}
+\item{timeout_s}{Timeout in Sekunden PRO VERSUCH (nicht ueber alle
+Versuche hinweg). \code{httr2::req_retry()} legt zusaetzlich vor jedem
+Wiederholungsversuch \code{i} (i = 1, 2, ...) eine randomisierte
+Exponential-Backoff-Pause von bis zu \code{min(2^i, 60)} Sekunden ein.
+Die maximal moegliche Gesamtwartezeit ist daher NICHT nur
+\code{timeout_s * (max_retries + 1)}, sondern dieser Wert PLUS die Summe
+dieser Backoff-Pausen. Bei den Defaults (\code{timeout_s = 30},
+\code{max_retries = 3}) sind das im schlechtesten Fall rund 120 s reine
+Timeouts plus bis zu ca. 14 s Backoff (2 + 4 + 8 s), also insgesamt bis
+zu ca. 134 s (~2,3 Minuten). Die 60-Sekunden-Deckelung pro Backoff-Pause
+greift erst bei deutlich hoeheren \code{max_retries} (ab \code{2^i > 60},
+also ab dem 6./7. Wiederholungsversuch) und spielt bei den Defaults noch
+keine Rolle. Wer eine enge Obergrenze fuer die Gesamtwartezeit braucht,
+sollte sowohl \code{timeout_s} als auch \code{max_retries} senken;
+\code{max_retries = 0} entfernt den Backoff vollstaendig (nur ein
+einziger Versuch, keine Wiederholung).}
 }
 \value{
 Geparste JSON-Antwort als Liste.
