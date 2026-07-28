@@ -84,3 +84,44 @@ test_that("metabase_request verlangt Key und Base-URL", {
     "API-Key"
   )
 })
+
+test_that("metabase_get_card ruft den richtigen Pfad auf", {
+  args <- NULL
+  mockery::stub(metabase_get_card, "metabase_request",
+                function(method, path, ...) { args <<- list(method = method, path = path); list(id = 42) })
+
+  res <- metabase_get_card(42, api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$method, "GET")
+  expect_equal(args$path, c("api", "card", "42"))
+  expect_equal(res$id, 42)
+})
+
+test_that("metabase_get_collection_items reicht den models-Filter als Query durch", {
+  args <- NULL
+  mockery::stub(metabase_get_collection_items, "metabase_request",
+                function(method, path, api_key, base_url, query = NULL, ...) {
+                  args <<- list(path = path, query = query); list(data = list())
+                })
+
+  metabase_get_collection_items(7, api_key = "k", base_url = "https://mb.example.com",
+                                models = "card")
+
+  expect_equal(args$path, c("api", "collection", "7", "items"))
+  expect_equal(args$query$models, "card")
+})
+
+test_that("metabase_update_card sendet PUT mit Body", {
+  args <- NULL
+  mockery::stub(metabase_update_card, "metabase_request",
+                function(method, path, api_key, base_url, query = NULL, body = NULL, ...) {
+                  args <<- list(method = method, path = path, body = body); list(id = 9)
+                })
+
+  metabase_update_card(9, body = list(name = "Neu"),
+                       api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$method, "PUT")
+  expect_equal(args$path, c("api", "card", "9"))
+  expect_equal(args$body$name, "Neu")
+})

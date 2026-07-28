@@ -90,3 +90,84 @@ metabase_request <- function(method, path, api_key, base_url,
 
   httr2::resp_body_json(resp)
 }
+
+#' Alle sichtbaren Metabase-Collections lesen
+#'
+#' Liefert die Collections, die der verwendete API-Key sehen darf. Der Umfang
+#' wird ueber die Berechtigungen des Keys gesteuert, nicht ueber eine Whitelist.
+#'
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @return Liste der Collections.
+#' @export
+metabase_get_collections <- function(api_key,
+                                     base_url = "https://metabase.studyflix.info") {
+  metabase_request("GET", c("api", "collection"), api_key, base_url)
+}
+
+#' Inhalte einer Collection lesen
+#'
+#' @param collection_id ID der Collection.
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @param models Optionaler Filter, z.B. "card" oder "dataset".
+#' @return Liste mit den Items der Collection.
+#' @export
+metabase_get_collection_items <- function(collection_id, api_key,
+                                          base_url = "https://metabase.studyflix.info",
+                                          models = NULL) {
+  query <- if (is.null(models)) NULL else list(models = models)
+  metabase_request("GET", c("api", "collection", as.character(collection_id), "items"),
+                   api_key, base_url, query = query)
+}
+
+#' Uebersicht aller Cards lesen
+#'
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @return Liste der Cards.
+#' @export
+metabase_get_cards <- function(api_key,
+                               base_url = "https://metabase.studyflix.info") {
+  metabase_request("GET", c("api", "card"), api_key, base_url)
+}
+
+#' Vollstaendige Definition einer Card lesen
+#'
+#' @param card_id ID der Card.
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @return Liste mit der Card-Definition inklusive dataset_query.
+#' @export
+metabase_get_card <- function(card_id, api_key,
+                              base_url = "https://metabase.studyflix.info") {
+  metabase_request("GET", c("api", "card", as.character(card_id)), api_key, base_url)
+}
+
+#' Tabellen-Metadaten lesen
+#'
+#' Wird gebraucht, um in GUI-Fragen (MBQL) die numerische source-table-ID in
+#' einen lesbaren Tabellennamen aufzuloesen.
+#'
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @return Liste der Tabellen.
+#' @export
+metabase_get_tables <- function(api_key,
+                                base_url = "https://metabase.studyflix.info") {
+  metabase_request("GET", c("api", "table"), api_key, base_url)
+}
+
+#' Card aktualisieren
+#'
+#' @param card_id ID der Card.
+#' @param body Liste mit den zu setzenden Feldern.
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @return Liste mit der aktualisierten Card.
+#' @export
+metabase_update_card <- function(card_id, body, api_key,
+                                 base_url = "https://metabase.studyflix.info") {
+  metabase_request("PUT", c("api", "card", as.character(card_id)),
+                   api_key, base_url, body = body)
+}
