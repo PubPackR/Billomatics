@@ -33,7 +33,7 @@ metabase_request(
 Geparste JSON-Antwort als Liste.
 }
 \description{
-Dünner Wrapper um httr2 mit Retry bei transienten Fehlern (429/5xx) und
+Duenner Wrapper um httr2 mit Retry bei transienten Fehlern (429/5xx) und
 klaren Fehlermeldungen. Der API-Key wird NIE in eine Fehlermeldung
 uebernommen.
 }

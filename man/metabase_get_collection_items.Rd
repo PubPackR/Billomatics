@@ -21,7 +21,10 @@ metabase_get_collection_items(
 \item{models}{Optionaler Filter, z.B. "card" oder "dataset".}
 }
 \value{
-Liste mit den Items der Collection.
+Paging-Envelope als Liste (\code{$data}, \code{$total}, \code{$models},
+\code{$limit}, \code{$offset}). Die eigentlichen Items liegen unter
+\code{$data}; \code{$total} nennt die Gesamtzahl (inkl. ggf. nicht
+zurueckgegebener Items).
 }
 \description{
 Inhalte einer Collection lesen

@@ -24,5 +24,9 @@ metabase_update_card(
 Liste mit der aktualisierten Card.
 }
 \description{
-Card aktualisieren
+Fuehrt ein PUT auf die Card aus. Das Update ist last-write-wins: es gibt
+keine Konflikterkennung gegenueber zwischenzeitlichen Aenderungen anderer
+Nutzer:innen. Der Aufrufer ist dafuer verantwortlich, in \code{body} nur
+die tatsaechlich zu schreibenden Felder zu uebergeben, da alle
+mitgesendeten Felder ohne Rueckfrage uebernommen werden.
 }
