@@ -24,3 +24,50 @@ test_that("metabase_sanitize_card laesst Karten ohne dynamische Felder unveraend
 test_that("metabase_sanitize_card lehnt Nicht-Listen ab", {
   expect_error(metabase_sanitize_card("kein card objekt"), "Liste")
 })
+
+test_that("metabase_request baut Pfad und X-API-Key-Header korrekt", {
+  captured <- NULL
+
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured <<- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+
+  res <- metabase_request(
+    "GET", c("api", "card", "42"),
+    api_key  = "geheim",
+    base_url = "https://metabase.example.com"
+  )
+
+  expect_true(res$ok)
+  expect_equal(captured$url, "https://metabase.example.com/api/card/42")
+  expect_equal(captured$headers[["X-API-Key"]], "geheim")
+})
+
+test_that("metabase_request meldet 401 verstaendlich und OHNE den Key", {
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 401L)
+
+  err <- expect_error(
+    metabase_request("GET", c("api", "collection"),
+                     api_key = "SUPERGEHEIM", base_url = "https://metabase.example.com")
+  )
+
+  expect_match(conditionMessage(err), "401")
+  expect_false(grepl("SUPERGEHEIM", conditionMessage(err), fixed = TRUE))
+})
+
+test_that("metabase_request verlangt Key und Base-URL", {
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "", base_url = "https://x"),
+    "API-Key"
+  )
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k", base_url = ""),
+    "Base-URL"
+  )
+})
