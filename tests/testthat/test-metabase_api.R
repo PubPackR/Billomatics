@@ -43,7 +43,16 @@ test_that("metabase_request baut Pfad und X-API-Key-Header korrekt", {
 
   expect_true(res$ok)
   expect_equal(captured$url, "https://metabase.example.com/api/card/42")
-  expect_equal(captured$headers[["X-API-Key"]], "geheim")
+
+  # Der Header wird tatsaechlich mit dem korrekten Wert gesetzt ...
+  real_headers <- httr2:::headers_flatten(captured$headers, redact = FALSE)
+  expect_equal(real_headers[["X-API-Key"]], "geheim")
+
+  # ... ist aber redacted, sobald der Request geprintet/gestr()t wird.
+  expect_true(httr2:::is_redacted(captured$headers)[["X-API-Key"]])
+  printed <- paste(utils::capture.output(print(captured)), collapse = "\n")
+  expect_true(grepl("REDACTED", printed, fixed = TRUE))
+  expect_false(grepl("geheim", printed, fixed = TRUE))
 })
 
 test_that("metabase_request meldet 401 verstaendlich und OHNE den Key", {
@@ -69,5 +78,9 @@ test_that("metabase_request verlangt Key und Base-URL", {
   expect_error(
     metabase_request("GET", c("api", "card"), api_key = "k", base_url = ""),
     "Base-URL"
+  )
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = character(0), base_url = "https://x"),
+    "API-Key"
   )
 })

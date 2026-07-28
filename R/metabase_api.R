@@ -48,16 +48,16 @@ metabase_sanitize_card <- function(card, dynamic_fields = METABASE_DYNAMIC_FIELD
 metabase_request <- function(method, path, api_key, base_url,
                              query = NULL, body = NULL, max_retries = 3) {
 
-  if (is.null(api_key) || !nzchar(api_key[1])) {
+  if (is.null(api_key) || length(api_key) == 0 || !nzchar(api_key[1])) {
     stop("Metabase-API-Key fehlt oder ist leer.", call. = FALSE)
   }
-  if (is.null(base_url) || !nzchar(base_url[1])) {
+  if (is.null(base_url) || length(base_url) == 0 || !nzchar(base_url[1])) {
     stop("Metabase-Base-URL fehlt oder ist leer.", call. = FALSE)
   }
 
   req <- httr2::request(base_url)
   req <- do.call(httr2::req_url_path_append, c(list(req), as.list(path)))
-  req <- httr2::req_headers(req, "X-API-Key" = api_key[1])
+  req <- httr2::req_headers_redacted(req, "X-API-Key" = api_key[1])
   req <- httr2::req_method(req, method)
 
   if (!is.null(query)) {
