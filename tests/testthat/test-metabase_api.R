@@ -125,3 +125,36 @@ test_that("metabase_update_card sendet PUT mit Body", {
   expect_equal(args$path, c("api", "card", "9"))
   expect_equal(args$body$name, "Neu")
 })
+
+test_that("metabase_get_collections ruft den richtigen Pfad auf", {
+  args <- NULL
+  mockery::stub(metabase_get_collections, "metabase_request",
+                function(method, path, ...) { args <<- list(method = method, path = path); list() })
+
+  metabase_get_collections(api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$method, "GET")
+  expect_equal(args$path, c("api", "collection"))
+})
+
+test_that("metabase_get_cards ruft den richtigen Pfad auf", {
+  args <- NULL
+  mockery::stub(metabase_get_cards, "metabase_request",
+                function(method, path, ...) { args <<- list(method = method, path = path); list() })
+
+  metabase_get_cards(api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$method, "GET")
+  expect_equal(args$path, c("api", "card"))
+})
+
+test_that("metabase_get_tables ruft den richtigen Pfad auf", {
+  args <- NULL
+  mockery::stub(metabase_get_tables, "metabase_request",
+                function(method, path, ...) { args <<- list(method = method, path = path); list() })
+
+  metabase_get_tables(api_key = "k", base_url = "https://mb.example.com")
+
+  expect_equal(args$method, "GET")
+  expect_equal(args$path, c("api", "table"))
+})
