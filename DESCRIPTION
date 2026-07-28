@@ -35,6 +35,8 @@ Imports:
     yaml,
     openxlsx2,
     pool
+Remotes:
+    url::https://cran.r-project.org/src/contrib/Archive/log4r/log4r_0.4.4.tar.gz
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
