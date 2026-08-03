@@ -39,7 +39,7 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -48,6 +48,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     `google sheet` = authentication_GSheet,
     asana = authentication_asana,
     msgraph = authentication_msgraph,
+    msgraph_scoped_app = authentication_msgraph_scoped_app,
+    msgraph_delegated = authentication_msgraph_delegated,
     brevo = authentication_brevo,
     `google analytics` = authentication_Google_Analytics,
     bonusDB = authentication_bonus_db,
@@ -244,6 +246,40 @@ authentication_msgraph <-  function(args) {
   }
 
   safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+}
+
+#' authentication_msgraph_scoped_app
+#'
+#' Decryptet das Client-Secret der gescopten app-only-MSGraph-App (neuer Weg).
+#' @param args FlowForce-Decryption-Key.
+#' @return App-Secret als String.
+authentication_msgraph_scoped_app <- function(args) {
+  # ---- start ---- #
+  encrypted_api_key <- readLines("../../keys/Microsoft365R/msgraph_scoped_app.txt")
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph Scoped App eingeben: ")
+  } else {
+    decrypt_key <- args
+  }
+  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+}
+
+#' authentication_msgraph_delegated
+#'
+#' Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs.
+#' @param args FlowForce-Decryption-Key.
+#' @return Named list(client_secret, store_key).
+authentication_msgraph_delegated <- function(args) {
+  # ---- start ---- #
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph Delegated eingeben: ")
+  } else {
+    decrypt_key <- args
+  }
+  list(
+    client_secret = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_secret.txt"), key = decrypt_key),
+    store_key     = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_storekey.txt"), key = decrypt_key)
+  )
 }
 
 #' authentication_brevo
