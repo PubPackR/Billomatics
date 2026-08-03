@@ -107,9 +107,16 @@ metabase_request <- function(method, path, api_key, base_url,
   route  <- paste0("/", paste(path, collapse = "/"))
 
   if (status %in% c(401L, 403L)) {
+    body_text <- tryCatch(httr2::resp_body_string(resp), error = function(e) NULL)
+    detail <- if (!is.null(body_text) && nzchar(body_text)) {
+      paste0(" Antwort: ", substr(body_text, 1, 500))
+    } else {
+      ""
+    }
     stop("Metabase-API: Authentifizierung fehlgeschlagen (HTTP ", status,
          ") fuer ", route, ". Bitte den Metabase-API-Key und dessen ",
-         "Berechtigungen pruefen.", call. = FALSE)
+         "Berechtigungen pruefen - und pruefen, ob die Antwort ueberhaupt von ",
+         "Metabase stammt.", detail, call. = FALSE)
   }
   if (status >= 400L) {
     body_text <- tryCatch(
@@ -306,4 +313,38 @@ metabase_update_card <- function(card_id, body, api_key,
   metabase_request("PUT", c("api", "card", as.character(card_id)),
                    api_key, base_url, body = body,
                    timeout_s = timeout_s, max_retries = max_retries)
+}
+
+#' Eine MBQL-Abfrage von Metabase nach SQL kompilieren lassen
+#'
+#' Metabase kann eine im grafischen Editor gebaute Frage serverseitig in die
+#' SQL uebersetzen, die es selbst ausfuehren wuerde. Damit lassen sich auch
+#' GUI-Fragen als SQL-Vorbild verwenden, statt sie als "ohne SQL" fuehren zu
+#' muessen.
+#'
+#' Fragen mit Parametern oder Template-Tags koennen fehlschlagen; der Aufrufer
+#' entscheidet, ob das ein Abbruch ist.
+#'
+#' @param dataset_query Die Query-Definition der Card, so wie Metabase sie in
+#'   \code{card$dataset_query} liefert (Liste, kein JSON-String).
+#' @param api_key Metabase-API-Key.
+#' @param base_url Basis-URL der Metabase-Instanz.
+#' @param timeout_s Timeout in Sekunden PRO VERSUCH.
+#' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
+#'   Fehlern (429/5xx), nach dem ersten Versuch.
+#' @return Character-Skalar mit der kompilierten SQL.
+#' @export
+metabase_compile_query <- function(dataset_query, api_key,
+                                   base_url = "https://metabase.studyflix.info",
+                                   timeout_s = 30, max_retries = 3) {
+  res <- metabase_request("POST", c("api", "dataset", "native"),
+                          api_key, base_url, body = dataset_query,
+                          timeout_s = timeout_s, max_retries = max_retries)
+
+  sql <- res[["query"]]
+  if (is.null(sql) || length(sql) == 0 || !nzchar(as.character(sql)[1])) {
+    stop("Metabase-API: Antwort auf /api/dataset/native enthaelt kein Feld 'query'.",
+         call. = FALSE)
+  }
+  as.character(sql)[1]
 }

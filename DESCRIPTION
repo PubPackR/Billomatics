@@ -48,5 +48,6 @@ Suggests:
     DT,
     msoc,
     RSQLite,
-    withr
+    withr,
+    webfakes
 Config/testthat/edition: 3
