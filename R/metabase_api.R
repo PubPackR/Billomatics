@@ -332,7 +332,11 @@ metabase_update_card <- function(card_id, body, api_key,
 #' @param timeout_s Timeout in Sekunden PRO VERSUCH.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
-#' @return Character-Skalar mit der kompilierten SQL.
+#' @return Character-Skalar mit der kompilierten SQL. Bricht mit \code{stop()}
+#'   ab, wenn das Feld \code{query} in der Antwort fehlt, leer ist oder kein
+#'   Text ist (z.B. eine verschachtelte Liste durch eine API-Aenderung) -
+#'   damit im Fehlerfall sauber abgebrochen wird, statt still etwas Falsches
+#'   als SQL zurueckzugeben.
 #' @export
 metabase_compile_query <- function(dataset_query, api_key,
                                    base_url = "https://metabase.studyflix.info",
@@ -342,9 +346,21 @@ metabase_compile_query <- function(dataset_query, api_key,
                           timeout_s = timeout_s, max_retries = max_retries)
 
   sql <- res[["query"]]
-  if (is.null(sql) || length(sql) == 0 || !nzchar(as.character(sql)[1])) {
+  if (is.null(sql) || length(sql) == 0) {
     stop("Metabase-API: Antwort auf /api/dataset/native enthaelt kein Feld 'query'.",
          call. = FALSE)
   }
-  as.character(sql)[1]
+  # Erst auf den Typ pruefen, dann erst umwandeln: as.character() wuerde aus
+  # z.B. einer verschachtelten Liste (durch eine API-Aenderung) still
+  # irgendeinen Text machen und den als SQL zurueckgeben. Die Meldung nennt
+  # nur den Typ, nicht den Wert - der koennte beliebig gross sein.
+  if (!is.character(sql)) {
+    stop("Metabase-API: Feld 'query' in der Antwort auf /api/dataset/native ist kein Text, ",
+         "sondern vom Typ '", class(sql)[1], "'.", call. = FALSE)
+  }
+  if (!nzchar(sql[1])) {
+    stop("Metabase-API: Antwort auf /api/dataset/native enthaelt kein Feld 'query'.",
+         call. = FALSE)
+  }
+  sql[1]
 }

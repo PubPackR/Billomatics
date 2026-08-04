@@ -26,7 +26,11 @@ metabase_compile_query(
 Fehlern (429/5xx), nach dem ersten Versuch.}
 }
 \value{
-Character-Skalar mit der kompilierten SQL.
+Character-Skalar mit der kompilierten SQL. Bricht mit \code{stop()}
+ab, wenn das Feld \code{query} in der Antwort fehlt, leer ist oder kein
+Text ist (z.B. eine verschachtelte Liste durch eine API-Aenderung) -
+damit im Fehlerfall sauber abgebrochen wird, statt still etwas Falsches
+als SQL zurueckzugeben.
 }
 \description{
 Metabase kann eine im grafischen Editor gebaute Frage serverseitig in die
