@@ -293,6 +293,12 @@ postgres_connect <- function(postgres_keys = NULL,
       # Bei update_local_tables = TRUE: Funktionen trotzdem aktualisieren
       if (update_local_tables && !is.null(ssh_session_for_check)) {
         message("🔄 Aktualisiere Funktionen...")
+        sync_schemas_to_local(
+          con = con,
+          ssh_session = ssh_session_for_check[[1]],
+          postgres_keys = postgres_keys_for_check,
+          verbose = verbose
+        )
         load_functions_to_new_db(
           con = con,
           function_string = get_all_functions(ssh_session_for_check[[1]], postgres_keys_for_check),
@@ -541,7 +547,12 @@ postgres_pull_production_tables <- function(table = NULL,
   postgres_keys <- get_postgres_keys_via_ssh(ssh_session = ssh_session, decrypt_key = decrypt_key)
 
   # Lade Funktionen in die lokale DB, wenn es die erste Tabelle ist
-  if (load_functions_to_db) { load_functions_to_new_db(con = local_con, function_string = get_all_functions(ssh_session[[1]], postgres_keys), verbose = verbose) }
+  # Vorher alle Schemas der Produktion lokal sicherstellen, damit schema-qualifizierte
+  # Funktionsdefinitionen (z. B. config.xxx) nicht an fehlenden Schemas scheitern
+  if (load_functions_to_db) {
+    sync_schemas_to_local(con = local_con, ssh_session = ssh_session[[1]], postgres_keys = postgres_keys, verbose = verbose)
+    load_functions_to_new_db(con = local_con, function_string = get_all_functions(ssh_session[[1]], postgres_keys), verbose = verbose)
+  }
 
   table_is_view <- test_view_or_table(ssh_session[[1]], postgres_keys, table)
 
@@ -1697,6 +1708,61 @@ load_functions_to_new_db <- function(function_string, con, verbose = FALSE) {
       message(sprintf("⚠️ %d functions failed to load", error_count))
     }
   }
+}
+
+#' Alle Schemas der Produktion lokal sicherstellen
+#'
+#' Fragt die auf der Produktions-DB vorhandenen (Nicht-System-)Schemas ab und legt
+#' sie lokal per \code{CREATE SCHEMA IF NOT EXISTS} an. Idempotent. Wird vor dem Laden
+#' der Funktionen aufgerufen, damit schema-qualifizierte Funktionsdefinitionen
+#' (z. B. \code{config.xxx}) nicht an einem lokal noch fehlenden Schema scheitern.
+#'
+#' @param con Lokale DBI-Verbindung, in der die Schemas angelegt werden.
+#' @param ssh_session Aktive SSH-Session (Session-Objekt, nicht die Liste) zur Produktion.
+#' @param postgres_keys Zerlegte Produktions-Keys (Passwort, User, DB, Host, Port).
+#' @param verbose Logical. Bei \code{TRUE} wird die Anzahl sichergestellter Schemas gemeldet.
+#'
+#' @return \code{invisible(NULL)}. Aufruf erfolgt wegen des Seiteneffekts (Schema-Erstellung).
+#'
+#' @keywords internal
+sync_schemas_to_local <- function(con, ssh_session, postgres_keys, verbose = FALSE) {
+
+  # Alle Nicht-System-Schemas der Produktion abfragen
+  schema_query <- "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema') AND schema_name NOT LIKE 'pg_%' ORDER BY schema_name;"
+
+  schemas_df <- tryCatch({
+    execute_psql_query(schema_query, ssh_session, postgres_keys)
+  }, error = function(e) {
+    if (verbose) message(sprintf("⚠️ Schema-Abgleich fehlgeschlagen: %s", e$message))
+    NULL
+  })
+
+  if (is.null(schemas_df) || nrow(schemas_df) == 0 || !"schema_name" %in% names(schemas_df)) {
+    return(invisible(NULL))
+  }
+
+  # NOTICE-Reset über on.exit, damit er auch bei einem Fehler garantiert läuft
+  DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
+  on.exit(try(DBI::dbExecute(con, "SET client_min_messages TO NOTICE;"), silent = TRUE), add = TRUE)
+
+  # Jedes Schema einzeln absichern: ein fehlschlagendes CREATE darf die übrigen nicht killen
+  created <- 0
+  for (schema in schemas_df$schema_name) {
+    schema <- trimws(schema)
+    if (nchar(schema) == 0) next
+    tryCatch({
+      DBI::dbExecute(con, sprintf('CREATE SCHEMA IF NOT EXISTS "%s";', schema))
+      created <- created + 1
+    }, error = function(e) {
+      if (verbose) message(sprintf("⚠️ Schema '%s' konnte nicht angelegt werden: %s", schema, e$message))
+    })
+  }
+
+  if (verbose) {
+    message(sprintf("🗂️ %d Schema(s) lokal sichergestellt", created))
+  }
+
+  invisible(NULL)
 }
 
 parse_pg_meta <- function(text_output) {
