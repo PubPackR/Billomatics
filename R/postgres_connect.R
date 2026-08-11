@@ -1741,16 +1741,22 @@ sync_schemas_to_local <- function(con, ssh_session, postgres_keys, verbose = FAL
     return(invisible(NULL))
   }
 
+  # NOTICE-Reset über on.exit, damit er auch bei einem Fehler garantiert läuft
   DBI::dbExecute(con, "SET client_min_messages TO WARNING;")
+  on.exit(try(DBI::dbExecute(con, "SET client_min_messages TO NOTICE;"), silent = TRUE), add = TRUE)
+
+  # Jedes Schema einzeln absichern: ein fehlschlagendes CREATE darf die übrigen nicht killen
   created <- 0
   for (schema in schemas_df$schema_name) {
     schema <- trimws(schema)
-    if (nchar(schema) > 0) {
+    if (nchar(schema) == 0) next
+    tryCatch({
       DBI::dbExecute(con, sprintf('CREATE SCHEMA IF NOT EXISTS "%s";', schema))
       created <- created + 1
-    }
+    }, error = function(e) {
+      if (verbose) message(sprintf("⚠️ Schema '%s' konnte nicht angelegt werden: %s", schema, e$message))
+    })
   }
-  DBI::dbExecute(con, "SET client_min_messages TO NOTICE;")
 
   if (verbose) {
     message(sprintf("🗂️ %d Schema(s) lokal sichergestellt", created))
