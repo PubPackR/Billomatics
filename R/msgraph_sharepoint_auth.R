@@ -104,3 +104,95 @@ msgraph_sp_refresh <- function(tenant_id, client_id, client_secret,
   }
   parsed
 }
+
+# --- Token-Provider mit Session-Cache und Rotation --------------------------
+
+.msgraph_sp_provider_cache <- new.env(parent = emptyenv())
+
+#' Provider-Cache leeren (intern, fuer Tests)
+#' @noRd
+msgraph_sp_provider_cache_clear <- function() {
+  # ---- start ---- #
+  rm(list = ls(.msgraph_sp_provider_cache), envir = .msgraph_sp_provider_cache)
+  invisible(NULL)
+}
+
+#' Provider-Closure bauen (intern)
+#' @noRd
+msgraph_sp_provider_build <- function(auth, scopes, refresh_buffer_seconds,
+                                      warn_inactive_days) {
+  # ---- start ---- #
+  cache <- new.env(parent = emptyenv())
+  cache$token <- NULL
+  cache$exp <- as.POSIXct(NA)
+
+  function(force_refresh = FALSE) {
+    now <- Sys.time()
+    needs_refresh <- force_refresh ||
+      is.null(cache$token) ||
+      is.na(cache$exp) ||
+      as.numeric(difftime(cache$exp, now, units = "secs")) < refresh_buffer_seconds
+    if (!needs_refresh) {
+      return(cache$token)
+    }
+
+    store <- msgraph_sp_store_read(auth$store_path, auth$store_key)
+
+    last <- as.POSIXct(store$last_refreshed_at,
+                       format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+    inactive_days <- as.numeric(difftime(now, last, units = "days"))
+    if (is.finite(inactive_days) && inactive_days > warn_inactive_days) {
+      warning(sprintf(paste0(
+        "MSGraph-SharePoint: letzter erfolgreicher Refresh ist %.0f Tage her ",
+        "(Warnschwelle %s Tage). Refresh-Token verfaellt nach ~90 Tagen Inaktivitaet."),
+        inactive_days, warn_inactive_days), call. = FALSE)
+    }
+
+    credentials <- msgraph_sp_refresh(auth$tenant_id, auth$client_id,
+                                      auth$client_secret, store$refresh_token, scopes)
+
+    rotated <- !is.null(credentials$refresh_token) &&
+      !identical(credentials$refresh_token, store$refresh_token)
+    if (rotated) {
+      store$refresh_token <- credentials$refresh_token
+      store$last_refreshed_at <- format(now, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+      msgraph_sp_store_write(auth$store_path, auth$store_key, store)
+    }
+
+    cache$token <- credentials$access_token
+    cache$exp <- now + as.numeric(credentials$expires_in)
+    cache$token
+  }
+}
+
+#' Token-Provider fuer den delegierten SharePoint-Zugriff
+#'
+#' Liefert eine Closure `function(force_refresh = FALSE)` mit dem Access-Token
+#' als String — gleiche Signatur wie die uebrigen Token-Provider im Stack.
+#' Der Provider wird pro (client_id, store_path) fuer die Prozesslaufzeit
+#' gecacht: mehrere SharePoint-Calls in einem Skript teilen sich ein
+#' Access-Token statt jedes Mal zu refreshen. Bei Rotation wird das neue
+#' Refresh-Token sofort in den verschluesselten Store geschrieben.
+#'
+#' @param auth Liste aus authentication_process()$msgraph_sharepoint
+#'   (tenant_id, client_id, client_secret, store_key, store_path, site_url).
+#' @param scopes Character-Vektor der Scopes.
+#' @param refresh_buffer_seconds Vorlauf, ab dem vorsorglich erneuert wird.
+#' @param warn_inactive_days Tage seit letztem Refresh, ab denen gewarnt wird.
+#' @return function(force_refresh = FALSE), liefert das Access-Token als String.
+#' @export
+msgraph_sharepoint_token_provider <- function(auth,
+                                              scopes = .msgraph_sp_default_scopes,
+                                              refresh_buffer_seconds = 300,
+                                              warn_inactive_days = 60) {
+  # ---- start ---- #
+  cache_key <- paste(auth$client_id, auth$store_path, sep = "|")
+  existing <- .msgraph_sp_provider_cache[[cache_key]]
+  if (!is.null(existing)) {
+    return(existing)
+  }
+  provider <- msgraph_sp_provider_build(auth, scopes, refresh_buffer_seconds,
+                                        warn_inactive_days)
+  .msgraph_sp_provider_cache[[cache_key]] <- provider
+  provider
+}

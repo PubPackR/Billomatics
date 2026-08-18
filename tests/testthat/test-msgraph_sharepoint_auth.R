@@ -69,3 +69,83 @@ test_that("Refresh wirft mit AADSTS-Code bei HTTP != 200", {
     }),
     "AADSTS70008")
 })
+
+# --- Token-Provider Tests -------------------------------------------------------
+
+make_test_auth <- function(store_path) list(
+  tenant_id = "tid", client_id = "cid", client_secret = "sec",
+  store_key = "test-store-key", store_path = store_path,
+  site_url = "https://example.sharepoint.com/sites/Test")
+
+write_test_store <- function(store_path, refresh_token = "rt-1",
+                             last_refreshed_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")) {
+  Billomatics:::msgraph_sp_store_write(store_path, "test-store-key", list(
+    refresh_token = refresh_token, obtained_at = "2026-08-18T10:00:00Z",
+    last_refreshed_at = last_refreshed_at,
+    tenant_id = "tid", client_id = "cid",
+    scopes = Billomatics:::.msgraph_sp_default_scopes))
+}
+
+test_that("Provider liefert Token, persistiert Rotation und cached im Prozess", {
+  withr::defer(Billomatics:::msgraph_sp_provider_cache_clear())
+  store_path <- file.path(withr::local_tempdir(), "store.txt")
+  write_test_store(store_path)
+
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    msgraph_sp_refresh = function(...) {
+      calls <<- calls + 1L
+      list(access_token = "at-1", expires_in = 3599, refresh_token = "rt-2")
+    }
+  )
+
+  provider <- Billomatics::msgraph_sharepoint_token_provider(make_test_auth(store_path))
+  expect_equal(provider(), "at-1")
+  expect_equal(provider(), "at-1")            # zweiter Call: aus dem Cache
+  expect_equal(calls, 1L)     # nur EIN Refresh-POST
+  # Rotation wurde persistiert
+  expect_equal(
+    Billomatics:::msgraph_sp_store_read(store_path, "test-store-key")$refresh_token,
+    "rt-2")
+})
+
+test_that("Antwort ohne neues Refresh-Token laesst Store unveraendert", {
+  withr::defer(Billomatics:::msgraph_sp_provider_cache_clear())
+  store_path <- file.path(withr::local_tempdir(), "store.txt")
+  write_test_store(store_path)
+  testthat::local_mocked_bindings(
+    msgraph_sp_refresh = function(...) {
+      list(access_token = "at-1", expires_in = 3599)
+    }
+  )
+  provider <- Billomatics::msgraph_sharepoint_token_provider(make_test_auth(store_path))
+  provider()
+  expect_equal(
+    Billomatics:::msgraph_sp_store_read(store_path, "test-store-key")$refresh_token,
+    "rt-1")
+  expect_false(file.exists(paste0(store_path, ".bak")))
+})
+
+test_that("Inaktivitaet > warn_inactive_days warnt", {
+  withr::defer(Billomatics:::msgraph_sp_provider_cache_clear())
+  store_path <- file.path(withr::local_tempdir(), "store.txt")
+  write_test_store(store_path, last_refreshed_at = "2026-01-01T00:00:00Z")
+  testthat::local_mocked_bindings(
+    msgraph_sp_refresh = function(...) {
+      list(access_token = "at-1", expires_in = 3599)
+    }
+  )
+  provider <- Billomatics::msgraph_sharepoint_token_provider(make_test_auth(store_path))
+  expect_warning(provider(), "Tage")
+})
+
+test_that("Provider-Cache trennt nach client_id + store_path", {
+  withr::defer(Billomatics:::msgraph_sp_provider_cache_clear())
+  store_a <- file.path(withr::local_tempdir(), "a.txt")
+  store_b <- file.path(withr::local_tempdir(), "b.txt")
+  p1 <- Billomatics::msgraph_sharepoint_token_provider(make_test_auth(store_a))
+  p2 <- Billomatics::msgraph_sharepoint_token_provider(make_test_auth(store_a))
+  p3 <- Billomatics::msgraph_sharepoint_token_provider(make_test_auth(store_b))
+  expect_identical(p1, p2)
+  expect_false(identical(p1, p3))
+})
