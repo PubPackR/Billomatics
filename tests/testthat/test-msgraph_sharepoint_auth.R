@@ -149,3 +149,34 @@ test_that("Provider-Cache trennt nach client_id + store_path", {
   expect_identical(p1, p2)
   expect_false(identical(p1, p3))
 })
+
+test_that("authentication_msgraph_sharepoint liest und validiert das Key-JSON", {
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "keys", "Microsoft365R"), recursive = TRUE)
+  dir.create(file.path(root, "apps", "x"), recursive = TRUE)
+  auth <- list(
+    tenant_id = "tid", client_id = "cid", client_secret = "sec",
+    store_key = "sk", store_path = "../../keys/Microsoft365R/msgraph_sharepoint_refresh.txt",
+    site_url = "https://example.sharepoint.com/sites/Test")
+  cipher <- safer::encrypt_string(
+    as.character(jsonlite::toJSON(auth, auto_unbox = TRUE)), key = "dec-key")
+  writeLines(gsub("[\r\n]", "", cipher),
+             file.path(root, "keys", "Microsoft365R", "msgraph_sharepoint.txt"))
+
+  withr::local_dir(file.path(root, "apps", "x"))
+  got <- Billomatics:::authentication_msgraph_sharepoint("dec-key")
+  expect_equal(got$client_id, "cid")
+  expect_equal(got$site_url, "https://example.sharepoint.com/sites/Test")
+})
+
+test_that("authentication_msgraph_sharepoint wirft bei unvollstaendigem JSON", {
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "keys", "Microsoft365R"), recursive = TRUE)
+  dir.create(file.path(root, "apps", "x"), recursive = TRUE)
+  cipher <- safer::encrypt_string('{"tenant_id":"tid"}', key = "dec-key")
+  writeLines(gsub("[\r\n]", "", cipher),
+             file.path(root, "keys", "Microsoft365R", "msgraph_sharepoint.txt"))
+  withr::local_dir(file.path(root, "apps", "x"))
+  expect_error(Billomatics:::authentication_msgraph_sharepoint("dec-key"),
+               "unvollstaendig")
+})

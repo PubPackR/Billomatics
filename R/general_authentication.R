@@ -39,7 +39,7 @@ library(googleAuthR)
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "msgraph_sharepoint", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -50,6 +50,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     msgraph = authentication_msgraph,
     msgraph_scoped_app = authentication_msgraph_scoped_app,
     msgraph_delegated = authentication_msgraph_delegated,
+    msgraph_sharepoint = authentication_msgraph_sharepoint,
     brevo = authentication_brevo,
     `google analytics` = authentication_Google_Analytics,
     bonusDB = authentication_bonus_db,
@@ -280,6 +281,35 @@ authentication_msgraph_delegated <- function(args) {
     client_secret = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_secret.txt"), key = decrypt_key),
     store_key     = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_storekey.txt"), key = decrypt_key)
   )
+}
+
+#' authentication_msgraph_sharepoint
+#'
+#' Decryptet die Konfiguration des delegierten SharePoint-Zugriffs (n8n-App):
+#' ein JSON mit tenant_id, client_id, client_secret, store_key, store_path,
+#' site_url. Siehe Spec docs/superpowers/specs/2026-08-18-msgraph-sharepoint-
+#' delegated-design.md.
+#' @param args FlowForce-Decryption-Key.
+#' @return Named list(tenant_id, client_id, client_secret, store_key,
+#'   store_path, site_url).
+authentication_msgraph_sharepoint <- function(args) {
+  # ---- start ---- #
+  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
+    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph SharePoint eingeben: ")
+  } else {
+    decrypt_key <- args
+  }
+  json <- safer::decrypt_string(
+    readLines("../../keys/Microsoft365R/msgraph_sharepoint.txt"), key = decrypt_key)
+  auth <- jsonlite::fromJSON(json, simplifyVector = TRUE)
+  required <- c("tenant_id", "client_id", "client_secret",
+                "store_key", "store_path", "site_url")
+  missing <- setdiff(required, names(auth))
+  if (length(missing)) {
+    stop("msgraph_sharepoint.txt unvollstaendig, fehlt: ",
+         paste(missing, collapse = ", "), call. = FALSE)
+  }
+  auth
 }
 
 #' authentication_brevo
