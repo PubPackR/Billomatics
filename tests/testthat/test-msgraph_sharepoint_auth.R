@@ -27,23 +27,45 @@ test_that("Store read wirft verstaendlich, wenn Datei fehlt", {
     "Bootstrap")
 })
 
+# --- Fakes fuer httr ----------------------------------------------------------
+
+ok_response <- function(access = "at", refresh = "rt-neu", expires = 3599) {
+  list(status_code = 200L,
+       payload = list(access_token = access, refresh_token = refresh,
+                      expires_in = expires))
+}
+
+err_response <- function(error = "invalid_grant", desc = "AADSTS70008: expired") {
+  list(status_code = 400L,
+       payload = list(error = error, error_description = desc))
+}
+
+fake_post <- function(response) {
+  function(url, ...) response
+}
+
+fake_content <- function(x, as = "parsed", type = NULL, encoding = NULL) x$payload
+
+with_fake_http <- function(response, code) {
+  testthat::with_mocked_bindings(
+    code(),
+    POST = fake_post(response), content = fake_content,
+    .package = "httr"
+  )
+}
+
 test_that("Refresh parst Erfolgsantwort", {
-  fake_response <- structure(list(status_code = 200L), class = "response")
-  mockery::stub(Billomatics:::msgraph_sp_refresh, "httr::POST", fake_response)
-  mockery::stub(Billomatics:::msgraph_sp_refresh, "httr::content",
-                list(access_token = "at", expires_in = 3599, refresh_token = "rt-neu"))
-  got <- Billomatics:::msgraph_sp_refresh("tid", "cid", "sec", "rt-alt", c("s1"))
+  got <- with_fake_http(ok_response(), function() {
+    Billomatics:::msgraph_sp_refresh("tid", "cid", "sec", "rt-alt", c("s1"))
+  })
   expect_equal(got$access_token, "at")
   expect_equal(got$refresh_token, "rt-neu")
 })
 
 test_that("Refresh wirft mit AADSTS-Code bei HTTP != 200", {
-  fake_response <- structure(list(status_code = 400L), class = "response")
-  mockery::stub(Billomatics:::msgraph_sp_refresh, "httr::POST", fake_response)
-  mockery::stub(Billomatics:::msgraph_sp_refresh, "httr::content",
-                list(error = "invalid_grant",
-                     error_description = "AADSTS70008: expired"))
   expect_error(
-    Billomatics:::msgraph_sp_refresh("tid", "cid", "sec", "rt", c("s1")),
-    "invalid_grant.*AADSTS70008|AADSTS70008", perl = TRUE)
+    with_fake_http(err_response(), function() {
+      Billomatics:::msgraph_sp_refresh("tid", "cid", "sec", "rt", c("s1"))
+    }),
+    "AADSTS70008")
 })
