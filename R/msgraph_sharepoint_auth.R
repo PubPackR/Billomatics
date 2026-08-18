@@ -196,3 +196,101 @@ msgraph_sharepoint_token_provider <- function(auth,
   .msgraph_sp_provider_cache[[cache_key]] <- provider
   provider
 }
+
+#' Authorization-Code aus Roh-Eingabe extrahieren (intern)
+#'
+#' Akzeptiert den reinen Code, 'code=...' oder die komplette Redirect-URL.
+#' @noRd
+msgraph_sp_extract_code <- function(raw_in) {
+  # ---- start ---- #
+  code <- trimws(raw_in)
+  code <- sub("^.*?code=", "", code)
+  code <- sub("[&#].*$", "", code)
+  code <- trimws(code)
+  if (!nzchar(code)) stop("Authorization-Code ist leer.", call. = FALSE)
+  code
+}
+
+#' Login-URL fuer den einmaligen SharePoint-Bootstrap bauen
+#'
+#' Die URL im LOKALEN Browser oeffnen und als Service-Account anmelden. Der
+#' Browser landet danach auf redirect_uri?code=... (Seite laedt nicht - es
+#' lauscht nichts); den Code aus der Adresszeile kopieren und an
+#' msgraph_sharepoint_bootstrap() uebergeben.
+#'
+#' Voraussetzung App-Registrierung: redirect_uri als *Web*-Redirect,
+#' delegierte Scopes inkl. offline_access mit Admin-Consent.
+#'
+#' @param auth Liste mit tenant_id und client_id (z. B. aus
+#'   authentication_process()$msgraph_sharepoint).
+#' @param scopes Character-Vektor der Scopes.
+#' @param redirect_uri Redirect-URI (Typ Web an der App-Registrierung).
+#' @return Login-URL als String.
+#' @export
+msgraph_sharepoint_bootstrap_url <- function(auth,
+                                             scopes = .msgraph_sp_default_scopes,
+                                             redirect_uri = "http://localhost:1410/") {
+  # ---- start ---- #
+  paste0(
+    "https://login.microsoftonline.com/", auth$tenant_id, "/oauth2/v2.0/authorize?",
+    "client_id=", auth$client_id,
+    "&response_type=code&response_mode=query",
+    "&redirect_uri=", utils::URLencode(redirect_uri, reserved = TRUE),
+    "&scope=", utils::URLencode(paste(scopes, collapse = " "), reserved = TRUE),
+    "&prompt=login")
+}
+
+#' Einmaliger Bootstrap des SharePoint-Token-Stores (auf dem Server ausfuehren)
+#'
+#' Tauscht den Authorization-Code gegen Access- + Refresh-Token (der Tausch
+#' passiert auf der Maschine, auf der diese Funktion laeuft - Bertelsmann-
+#' Vorgabe: Token entsteht AUF dem Server), schreibt den verschluesselten
+#' Store und macht eine /me-Probe. Der Code ist einmalig und laeuft nach
+#' ~10 Minuten ab - zuegig einfuegen.
+#'
+#' @param auth Liste aus authentication_process()$msgraph_sharepoint.
+#' @param auth_code Purer Code ODER komplette kopierte Redirect-URL.
+#' @param scopes Character-Vektor der Scopes (muessen zu bootstrap_url passen).
+#' @param redirect_uri Muss identisch zu msgraph_sharepoint_bootstrap_url() sein.
+#' @return invisible(store_path)
+#' @export
+msgraph_sharepoint_bootstrap <- function(auth, auth_code,
+                                         scopes = .msgraph_sp_default_scopes,
+                                         redirect_uri = "http://localhost:1410/") {
+  # ---- start ---- #
+  code <- msgraph_sp_extract_code(auth_code)
+
+  response <- httr::POST(
+    paste0("https://login.microsoftonline.com/", auth$tenant_id, "/oauth2/v2.0/token"),
+    encode = "form", body = list(
+      grant_type    = "authorization_code",
+      client_id     = auth$client_id,
+      client_secret = auth$client_secret,
+      code          = code,
+      redirect_uri  = redirect_uri,
+      scope         = paste(scopes, collapse = " ")
+    ))
+  parsed <- httr::content(response, as = "parsed", type = "application/json")
+  if (response$status_code != 200) {
+    error_code <- if (is.null(parsed$error)) "unbekannt" else parsed$error
+    error_desc <- if (is.null(parsed$error_description)) "keine Beschreibung" else parsed$error_description
+    stop(sprintf("Bootstrap-Token-Tausch fehlgeschlagen (HTTP %s): %s\n%s",
+                 response$status_code, error_code, error_desc), call. = FALSE)
+  }
+  if (is.null(parsed$refresh_token) || !nzchar(parsed$refresh_token)) {
+    stop("Kein Refresh-Token erhalten. Steht 'offline_access' in den Scopes ",
+         "und ist es consented?", call. = FALSE)
+  }
+
+  now_utc <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+  msgraph_sp_store_write(auth$store_path, auth$store_key, list(
+    refresh_token = parsed$refresh_token,
+    obtained_at = now_utc, last_refreshed_at = now_utc,
+    tenant_id = auth$tenant_id, client_id = auth$client_id, scopes = scopes))
+
+  probe <- httr::GET("https://graph.microsoft.com/v1.0/me",
+                     httr::add_headers(Authorization = paste("Bearer", parsed$access_token)))
+  message("Store geschrieben: ", auth$store_path,
+          " | Probe /me HTTP ", probe$status_code)
+  invisible(auth$store_path)
+}

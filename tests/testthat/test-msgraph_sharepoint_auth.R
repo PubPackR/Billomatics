@@ -180,3 +180,60 @@ test_that("authentication_msgraph_sharepoint wirft bei unvollstaendigem JSON", {
   expect_error(Billomatics:::authentication_msgraph_sharepoint("dec-key"),
                "unvollstaendig")
 })
+
+# --- Bootstrap-Tests -----------------------------------------------
+
+test_that("msgraph_sp_extract_code extrahiert den Code aus allen Eingabeformen", {
+  expect_equal(Billomatics:::msgraph_sp_extract_code("ABC.123-xyz"), "ABC.123-xyz")
+  expect_equal(Billomatics:::msgraph_sp_extract_code("code=ABC.123"), "ABC.123")
+  expect_equal(Billomatics:::msgraph_sp_extract_code(
+    "http://localhost:1410/?code=ABC.123&state=xyz#frag"), "ABC.123")
+  expect_error(Billomatics:::msgraph_sp_extract_code("   "), "leer")
+})
+
+test_that("Bootstrap-URL enthaelt alle Pflicht-Parameter", {
+  auth <- list(tenant_id = "tid", client_id = "cid")
+  url <- Billomatics::msgraph_sharepoint_bootstrap_url(auth)
+  expect_match(url, "^https://login\\.microsoftonline\\.com/tid/oauth2/v2\\.0/authorize\\?")
+  expect_match(url, "client_id=cid", fixed = TRUE)
+  expect_match(url, "response_type=code", fixed = TRUE)
+  expect_match(url, "offline_access")
+  expect_match(url, "redirect_uri=http%3A%2F%2Flocalhost%3A1410%2F", fixed = TRUE)
+})
+
+test_that("Bootstrap tauscht Code, schreibt Store und wirft ohne Refresh-Token", {
+  store_path <- file.path(withr::local_tempdir(), "store.txt")
+  auth <- list(tenant_id = "tid", client_id = "cid", client_secret = "sec",
+               store_key = "sk", store_path = store_path,
+               site_url = "https://example.sharepoint.com/sites/Test")
+
+  ok_response <- structure(list(status_code = 200L), class = "response")
+
+  testthat::with_mocked_bindings(
+    {
+      Billomatics::msgraph_sharepoint_bootstrap(auth, "code=ABC")
+      store <- Billomatics:::msgraph_sp_store_read(store_path, "sk")
+      expect_equal(store$refresh_token, "rt-boot")
+      expect_equal(store$client_id, "cid")
+    },
+    POST = function(url, ...) ok_response,
+    content = function(x, as = "parsed", type = NULL, encoding = NULL) {
+      list(access_token = "at", expires_in = 3599, refresh_token = "rt-boot")
+    },
+    GET = function(url, ...) ok_response,
+    .package = "httr"
+  )
+
+  testthat::with_mocked_bindings(
+    {
+      expect_error(Billomatics::msgraph_sharepoint_bootstrap(auth, "ABC"),
+                   "offline_access")
+    },
+    POST = function(url, ...) ok_response,
+    content = function(x, as = "parsed", type = NULL, encoding = NULL) {
+      list(access_token = "at", expires_in = 3599)
+    },
+    GET = function(url, ...) ok_response,
+    .package = "httr"
+  )
+})
