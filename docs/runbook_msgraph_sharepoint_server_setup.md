@@ -19,7 +19,15 @@ Before beginning, collect and prepare the following from Entra/n8n:
 
 ## Step 1: Generate the Encrypted Key File
 
-Execute this on the production server in an **interactive R session**. The working directory must be a `base-apps/` subfolder (e.g., `base-18`, `base-41`, etc.).
+Execute this on the production server in an **interactive R session**. First, connect to the server:
+
+```bash
+ssh application-user@shiny.studyflix.info
+cd /srv/shiny-server/base-18  # or another base-apps/ subfolder
+R
+```
+
+The working directory must be a `base-apps/` subfolder (e.g., `base-18`, `base-41`, etc.). Then run:
 
 ```r
 # ===== Load Billomatics package and set up auth =====
@@ -79,7 +87,7 @@ Billomatics::msgraph_sharepoint_bootstrap(keys$msgraph_sharepoint, "<REDIRECT_UR
 
 **Troubleshooting:**
 - If redirect URL is not recognized, verify `http://localhost:1410/` is registered at the app (Step 1 prerequisites).
-- If HTTP 401 or scope errors occur, confirm the n8n app has permissions for `Sites.Read.All`, `Files.Read.All`, `Files.ReadWrite.All` in Entra.
+- If HTTP 401 or scope errors occur, confirm the n8n app has delegated permissions for `Files.ReadWrite.All`, `User.Read`, `offline_access` in Entra with Admin-Consent. **Critical:** `offline_access` is required to receive a refresh token; without it, Bootstrap errors with "Kein Refresh-Token erhalten".
 
 ---
 
@@ -107,17 +115,21 @@ Trigger the infrastructure workflow to reinstall R packages:
 
 ```bash
 cd C:/Users/HEMM036/Github/shiny-apps/shiny-99-modules  # or any base-app/shiny-app
-gh workflow run "04-setup-r-packages-flow-force.yml" -f environment=prod
+gh workflow run 04-setup-r-packages-flow-force.yml -R Studyflix/Shiny-0-studyflix-infrastructure
 ```
+
+(Inputs ggf. in der GitHub-UI prüfen — Workflow liegt im Infra-Repo.)
 
 Wait for the workflow to complete (~10–15 minutes). Verify success in GitHub Actions.
 
 ### 3.3 Smoke Test (base-18)
 
+Before running the smoke test, verify that n8n has updated the SharePoint folder paths in the new delegated site. Check the n8n workflow output to confirm the folder structure matches your expectations. This prevents smoke test false passes on stale paths.
+
 Run the smoke test to verify SharePoint delegated auth connectivity:
 
 ```bash
-# SSH to production server
+# SSH to production server (if not already connected from Steps 1–2)
 ssh application-user@shiny.studyflix.info
 
 # Navigate to base-18 directory
@@ -127,7 +139,7 @@ cd /srv/shiny-server/base-18
 Rscript one-off/smoke_sharepoint_delegated.R '<DECRYPT_KEY_FROM_microsoft365r.txt>'
 
 # Expected output: HTTP 200 confirmations for /me, /drive, and folder listing tests.
-# Check printed paths—they must match the new SharePoint site structure.
+# Verify all printed paths match the new SharePoint site structure verified above.
 ```
 
 ### 3.4 Fallback Management (Critical for base-18)
@@ -200,25 +212,27 @@ The following scripts use the old `msgraph` auth but read from SharePoint. They 
 
 ## Step 5: Fallback Rollback (Final Cleanup)
 
-**Only after** the deferred scripts (Step 4) are migrated and deployed:
+**Only after** all of the following conditions are met:
+1. **Smoke test passes** (Step 3.3: HTTP 200 on all probes).
+2. **Deferred scripts migrated and deployed** (Step 4 complete).
+3. **Coordinated with Max Berning** (author of PR #46, the fallback implementation). Notify him via Teams before proceeding.
 
-1. **Coordinate with Max Berning** (author of PR #46, the fallback implementation). Notify him via Teams before proceeding.
+Then disable the fallback via PR:
 
-2. **Disable the fallback flag in base-18:**
-   ```r
-   # In base-18/config.R
-   USE_LOCAL_SHAREPOINT_FALLBACK <- FALSE
-   ```
+```bash
+cd C:/Users/HEMM036/Github/base-apps/base-18
+git checkout main && git pull
+git checkout -b chore/disable-sharepoint-fallback
+# Edit config.R: USE_LOCAL_SHAREPOINT_FALLBACK <- FALSE
+git add config.R
+git commit -m "config: SharePoint-Fallback deaktivieren nach delegierter Migration"
+git push -u origin chore/disable-sharepoint-fallback
+gh pr create --title "config: SharePoint-Fallback deaktivieren" --body "Voraussetzungen erfuellt: Smoke gruen + deferred Skripte migriert. Abgestimmt mit Max Berning."
+# After review and merge:
+gh workflow run "Deploy app"
+```
 
-3. **Commit and deploy:**
-   ```bash
-   cd C:/Users/HEMM036/Github/base-apps/base-18
-   git add config.R
-   git commit -m "config: Disable SharePoint fallback after delegated auth migration"
-   gh workflow run "Deploy app"
-   ```
-
-4. **Verify:** Re-run the smoke test to confirm the app reads exclusively from SharePoint (not local fallback).
+**Verify:** Re-run the smoke test to confirm the app reads exclusively from SharePoint (not local fallback).
 
 ---
 
@@ -244,7 +258,7 @@ Upon completion, delete the test marker file in SharePoint:
 
 ### HTTP 401 on Smoke Test
 - Verify the Client Secret has not expired.
-- Confirm the n8n app scopes in Entra include `Sites.Read.All`, `Files.Read.All`, `Files.ReadWrite.All`.
+- Confirm the n8n app delegated scopes in Entra include `Files.ReadWrite.All`, `User.Read`, `offline_access` with Admin-Consent.
 - Rerun the bootstrap (Step 2) to refresh the stored refresh token.
 
 ### FlowForce Job Fails with Auth Error
