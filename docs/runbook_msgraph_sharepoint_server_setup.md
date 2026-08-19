@@ -1,6 +1,6 @@
 # Runbook: MS Graph + SharePoint Scoped Delegated Auth — Server Setup & Rollout
 
-This runbook guides the complete migration from device-code auth to scoped delegated auth for MS Graph (in-server OAuth) and SharePoint access on the production server `shiny.studyflix.info`.
+This runbook guides the complete migration von app-only (Client-Credentials, alter Tenant) auth to scoped delegated auth for MS Graph (in-server OAuth) and SharePoint access on the production server `shiny.studyflix.info`.
 
 ---
 
@@ -23,7 +23,7 @@ Execute this on the production server in an **interactive R session**. First, co
 
 ```bash
 ssh application-user@shiny.studyflix.info
-cd /srv/shiny-server/base-18  # or another base-apps/ subfolder
+cd /home/application-user/base-apps/base-18_export_billomat2sap  # or another base-apps/ subfolder
 R
 ```
 
@@ -133,12 +133,14 @@ Run the smoke test to verify SharePoint delegated auth connectivity:
 ssh application-user@shiny.studyflix.info
 
 # Navigate to base-18 directory
-cd /srv/shiny-server/base-18
+cd /home/application-user/base-apps/base-18_export_billomat2sap
 
 # Run smoke test with the decrypt key
 Rscript one-off/smoke_sharepoint_delegated.R '<DECRYPT_KEY_FROM_microsoft365r.txt>'
 
-# Expected output: HTTP 200 confirmations for /me, /drive, and folder listing tests.
+# Expected output:
+# READ ok: <N> Zeilen
+# UPLOAD ok - smoke_test_delete_me.txt im SharePoint manuell loeschen.
 # Verify all printed paths match the new SharePoint site structure verified above.
 ```
 
@@ -157,7 +159,7 @@ If you disable the flag prematurely, non-migrated deferred scripts will crash wh
 After smoke test success:
 
 ```bash
-cd C:/Users/HEMM036/Github/base-apps/base-18
+cd C:/Users/HEMM036/Github/base-apps/base-18_export_billomat2sap
 gh pr merge 47 --merge
 ```
 
@@ -166,19 +168,21 @@ gh pr merge 47 --merge
 Trigger the deployment workflow:
 
 ```bash
-cd C:/Users/HEMM036/Github/base-apps/base-18
+cd C:/Users/HEMM036/Github/base-apps/base-18_export_billomat2sap
 gh workflow run "Deploy app"
 ```
 
-Monitor the deployment in GitHub Actions. Once complete, verify the Shiny app loads at `https://shiny.studyflix.info/base-18/`.
+Monitor the deployment in GitHub Actions. Once complete, den ersten FlowForce-Lauf der migrierten Jobs beobachten (Logs).
 
 ### 3.7 FlowForce Job Monitoring
 
 Observe the first run of each base-18 FlowForce job:
 
-- `main_create_database_trigger.R`
+- `main_exportBillomat_2_jp5.R`
+- `main_post_new_debitor.R`
 - `main_complete_document_billomat.R`
-- All other configured jobs
+- `main_clear_payment_document_billomat.R`
+- `monatlicheAbgrenzung_unfertige_Leistung.R`
 
 Use the FlowForce UI or logs to confirm successful execution (no auth errors or SharePoint access failures).
 
@@ -190,7 +194,7 @@ The following scripts use the old `msgraph` auth but read from SharePoint. They 
 
 ### Scripts Requiring Migration
 
-**base-14:**
+**base-18 (base-14-gekoppelt, deferred):**
 - `do/main_clear_confirmation_billomat.R` — calls `load_sharepoint_data()`
 - `do/main_Monatsabschluss_erstellen.R` — calls `load_sharepoint_data()` and `copy_folder_from_server_to_sharepoint()` (only SharePoint write in the codebase)
 
@@ -220,7 +224,7 @@ The following scripts use the old `msgraph` auth but read from SharePoint. They 
 Then disable the fallback via PR:
 
 ```bash
-cd C:/Users/HEMM036/Github/base-apps/base-18
+cd C:/Users/HEMM036/Github/base-apps/base-18_export_billomat2sap
 git checkout main && git pull
 git checkout -b chore/disable-sharepoint-fallback
 # Edit config.R: USE_LOCAL_SHAREPOINT_FALLBACK <- FALSE
@@ -249,7 +253,7 @@ After base-18 and base-14 stabilize, migrate remaining repositories per the patt
 Upon completion, delete the test marker file in SharePoint:
 ```bash
 # After all repos deployed, remove:
-# /sites/<name>/Shared Documents/smoke_test_delete_me.txt
+# /sites/<name>/General/Kunden/03 Sales Success Management/PMI/Billomat_2_jp5/JP5 Import/tmp/smoke_test_delete_me.txt
 ```
 
 ---
