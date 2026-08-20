@@ -367,3 +367,22 @@ test_that("returning OK keeps authentication_process's list at full length", {
   expect_length(shrunk, 1L)
   expect_false("google sheet" %in% names(shrunk))
 })
+
+test_that("postgresql does not short-circuit under gsm, even interactively", {
+  # Found by review: the !gsm half of the short-circuit guard was untested.
+  # A developer running a script locally AFTER cutover is interactive and on
+  # gsm, and the IAM matrix grants dev accounts studyflix-postgresql-connection.
+  # Without !gsm they would silently receive the German placeholder pair instead
+  # of credentials, surfacing later as a confusing postgres_connect() failure
+  # rather than an auth error.
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(billomatics_interactive = function() TRUE)
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      '{"host":"h.rds.amazonaws.com","port":"5432","dbname":"db","user":"u","password":"pw"}'
+    },
+    .package = "secretsR"
+  )
+  expect_identical(authentication_postgresql(NULL),
+                   c("pw", "u", "db", "h.rds.amazonaws.com", "5432"))
+})

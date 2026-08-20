@@ -212,3 +212,27 @@ test_that("get_deletion_pepper still honours the env var and the key file off gs
     expect_error(get_deletion_pepper(), "Pepper")
   })
 })
+
+test_that("billomatics_sa_json reads the secret directly under gsm", {
+  # Found by review: this branch had zero coverage. Mutating it to request a
+  # different secret name left 41/41 tests passing, because the only sa_json
+  # test exercised the file branch and the four service-account tests mock
+  # sa_json itself, never entering its body. Dormant while file is the default;
+  # Plan C2b depends on this path.
+  seen <- NULL
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      seen <<- name
+      '{"type":"service_account"}'
+    },
+    .package = "secretsR"
+  )
+  # Under gsm nothing should touch the legacy encrypted-file path at all.
+  local_mocked_bindings(
+    billomatics_sa_encrypted_path = function(name) stop("must not resolve a keys/ path under gsm")
+  )
+  out <- billomatics_sa_json("studyflix-gsheets-service-account", NULL)
+  expect_identical(seen, "studyflix-gsheets-service-account")
+  expect_identical(out, '{"type":"service_account"}')
+})
