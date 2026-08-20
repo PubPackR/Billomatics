@@ -103,49 +103,35 @@ authentication_billomat <-  function(args) {
 
     c(encryption_db, billomatApiKey)
 }
-
 #' authentication_crm
 #'
-#' This function executes the CRM authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the CRM API key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_crm <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/CRM.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für CRM eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_crm <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-crm-api-key", args,
+                     "Bitte Decryption_Key fuer CRM eingeben: ")
 }
-
 #' authentication_crm_lm
 #'
-#' This function executes the CRM LM authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the CRM Lead-Management API key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_crm_lm <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/CRM_LM.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für CRM LM eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_crm_lm <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-crm-lm-api-key", args,
+                     "Bitte Decryption_Key fuer CRM LM eingeben: ")
 }
 
 #' authentication_GSheet
@@ -221,44 +207,35 @@ authentication_asana <-  function(args) {
 
   c(asana_key, asana_access_token)
 }
-
-
 #' authentication_msgraph
 #'
-#' This function executes the MSGraph authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the MSGraph app secret.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_msgraph <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/Microsoft365R/microsoft365r.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <-
-      getPass::getPass("Bitte Decryption_Key für MSGraph eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_msgraph <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-msgraph-secret", args,
+                     "Bitte Decryption_Key fuer MSGraph eingeben: ")
 }
-
 #' authentication_msgraph_scoped_app
 #'
-#' Decryptet das Client-Secret der gescopten app-only-MSGraph-App (neuer Weg).
-#' @param args FlowForce-Decryption-Key.
-#' @return App-Secret als String.
+#' Resolves the client secret of the scoped app-only MSGraph app.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_msgraph_scoped_app <- function(args) {
   # ---- start ---- #
-  encrypted_api_key <- readLines("../../keys/Microsoft365R/msgraph_scoped_app.txt")
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph Scoped App eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+  billomatics_secret("studyflix-msgraph-scoped-app-secret", args,
+                     "Bitte Decryption_Key fuer MSGraph Scoped App eingeben: ")
 }
 
 #' authentication_msgraph_delegated
@@ -307,27 +284,20 @@ authentication_msgraph_sharepoint <- function(args) {
   }
   auth
 }
-
 #' authentication_brevo
 #'
-#' This function executes the Brevo authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the Brevo SMTP key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_brevo <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/Brevo/smpt-key.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für Brevo eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_brevo <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-brevo-smtp-key", args,
+                     "Bitte Decryption_Key fuer Brevo eingeben: ")
 }
 
 
@@ -378,27 +348,20 @@ authentication_Google_Analytics <-  function(args) {
     return("No Key")
   })
 }
-
 #' authentication_bonus_db
 #'
-#' This function executes the Bonus DB authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the Bonus-DB key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_bonus_db <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/BonusDB/bonusDBKey.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für Bonus DB eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_bonus_db <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-bonusdb-key", args,
+                     "Bitte Decryption_Key fuer Bonus DB eingeben: ")
 }
 
 #' authentication_Google_BigQuery
@@ -500,25 +463,20 @@ authentication_Google_BigQuery_GA4 <- function(args) {
     print(paste0(decrypted_file, " deleted."))
   })
 }
-
-#' authentication_cleverReach
+#' authentication_cleverreach
 #'
-#' Diese Funktion führt den Authentifizierungsprozess für CleverReach-RESTAPI durch.
-#' Sie kann sowohl manuelle Passwort-Eingaben als auch FlowForce-Argumente verarbeiten.
-
-#' @param args Zusätzlicher Eingabeparameter, nur erforderlich bei FlowForce-Jobs
-#' @return Authentifizierungs-Token als Zeichenkette
+#' Resolves the CleverReach REST API token.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_cleverreach <- function(args) {
-    encrypted_api_key <- readLines("../../keys/cleverReach_key.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <- getPass::getPass("Bitte Decryption_Key für CleverReach eingeben: ")
-    } else {
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
-
+  # ---- start ---- #
+  billomatics_secret("studyflix-cleverreach-token", args,
+                     "Bitte Decryption_Key fuer CleverReach eingeben: ")
 }
 
 
@@ -547,65 +505,50 @@ authentication_postgresql <- function(args) {
     }
 
 }
-
 #' authentication_gemini
 #'
-#' This function handles the key decryption for the Gemini API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the Gemini API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return Gemini API Key as String
-authentication_gemini <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/gemini_key.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Gemini eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_gemini <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-gemini-api-key", args,
+                     "Bitte Decryption_Key fuer Gemini eingeben: ")
 }
-
 #' authentication_openrouter
 #'
-#' This function handles the key decryption for the OpenRouter API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the OpenRouter API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return Openrouter API Key as String
-authentication_openrouter <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/openrouter.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für OpenRouter eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_openrouter <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-openrouter-api-key", args,
+                     "Bitte Decryption_Key fuer OpenRouter eingeben: ")
 }
-
 #' authentication_openai_admin
 #'
-#' This function handles the key decryption for the OpenAI Admin API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the OpenAI Admin API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return OpenAI Admin API Key as String
-authentication_openai_admin <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/openai_admin.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für OpenAI Admin eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_openai_admin <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-openai-admin-api-key", args,
+                     "Bitte Decryption_Key fuer OpenAI Admin eingeben: ")
 }
 
 #' authentication_personio
@@ -667,43 +610,33 @@ authentication_personio <- function(args) {
     stop(e)
   })
 }
-
 #' authentication_github
 #'
-#' This function handles the key decryption for the GitHub API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the GitHub personal access token.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return GitHub Personal Access Token as String
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_github <- function(args) {
-
-  encrypted_api_key <- readLines("../../keys/Github/github_token.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für GitHub eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+  # ---- start ---- #
+  billomatics_secret("studyflix-github-token", args,
+                     "Bitte Decryption_Key fuer GitHub eingeben: ")
 }
-
 #' authentication_metabase
 #'
-#' This function handles the key decryption for the Metabase API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the Metabase API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return Metabase API Key as String
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_metabase <- function(args) {
-
-  encrypted_api_key <- readLines("../../keys/metabase.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Metabase eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+  # ---- start ---- #
+  billomatics_secret("studyflix-metabase-api-key", args,
+                     "Bitte Decryption_Key fuer Metabase eingeben: ")
 }
