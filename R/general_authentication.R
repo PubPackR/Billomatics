@@ -1,9 +1,5 @@
 # -------------------------- Start script --------------------------------
 
-library(safer)
-library(tidyverse)
-library(googlesheets4)
-library(googleAuthR)
 
 #' Authenticate Multiple Services
 #'
