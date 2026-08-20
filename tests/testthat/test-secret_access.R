@@ -141,3 +141,74 @@ test_that("billomatics_require errors actionably for an absent optional package"
                "is required for this authentication service")
   expect_null(billomatics_require("stats"))
 })
+
+test_that("get_billomatApiKey never prints the password", {
+  # The previous implementation ran message("key is set to: ", key) -- the
+  # password, on stderr, on every call, from an EXPORTED function in a public
+  # repository. That is the single most direct credential leak in the package.
+  local_mocked_bindings(billomatics_secret = function(name, args, prompt = "", key = NULL) "apikey")
+  expect_silent(out <- get_billomatApiKey("../../keys"))
+  expect_identical(out, "apikey")
+})
+
+test_that("get_billomatApiKey returns invisibly, as it always did", {
+  local_mocked_bindings(billomatics_secret = function(name, args, prompt = "", key = NULL) "apikey")
+  expect_invisible(get_billomatApiKey())
+})
+
+test_that("get_billomatApiKey_server keeps working from the environment off gsm", {
+  # ENCRYPTION_PAYLOAD/ENCRYPTION_SECRET are live GitHub Actions secrets, and a
+  # CI runner has no keys/ checkout. Routing this through the file backend would
+  # turn a working function into one that always errors.
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  payload <- safer::encrypt_string("apikey", key = "envkey")
+  withr::with_envvar(c(ENCRYPTION_PAYLOAD = payload, ENCRYPTION_SECRET = "envkey"), {
+    expect_identical(get_billomatApiKey_server(), "apikey")
+  })
+})
+
+test_that("get_billomatApiKey_server uses Secret Manager under gsm", {
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      expect_identical(name, "studyflix-billomat-api-key")
+      "from-gsm"
+    },
+    .package = "secretsR"
+  )
+  expect_identical(get_billomatApiKey_server(), "from-gsm")
+})
+
+test_that("get_billomatApiKey_server says why, rather than failing obscurely", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  withr::with_envvar(c(ENCRYPTION_PAYLOAD = NA, ENCRYPTION_SECRET = NA), {
+    expect_error(get_billomatApiKey_server(), "ENCRYPTION_PAYLOAD")
+  })
+})
+
+test_that("get_deletion_pepper prefers secret_get, and keeps its env fallback off gsm", {
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      expect_identical(name, "studyflix-deletion-log-pepper")
+      "pepper-from-gsm"
+    },
+    .package = "secretsR"
+  )
+  withr::with_envvar(c(DELETION_LOG_PEPPER = "pepper-from-env"), {
+    expect_identical(get_deletion_pepper(), "pepper-from-gsm")
+  })
+})
+
+test_that("get_deletion_pepper still honours the env var and the key file off gsm", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  withr::with_envvar(c(DELETION_LOG_PEPPER = "pepper-from-env"), {
+    expect_identical(get_deletion_pepper(), "pepper-from-env")
+  })
+  kf <- withr::local_tempfile()
+  writeLines("  pepper-from-file  ", kf)
+  withr::with_envvar(c(DELETION_LOG_PEPPER = NA), {
+    expect_identical(get_deletion_pepper(key_file = kf), "pepper-from-file")
+    expect_error(get_deletion_pepper(), "Pepper")
+  })
+})
