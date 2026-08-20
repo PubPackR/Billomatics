@@ -10,12 +10,23 @@ authentication_Google_BigQuery_GA4(args)
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
 }
 \value{
-no return values
+The string "OK". Signals an error if authentication fails.
 }
 \description{
-This function executes the GA4 BigQuery authentication process for the
-bigquery@ga4studyflix.iam.gserviceaccount.com service account.
-It decrypts the encrypted key file, authenticates via googleAuthR and bigrquery,
-verifies the connection, and deletes the decrypted file afterwards.
-It can handle manual password inputs as well as Flow Force args Inputs.
+Authenticates bigrquery for the ga4studyflix project, then verifies the
+connection. Previously returned NULL on success and a non-NULL string on
+failure - inverted, so the natural \code{is.null()} guard aborted on success
+and continued on failure.
+}
+\details{
+Behaviour change, deliberate and the only one in this migration. This
+function used to report success to the caller whatever happened - including
+a failed decrypt - so a job continued unauthenticated and the fault surfaced
+later as an unrelated API error, or not at all if a cached token was still
+valid. Errors now propagate, so an unattended job crashes loudly.
+
+It returns the sentinel "OK" rather than NULL because
+\code{authentication_process()} does \verb{keys[[service]] <- <result>}, and assigning
+NULL REMOVES the element - a 22-service call would come back with 18 entries
+and every caller using length() or names() would change behaviour silently.
 }

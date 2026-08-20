@@ -132,51 +132,29 @@ authentication_crm_lm <- function(args) {
   billomatics_secret("studyflix-crm-lm-api-key", args,
                      "Bitte Decryption_Key fuer CRM LM eingeben: ")
 }
-
 #' authentication_GSheet
 #'
-#' This function executes the Google Sheet authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates googlesheets4 with the Google Sheets service account.
+#'
+#' Behaviour change, deliberate and the only one in this migration. This
+#' function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_GSheet <-  function(args) {
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_google_sheets_key <-
-        getPass::getPass("Enter the password for Google Sheets: ")
-
-    } else {
-      decrypt_google_sheets_key <- args
-    }
-
-    encrypted_file <-
-      "../../keys/GoogleSheets/encrypted_google_sheets.bin"
-    decrypted_file <-
-      "../../keys/GoogleSheets/google_sheets_auth.json"
-
-    tryCatch({
-      decrypted_data <-
-        safer::decrypt_file(infile = encrypted_file,
-                            key = decrypt_google_sheets_key,
-                            outfile = decrypted_file)
-      print("Decryption successful. Data saved to google_sheets_auth.json")
-
-      # Authentifizieren bei Google Sheets
-      creds <- googlesheets4::gs4_auth(path = decrypted_file)
-
-    },
-    error = function(e) {
-      # Error handling
-      cat("An error occurred: ", e$message, "\n")
-      print("Please check also if you have ../../keys/GoogleSheets/encrypted_google_sheets.bin")
-    },
-    finally = {
-      # Cleanup of private key afterwards
-      unlink(decrypted_file)
-      print("google_sheets_auth.json deleted.")
-
-      return("No Key")
-    })
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_GSheet <- function(args) {
+  # ---- start ---- #
+  json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
+                              "Enter the password for Google Sheets: ")
+  googlesheets4::gs4_auth(path = json)
+  "OK"
 }
 #' authentication_asana
 #'
@@ -290,54 +268,29 @@ authentication_brevo <- function(args) {
   billomatics_secret("studyflix-brevo-smtp-key", args,
                      "Bitte Decryption_Key fuer Brevo eingeben: ")
 }
-
-
 #' authentication_Google_Analytics
 #'
-#' This function executes the Google Analytics authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates googleAuthR with the Google Analytics service account.
+#'
+#' Behaviour change, deliberate and the only one in this migration. This
+#' function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_Google_Analytics <-  function(args) {
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_google_analytics_key <-
-      getPass::getPass("Enter the password for Google Analytics: ")
-
-  } else {
-    decrypt_google_analytics_key <- args
-  }
-
-  encrypted_file <-
-    "../../keys/GoogleAnalytics/encrypted_google_analytics.bin"
-  decrypted_file <-
-    "../../keys/GoogleAnalytics/google_analytics_auth.json"
-
-  tryCatch({
-    decrypted_data <-
-      safer::decrypt_file(infile = encrypted_file,
-                          key = decrypt_google_analytics_key,
-                          outfile = decrypted_file)
-    print("Decryption successful. Data saved to google_analytics_auth.json")
-
-    # Authentifizieren bei Google Analytics
-    google_analytics_auth <- googleAuthR::gar_auth_service(
-      json_file = decrypted_file
-    )
-
-  },
-  error = function(e) {
-    # Error handling
-    cat("An error occurred: ", e$message, "\n")
-    print("Please check also if you have ../../keys/GoogleAnalytics/encrypted_google_analytics.bin")
-  },
-  finally = {
-    # Cleanup of private key afterwards
-    unlink(decrypted_file)
-    print("google_analytics_auth.json deleted.")
-
-    return("No Key")
-  })
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_Google_Analytics <- function(args) {
+  # ---- start ---- #
+  json <- billomatics_sa_json("studyflix-google-analytics-service-account", args,
+                              "Enter the password for Google Analytics: ")
+  googleAuthR::gar_auth_service(json_file = json)
+  "OK"
 }
 #' authentication_bonus_db
 #'
@@ -354,105 +307,69 @@ authentication_bonus_db <- function(args) {
   billomatics_secret("studyflix-bonusdb-key", args,
                      "Bitte Decryption_Key fuer Bonus DB eingeben: ")
 }
-
 #' authentication_Google_BigQuery
 #'
-#' This function executes the Google_BigQuery authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates bigrquery with the search-console service account.
+#' Previously returned its own error message - a 96-character string - where
+#' a credential belongs.
+#'
+#' Behaviour change, deliberate and the only one in this migration. This
+#' function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_Google_BigQuery <-  function(args) {
-  if (interactive()  & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_google_BigQuery_key <-
-      getPass::getPass("Enter the password for BigQuery: ")
-
-  } else {
-    decrypt_google_BigQuery_key <- args
-  }
-
-  encrypted_file <-
-    "../../keys/gsc_bigQuery/encrypted_key_service_account_bigQuery.bin"
-  decrypted_file <-
-    "../../keys/gsc_bigQuery/search-console-api-399013-5cb724656590.json"
-
-  tryCatch({
-    decrypted_data <-
-      safer::decrypt_file(infile = encrypted_file,
-                          key = decrypt_google_BigQuery_key,
-                          outfile = decrypted_file)
-    print("Decryption successful. Data saved to search-console-api-399013-5cb724656590.json")
-
-    # Authentifizieren bei Google BigQuery
-    google_gsc_BigQuery_auth <- bigrquery::bq_auth(path = decrypted_file)
-
-
-  },
-  error = function(e) {
-    # Error handling
-    cat("An error occurred: ", e$message, "\n")
-    print("Please check also if you have ../../keys/gsc_bigQuery/encrypted_key_service_account_bigQuery.bin")
-  },
-  finally = {
-    # Cleanup of private key afterwards
-    unlink(decrypted_file)
-    print(paste0(decrypted_file, " deleted."))
-  })
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_Google_BigQuery <- function(args) {
+  # ---- start ---- #
+  # Checked before the decrypt, so a credential is not decrypted just to be
+  # discarded when the package turns out to be absent.
+  billomatics_require("bigrquery")
+  json <- billomatics_sa_json("studyflix-bigquery-gsc-service-account", args,
+                              "Enter the password for BigQuery: ")
+  bigrquery::bq_auth(path = json)
+  "OK"
 }
-
 #' authentication_Google_BigQuery_GA4
 #'
-#' This function executes the GA4 BigQuery authentication process for the
-#' bigquery@ga4studyflix.iam.gserviceaccount.com service account.
-#' It decrypts the encrypted key file, authenticates via googleAuthR and bigrquery,
-#' verifies the connection, and deletes the decrypted file afterwards.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates bigrquery for the ga4studyflix project, then verifies the
+#' connection. Previously returned NULL on success and a non-NULL string on
+#' failure - inverted, so the natural `is.null()` guard aborted on success
+#' and continued on failure.
+#'
+#' Behaviour change, deliberate and the only one in this migration. This
+#' function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
+#' @return The string "OK". Signals an error if authentication fails.
 authentication_Google_BigQuery_GA4 <- function(args) {
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <-
-      getPass::getPass("Enter the password for BigQuery GA4: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  encrypted_file <-
-    "../../keys/ga4_bigQuery/encrypted_ga4_bigquery.bin"
-  decrypted_file <-
-    "../../keys/ga4_bigQuery/ga4studyflix-c43a79c8c2cb.json"
-
-  project_id <- "ga4studyflix"
-
-  tryCatch({
-    safer::decrypt_file(
-      infile  = encrypted_file,
-      key     = decrypt_key,
-      outfile = decrypted_file
-    )
-    print("Decryption successful. Data saved to ga4studyflix-c43a79c8c2cb.json")
-
-    # Authenticate with GA4 BigQuery service account
-    googleAuthR::gar_auth_service(
-      json_file = decrypted_file,
-      scope     = "https://www.googleapis.com/auth/bigquery"
-    )
-    bigrquery::bq_auth(token = googleAuthR::gar_token())
-
-    # Verify authentication
-    bigrquery::bq_project_datasets(project_id)
-    message("Authentication successful — connected to '", project_id, "'.")
-  },
-  error = function(e) {
-    cat("An error occurred: ", e$message, "\n")
-    print("Please check also if you have ../../keys/ga4_bigQuery/encrypted_ga4_bigquery.bin")
-  },
-  finally = {
-    # Cleanup of decrypted key file
-    unlink(decrypted_file)
-    print(paste0(decrypted_file, " deleted."))
-  })
+  # ---- start ---- #
+  billomatics_require("bigrquery")
+  json <- billomatics_sa_json("studyflix-bigquery-ga4-service-account", args,
+                              "Enter the password for BigQuery GA4: ")
+  googleAuthR::gar_auth_service(
+    json_file = json,
+    scope     = "https://www.googleapis.com/auth/bigquery"
+  )
+  bigrquery::bq_auth(token = googleAuthR::gar_token())
+  # Retained from the original: the only one of the four that proves the
+  # credential works rather than merely parses.
+  bigrquery::bq_project_datasets("ga4studyflix")
+  "OK"
 }
 #' authentication_cleverreach
 #'

@@ -287,3 +287,83 @@ test_that("each multi-secret service prompts once, not per secret", {
     expect_identical(prompts, 1L)
   }
 })
+
+# ---- the four service-account JSON services --------------------------------
+
+test_that("the service-account services signal failure instead of reporting success", {
+  # Today all four report success whatever happens, in THREE different ways:
+  # GSheet and Google_Analytics end their finally block with return("No Key");
+  # Google_BigQuery returns its own 96-character error message where a
+  # credential belongs; Google_BigQuery_GA4 returns NULL on success and a
+  # string on failure, so the natural is.null() guard is inverted.
+  local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") stop("decryption failed")
+  )
+  expect_error(authentication_GSheet("pw"), "decryption failed")
+  expect_error(authentication_Google_Analytics("pw"), "decryption failed")
+  expect_error(authentication_Google_BigQuery("pw"), "decryption failed")
+  expect_error(authentication_Google_BigQuery_GA4("pw"), "decryption failed")
+})
+
+test_that("the JSON actually reaches the Google client", {
+  # Without capturing the argument, deleting the gs4_auth() call entirely leaves
+  # the test green: it would assert only the return value, which is a constant.
+  seen <- NULL
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") '{"type":"service_account"}'
+  )
+  local_mocked_bindings(
+    gs4_auth = function(path) { seen <<- path; invisible(NULL) },
+    .package = "googlesheets4"
+  )
+  out <- authentication_GSheet("pw")
+  expect_identical(seen, '{"type":"service_account"}')
+  expect_identical(out, "OK")
+})
+
+test_that("each service asks for its own secret", {
+  asked <- character(0)
+  local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") {
+      asked <<- c(asked, name)
+      stop("stop here, the Google clients are not the subject")
+    }
+  )
+  for (fn in list(authentication_GSheet, authentication_Google_Analytics,
+                  authentication_Google_BigQuery, authentication_Google_BigQuery_GA4)) {
+    try(fn("pw"), silent = TRUE)
+  }
+  expect_identical(asked, c("studyflix-gsheets-service-account",
+                            "studyflix-google-analytics-service-account",
+                            "studyflix-bigquery-gsc-service-account",
+                            "studyflix-bigquery-ga4-service-account"))
+})
+
+test_that("a BigQuery service refuses actionably when bigrquery is absent", {
+  # bigrquery is a Suggests, so this is a real condition rather than a mocked
+  # one on any host that has not installed it. Requiring it BEFORE the decrypt
+  # means a credential is not decrypted just to be thrown away.
+  skip_if(requireNamespace("bigrquery", quietly = TRUE),
+          "bigrquery is installed here, so absence cannot be exercised")
+  expect_error(authentication_Google_BigQuery("pw"),
+               "is required for this authentication service")
+})
+
+test_that("returning OK keeps authentication_process's list at full length", {
+  # keys[[service]] <- NULL REMOVES the element. Returning invisible(NULL) would
+  # shrink a 22-service call to 18 entries, changing the documented return shape
+  # of the one function this plan does not touch.
+  keys <- list()
+  keys[["postgresql"]] <- c("a", "b")
+  keys[["google sheet"]] <- "OK"
+  expect_length(keys, 2L)
+  expect_true("google sheet" %in% names(keys))
+
+  shrunk <- list()
+  shrunk[["postgresql"]] <- c("a", "b")
+  shrunk[["google sheet"]] <- NULL
+  expect_length(shrunk, 1L)
+  expect_false("google sheet" %in% names(shrunk))
+})
