@@ -127,3 +127,70 @@ test_that("billomat and asana prompt once, not twice", {
     expect_identical(out[2], "typed")
   }
 })
+
+# ---- postgresql: one JSON secret on gsm, two files on file -----------------
+
+test_that("postgresql composes character[5] from the single GSM secret", {
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      expect_identical(name, "studyflix-postgresql-connection")
+      '{"host":"h.rds.amazonaws.com","port":"5432","dbname":"db","user":"u","password":"pw"}'
+    },
+    .package = "secretsR"
+  )
+  # The order postgres_connect() consumes, documented at postgres_connect.R:882-886.
+  expect_identical(authentication_postgresql("ignored"),
+                   c("pw", "u", "db", "h.rds.amazonaws.com", "5432"))
+})
+
+test_that("postgresql composes the same vector from the two legacy files", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      switch(name,
+        "file:postgresql-credentials" = "pw",
+        "file:postgresql-server"      = "u, db, h.rds.amazonaws.com, 5432",
+        stop("unexpected name: ", name))
+    },
+    .package = "secretsR"
+  )
+  expect_identical(authentication_postgresql("pw-arg"),
+                   c("pw", "u", "db", "h.rds.amazonaws.com", "5432"))
+})
+
+test_that("a malformed postgres secret does not reach the error message", {
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) "PGPASS-SECRET-abc123",
+    .package = "secretsR"
+  )
+  msg <- tryCatch(authentication_postgresql("x"), error = conditionMessage)
+  expect_false(grepl("PGPASS-SECRET-abc123", msg, fixed = TRUE))
+})
+
+test_that("a short server string fails loudly instead of returning a short vector", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      if (name == "file:postgresql-server") "u, db" else "pw"
+    },
+    .package = "secretsR"
+  )
+  # The original returned c(credentials, <n fields>) of whatever length, which
+  # becomes a wrong postgres_connect() call rather than an error.
+  expect_error(authentication_postgresql("pw"), "expected 4")
+})
+
+test_that("postgresql keeps its interactive short-circuit, bytes intact", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(billomatics_interactive = function() TRUE)
+  # These are RETURN VALUES, not prompts: umlauts stay exactly as they are,
+  # because a local call site may compare against the German string. Written as
+  # \u00f6 escapes so this file stays ASCII.
+  expect_identical(
+    authentication_postgresql(character(0)),
+    c("Postgres-Credentials werden lokal nicht ben\u00f6tigt",
+      "Postgres-Server-Info wird lokal nicht ben\u00f6tigt")
+  )
+})

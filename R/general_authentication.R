@@ -471,32 +471,56 @@ authentication_cleverreach <- function(args) {
   billomatics_secret("studyflix-cleverreach-token", args,
                      "Bitte Decryption_Key fuer CleverReach eingeben: ")
 }
-
-
 #' authentication_postgresql
 #'
-#' This function handles the key encryption for a PostgreSQL database authentication.
-#' It supports manual password input as well as FlowForce arguments.
-
+#' Returns the connection vector `postgres_connect()` consumes:
+#' `c(password, user, dbname, host, port)` - the order documented at
+#' `postgres_connect.R:882-886`.
+#'
+#' The backends store this asymmetrically. GSM holds ONE JSON secret; the legacy
+#' folder holds the password in `postgresql_key.txt` and
+#' `"user, dbname, host, port"` in `postgresql_server.txt`. secretsR
+#' deliberately does not compose them - doing so would mean inventing the GSM
+#' payload format inside the credential package - so the composition lives here.
+#'
 #' @param args Additional input parameter, only needed through FlowForce Job
-#' @return PostgreSQL DB Key as String
+#' @return `character[5]`: password, user, dbname, host, port.
 authentication_postgresql <- function(args) {
-    encrypted_credentials <- readLines("../../keys/PostgreSQL_DB/postgresql_key.txt")
-    encrypted_server_info <- readLines("../../keys/PostgreSQL_DB/postgresql_server.txt")
+  # ---- start ---- #
+  gsm <- secretsR::secret_backend() == "gsm"
 
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      #decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
-      print("Postgres-Key wird lokal nicht benötigt")
-      return(c("Postgres-Credentials werden lokal nicht benötigt", "Postgres-Server-Info wird lokal nicht benötigt"))
-    } else {
-      decrypt_key <- args
+  if (!gsm && billomatics_interactive() && is.null(billomatics_file_key(args))) {
+    # Unchanged: production credentials are not needed for local development.
+    print("Postgres-Key wird lokal nicht benötigt")
+    return(c("Postgres-Credentials werden lokal nicht benötigt",
+             "Postgres-Server-Info wird lokal nicht benötigt"))
+  }
 
-      credentials <- safer::decrypt_string(encrypted_credentials, key = decrypt_key)
-      server_info <- (safer::decrypt_string(encrypted_server_info, key = decrypt_key) %>% strsplit(", "))[[1]]
-
-      return(c(credentials, server_info))
+  if (gsm) {
+    conn <- billomatics_parse_json(
+      secretsR::secret_get("studyflix-postgresql-connection"),
+      "studyflix-postgresql-connection")
+    required <- c("password", "user", "dbname", "host", "port")
+    missing <- setdiff(required, names(conn))
+    if (length(missing)) {
+      stop("studyflix-postgresql-connection is missing: ",
+           paste(missing, collapse = ", "), call. = FALSE)
     }
+    return(as.character(c(conn$password, conn$user, conn$dbname,
+                          conn$host, conn$port)))
+  }
 
+  prompt <- "Bitte Decryption_Key fuer PostgreSQL eingeben: "
+  key <- billomatics_resolve_key(args, prompt)
+  credentials <- billomatics_secret("file:postgresql-credentials", args, prompt, key = key)
+  server_info <- strsplit(
+    billomatics_secret("file:postgresql-server", args, prompt, key = key),
+    ", ", fixed = TRUE)[[1]]
+  if (length(server_info) != 4L) {
+    stop(sprintf("postgresql_server.txt decrypted to %d fields, expected 4 (user, dbname, host, port)",
+                 length(server_info)), call. = FALSE)
+  }
+  c(credentials, server_info)
 }
 #' authentication_gemini
 #'
