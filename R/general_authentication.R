@@ -230,48 +230,46 @@ authentication_msgraph_scoped_app <- function(args) {
   billomatics_secret("studyflix-msgraph-scoped-app-secret", args,
                      "Bitte Decryption_Key fuer MSGraph Scoped App eingeben: ")
 }
-
 #' authentication_msgraph_delegated
 #'
-#' Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs.
+#' Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs. Beide
+#' teilen sich unter dem `file`-Backend ein Passwort, das einmal aufgeloest und
+#' an beide Aufrufe durchgereicht wird.
+#'
 #' @param args FlowForce-Decryption-Key.
 #' @return Named list(client_secret, store_key).
 authentication_msgraph_delegated <- function(args) {
   # ---- start ---- #
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph Delegated eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
+  prompt <- "Bitte Decryption_Key fuer MSGraph Delegated eingeben: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
   list(
-    client_secret = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_secret.txt"), key = decrypt_key),
-    store_key     = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_storekey.txt"), key = decrypt_key)
+    client_secret = billomatics_secret("studyflix-msgraph-delegated-secret", args, prompt, key = key),
+    store_key     = billomatics_secret("studyflix-msgraph-delegated-storekey", args, prompt, key = key)
   )
 }
-
 #' authentication_msgraph_sharepoint
 #'
 #' Decryptet die Konfiguration des delegierten SharePoint-Zugriffs (n8n-App):
 #' ein JSON mit tenant_id, client_id, client_secret, store_key, store_path,
-#' site_url. Siehe Spec docs/superpowers/specs/2026-08-18-msgraph-sharepoint-
-#' delegated-design.md.
+#' site_url. Unter dem `file`-Backend liegt das JSON als verschluesselter
+#' STRING, nicht als verschluesselte Datei, also ist es ein gewoehnliches
+#' `secret_get()`-Secret trotz strukturierter Inhalte.
+#'
 #' @param args FlowForce-Decryption-Key.
 #' @return Named list(tenant_id, client_id, client_secret, store_key,
 #'   store_path, site_url).
 authentication_msgraph_sharepoint <- function(args) {
   # ---- start ---- #
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph SharePoint eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-  json <- safer::decrypt_string(
-    readLines("../../keys/Microsoft365R/msgraph_sharepoint.txt"), key = decrypt_key)
-  auth <- jsonlite::fromJSON(json, simplifyVector = TRUE)
+  json <- billomatics_secret("studyflix-msgraph-sharepoint-config", args,
+                             "Bitte Decryption_Key fuer MSGraph SharePoint eingeben: ")
+  auth <- billomatics_parse_json(json, "studyflix-msgraph-sharepoint-config")
   required <- c("tenant_id", "client_id", "client_secret",
                 "store_key", "store_path", "site_url")
   missing <- setdiff(required, names(auth))
   if (length(missing)) {
+    # Wording kept close to the original so a caller matching on
+    # "unvollstaendig" keeps working.
     stop("msgraph_sharepoint.txt unvollstaendig, fehlt: ",
          paste(missing, collapse = ", "), call. = FALSE)
   }
@@ -577,19 +575,12 @@ authentication_openai_admin <- function(args) {
 #' @param args Additional input parameter, only needed through FlowForce Job
 #' @return Named list containing decrypted client_id, client_secret, and access_token
 authentication_personio <- function(args) {
-
-  encrypted_client_id <- readLines("../../keys/Personio/personio_client_id.txt")
-  encrypted_client_secret <- readLines("../../keys/Personio/personio_client_secret.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Personio eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  # Entschlüssele client_id und client_secret
-  client_id <- safer::decrypt_string(encrypted_client_id, key = decrypt_key)
-  client_secret <- safer::decrypt_string(encrypted_client_secret, key = decrypt_key)
+  # ---- start ---- #
+  prompt <- "Bitte Decryption_Key fuer Personio eingeben: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
+  client_id     <- billomatics_secret("studyflix-personio-client-id", args, prompt, key = key)
+  client_secret <- billomatics_secret("studyflix-personio-client-secret", args, prompt, key = key)
 
   # Erstelle den Request Body als JSON
   request_body <- jsonlite::toJSON(list(

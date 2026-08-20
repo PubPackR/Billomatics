@@ -13,5 +13,7 @@ authentication_msgraph_delegated(args)
 Named list(client_secret, store_key).
 }
 \description{
-Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs.
+Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs. Beide
+teilen sich unter dem \code{file}-Backend ein Passwort, das einmal aufgeloest und
+an beide Aufrufe durchgereicht wird.
 }

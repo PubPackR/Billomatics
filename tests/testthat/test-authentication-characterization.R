@@ -194,3 +194,96 @@ test_that("postgresql keeps its interactive short-circuit, bytes intact", {
       "Postgres-Server-Info wird lokal nicht ben\u00f6tigt")
   )
 })
+
+# ---- multi-secret services: one password, several secrets ------------------
+
+test_that("the multi-secret services keep their list shapes and values", {
+  local_mocked_bindings(
+    billomatics_secret = function(name, args, prompt = "", key = NULL) {
+      switch(name,
+        "studyflix-msgraph-delegated-secret"   = "cs",
+        "studyflix-msgraph-delegated-storekey" = "sk",
+        "studyflix-msgraph-sharepoint-config"  =
+          '{"tenant_id":"t","client_id":"c","client_secret":"s","store_key":"k","store_path":"p","site_url":"u"}',
+        "studyflix-personio-client-id"         = "cid",
+        "studyflix-personio-client-secret"     = "csec",
+        stop("unexpected name: ", name))
+    }
+  )
+  d <- authentication_msgraph_delegated("pw")
+  expect_identical(names(d), c("client_secret", "store_key"))
+  # Values, not just names: swapping the two would pass a names-only assertion.
+  expect_identical(d$client_secret, "cs")
+  expect_identical(d$store_key, "sk")
+
+  sp <- authentication_msgraph_sharepoint("pw")
+  expect_setequal(names(sp), c("tenant_id", "client_id", "client_secret",
+                               "store_key", "store_path", "site_url"))
+  expect_identical(sp$site_url, "u")
+  expect_identical(sp$client_secret, "s")
+})
+
+test_that("msgraph_sharepoint still rejects an incomplete config", {
+  local_mocked_bindings(
+    billomatics_secret = function(name, args, prompt = "", key = NULL) '{"tenant_id":"t"}'
+  )
+  err <- tryCatch(authentication_msgraph_sharepoint("pw"), error = conditionMessage)
+  expect_match(err, "unvollstaendig")
+  # The missing fields must be named, or an operator cannot act on it.
+  expect_match(err, "client_id")
+})
+
+test_that("a malformed sharepoint config does not reach the error message", {
+  local_mocked_bindings(
+    billomatics_secret = function(name, args, prompt = "", key = NULL) "SP-SECRET-abc123"
+  )
+  msg <- tryCatch(authentication_msgraph_sharepoint("pw"), error = conditionMessage)
+  expect_false(grepl("SP-SECRET-abc123", msg, fixed = TRUE))
+})
+
+test_that("personio returns its three-element list and does not swap the fields", {
+  local_mocked_bindings(
+    billomatics_secret = function(name, args, prompt = "", key = NULL) {
+      if (name == "studyflix-personio-client-id") "cid" else "csec"
+    }
+  )
+  local_mocked_bindings(
+    POST        = function(...) structure(list(), class = "response"),
+    status_code = function(r) 200L,
+    content     = function(r, as) list(data = list(token = "tok")),
+    .package = "httr"
+  )
+  out <- authentication_personio("pw")
+  expect_identical(names(out), c("client_id", "client_secret", "access_token"))
+  expect_identical(out$client_id, "cid")
+  expect_identical(out$client_secret, "csec")
+  expect_identical(out$access_token, "tok")
+})
+
+test_that("each multi-secret service prompts once, not per secret", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      if (grepl("sharepoint", name)) {
+        '{"tenant_id":"t","client_id":"c","client_secret":"s","store_key":"k","store_path":"p","site_url":"u"}'
+      } else "v"
+    },
+    .package = "secretsR"
+  )
+  local_mocked_bindings(billomatics_interactive = function() TRUE)
+  local_mocked_bindings(
+    POST        = function(...) structure(list(), class = "response"),
+    status_code = function(r) 200L,
+    content     = function(r, as) list(data = list(token = "tok")),
+    .package = "httr"
+  )
+  for (fn in list(authentication_msgraph_delegated, authentication_personio)) {
+    prompts <- 0L
+    local_mocked_bindings(
+      getPass = function(msg) { prompts <<- prompts + 1L; "typed" },
+      .package = "getPass"
+    )
+    fn(NULL)
+    expect_identical(prompts, 1L)
+  }
+})
