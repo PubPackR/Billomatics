@@ -62,3 +62,68 @@ test_that("the prompt reaches the seam, so an operator is told which service", {
   authentication_metabase("pw")
   expect_match(seen, "Metabase", fixed = TRUE)
 })
+
+# ---- billomat and asana: two DIFFERENT legacy data keys --------------------
+
+test_that("billomat and asana take their data keys from separate secrets", {
+  # base-02-asana_auswertung encrypts its pipeline output under the Asana
+  # password and base-18 reads it back; ~49 other sites use the Billomat one.
+  # Those are different strings, so one shared key would leave base-02's data
+  # unreadable with no error at the time.
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) paste0("v-", name),
+    .package = "secretsR"
+  )
+  b <- authentication_billomat("ignored")
+  expect_length(b, 2L)
+  expect_identical(b[1], "v-studyflix-legacy-data-key-billomat")
+  expect_identical(b[2], "v-studyflix-billomat-api-key")
+
+  a <- authentication_asana("ignored")
+  expect_length(a, 2L)
+  expect_identical(a[1], "v-studyflix-legacy-data-key-asana")
+  expect_identical(a[2], "v-studyflix-asana-token")
+
+  expect_false(identical(a[1], b[1]))
+})
+
+test_that("element [1] is the supplied password under the file backend", {
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) paste0("v-", name),
+    .package = "secretsR"
+  )
+  # Under file the data key IS the password the caller passed - there is no
+  # keys/ file holding it, because it is the key those files are encrypted with.
+  expect_identical(authentication_billomat("pw")[1], "pw")
+  expect_identical(authentication_asana("pw")[1], "pw")
+})
+
+test_that("billomat and asana prompt once, not twice", {
+  # Two prompts means element [1] and the credential can derive from DIFFERENT
+  # passwords if the operator types differently the second time - and element
+  # [1] is what ~49 call sites use to decrypt base-data/. Nothing would detect
+  # it.
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) file_key,
+    .package = "secretsR"
+  )
+  local_mocked_bindings(billomatics_interactive = function() TRUE)
+
+  for (fn in list(authentication_billomat, authentication_asana)) {
+    prompts <- 0L
+    local_mocked_bindings(
+      getPass = function(msg) {
+        prompts <<- prompts + 1L
+        "typed"
+      },
+      .package = "getPass"
+    )
+    out <- fn(NULL)
+    expect_identical(prompts, 1L)
+    expect_identical(out[1], "typed")
+    expect_identical(out[2], "typed")
+  }
+})

@@ -8,13 +8,19 @@ authentication_asana(args)
 }
 \arguments{
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
-
-\item{return_keys}{optional, vector with already acquired keys}
 }
 \value{
-authentication key in vector
+\code{character[2]}: the legacy data key, then the Asana access token.
 }
 \description{
-This function executes the Asana authentication process.
-It can handle manual password inputs as well as Flow Force args Inputs.
+Returns \code{c(legacy_data_key, asana_access_token)}.
+}
+\details{
+Element \verb{[1]} is the data key \code{base-02-asana_auswertung} encrypts its pipeline
+output with and \verb{base-18_export_billomat2sap} reads it back with. It is a
+DIFFERENT string from billomat's - each service has its own password - so it
+resolves to \code{studyflix-legacy-data-key-asana} under \code{gsm} and cannot be
+collapsed into the billomat key.
+
+Same one-prompt threading as \code{authentication_billomat()}; see its note.
 }

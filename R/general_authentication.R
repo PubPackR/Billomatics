@@ -76,32 +76,31 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
 
   return(keys)
 }
-
 #' authentication_billomat
 #'
-#' This function executes the billomat authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Returns `c(legacy_data_key, billomat_api_key)`.
+#'
+#' Element `[1]` is NOT a copy of the API key. It is the data-encryption key for
+#' `base-data/` RDS files and the shinymanager SQLite stores, and roughly 49
+#' call sites across the organisation depend on it. Under the `file` backend it
+#' is the password the caller supplied, which is what those call sites receive
+#' today; under `gsm` it is the stored secret
+#' `studyflix-legacy-data-key-billomat`.
+#'
+#' The password is resolved ONCE and threaded into both calls, so the two
+#' elements always derive from the same string. Resolving twice would let an
+#' operator who types differently on a second prompt receive a data key that
+#' silently does not match the credential.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_billomat <-  function(args) {
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-
-      encryption_db <-
-        getPass::getPass("Enter the password for Billomat-DB: ")
-      billomatApiKey <-
-        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
-
-    } else {
-
-      encryption_db <- args
-      billomatApiKey <-
-        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
-    }
-
-    c(encryption_db, billomatApiKey)
+#' @return `character[2]`: the legacy data key, then the Billomat API key.
+authentication_billomat <- function(args) {
+  # ---- start ---- #
+  prompt <- "Enter the password for Billomat-DB: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
+  c(billomatics_legacy_data_key("billomat", args, key = key, prompt = prompt),
+    billomatics_secret("studyflix-billomat-api-key", args, prompt, key = key))
 }
 #' authentication_crm
 #'
@@ -179,33 +178,27 @@ authentication_GSheet <-  function(args) {
       return("No Key")
     })
 }
-
-
 #' authentication_asana
 #'
-#' This function executes the Asana authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
+#' Returns `c(legacy_data_key, asana_access_token)`.
+#'
+#' Element `[1]` is the data key `base-02-asana_auswertung` encrypts its pipeline
+#' output with and `base-18_export_billomat2sap` reads it back with. It is a
+#' DIFFERENT string from billomat's - each service has its own password - so it
+#' resolves to `studyflix-legacy-data-key-asana` under `gsm` and cannot be
+#' collapsed into the billomat key.
+#'
+#' Same one-prompt threading as `authentication_billomat()`; see its note.
 #'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_asana <-  function(args) {
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-
-    asana_key <-
-      getPass::getPass("Enter the password for Asana: ")
-    asana_access_token <-
-      safer::decrypt_string(readLines("../../keys/asana.txt"), key = asana_key)
-
-  } else {
-
-    asana_key <- args
-    asana_access_token <-
-      safer::decrypt_string(readLines("../../keys/asana.txt"), key = asana_key)
-  }
-
-  c(asana_key, asana_access_token)
+#' @return `character[2]`: the legacy data key, then the Asana access token.
+authentication_asana <- function(args) {
+  # ---- start ---- #
+  prompt <- "Enter the password for Asana: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
+  c(billomatics_legacy_data_key("asana", args, key = key, prompt = prompt),
+    billomatics_secret("studyflix-asana-token", args, prompt, key = key))
 }
 #' authentication_msgraph
 #'

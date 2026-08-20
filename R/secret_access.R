@@ -34,10 +34,10 @@ billomatics_require <- function(pkg) {
 
 #' Normalise the positional password argument to a character scalar
 #'
-#' authentication_process() calls auth_functions[[service]](args[pos]), and args
+#' authentication_process() calls `auth_functions[[service]](args[pos])`, and args
 #' arrives as a character vector from commandArgs() in FlowForce and as a list
-#' from shinymanager::custom_access_keys_2() in Shiny. args[pos] is therefore
-#' character[1] in one case and a length-1 LIST in the other - and list(NULL)
+#' from shinymanager::custom_access_keys_2() in Shiny. `args[pos]` is therefore
+#' `character[1]` in one case and a length-1 LIST in the other - and `list(NULL)`
 #' when needed_services is longer than the supplied keys. secret_get() validates
 #' file_key as a character scalar, so the shape is flattened once here rather
 #' than at 22 call sites.
@@ -60,7 +60,7 @@ billomatics_file_key <- function(args) {
 #' Separate from billomatics_secret() so a function needing several secrets
 #' under one password prompts once and threads the result. For billomat and
 #' asana that is a correctness requirement rather than a convenience: element
-#' [1] of their return value and the credential itself must derive from the same
+#' `[1]` of their return value and the credential itself must derive from the same
 #' password, and an operator typing differently on a second prompt would
 #' otherwise produce a data key that silently does not match.
 #'
@@ -127,12 +127,12 @@ billomatics_parse_json <- function(json, name) {
 #'
 #' Under file this is the password the caller supplied - there is no keys/ file
 #' holding it, because it IS the key those files are encrypted with. Under gsm
-#' it is a stored secret, so call sites reading keys$billomat[1] to decrypt
+#' it is a stored secret, so call sites reading `keys$billomat[1]` to decrypt
 #' base-data/ keep working after cutover.
 #'
 #' There are TWO. A sweep of every encrypt_object()/decrypt_object() call site
-#' across the organisation (2026-08-20) found ~49 passing keys$billomat[1] and 9
-#' passing keys$asana[1]: base-02-asana_auswertung writes its pipeline output
+#' across the organisation (2026-08-20) found ~49 passing `keys$billomat[1]` and 9
+#' passing `keys$asana[1]`: base-02-asana_auswertung writes its pipeline output
 #' under the Asana password and base-18 reads it back. Those are different
 #' strings, so a single key would leave base-02's data unreadable.
 #'
