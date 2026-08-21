@@ -35,8 +35,16 @@ test_that("billomatics_secret passes the per-call key to the file backend", {
 })
 
 test_that("billomatics_secret does not prompt under the gsm backend", {
+  # The mock returns a constant keyed on nothing, so it also has to ASSERT the
+  # requested name -- otherwise a mutation that requests the wrong secret is
+  # caught only incidentally, by whichever other test happens to route through
+  # this function.
+  asked <- NULL
   local_mocked_bindings(
-    secret_get = function(name, version = "latest", file_key = NULL) "value",
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      asked <<- name
+      "value"
+    },
     secret_backend = function() "gsm",
     .package = "secretsR"
   )
@@ -46,6 +54,7 @@ test_that("billomatics_secret does not prompt under the gsm backend", {
     .package = "getPass"
   )
   expect_identical(billomatics_secret("studyflix-crm-api-key", NULL), "value")
+  expect_identical(asked, "studyflix-crm-api-key")
 })
 
 test_that("a key resolved once is reused, not prompted for twice", {

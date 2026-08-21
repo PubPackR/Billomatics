@@ -386,3 +386,45 @@ test_that("postgresql does not short-circuit under gsm, even interactively", {
   expect_identical(authentication_postgresql(NULL),
                    c("pw", "u", "db", "h.rds.amazonaws.com", "5432"))
 })
+
+test_that("no multi-secret service prompts under gsm, even interactively", {
+  # The same guard gap that 5ba1fbe closed for authentication_postgresql exists
+  # in every function using
+  #   key <- if (secret_backend() == "gsm") NULL else billomatics_resolve_key(...)
+  # Found by review: mutating that ternary to always resolve produced NO test
+  # failure in any of these four. Under gsm + interactive + no args a broken
+  # guard prompts for a password that is not needed; non-interactively it stops
+  # outright, where ADC would have worked.
+  local_mocked_bindings(secret_backend = function() "gsm", .package = "secretsR")
+  local_mocked_bindings(
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      # Two services parse their payload, so a bare "v" would fail them for the
+      # wrong reason and mask what this test is actually asserting.
+      if (grepl("sharepoint", name)) {
+        '{"tenant_id":"t","client_id":"c","client_secret":"s","store_key":"k","store_path":"p","site_url":"u"}'
+      } else if (grepl("postgresql", name)) {
+        '{"host":"h","port":"5432","dbname":"db","user":"u","password":"pw"}'
+      } else "v"
+    },
+    .package = "secretsR"
+  )
+  # Interactive, so a lost guard reaches getPass() rather than the stop().
+  local_mocked_bindings(billomatics_interactive = function() TRUE)
+  local_mocked_bindings(
+    getPass = function(msg) stop("must not prompt under gsm"),
+    .package = "getPass"
+  )
+  local_mocked_bindings(
+    POST        = function(...) structure(list(), class = "response"),
+    status_code = function(r) 200L,
+    content     = function(r, as) list(data = list(token = "tok")),
+    .package = "httr"
+  )
+
+  # args = NULL is the shape that matters: under gsm nothing should be needed.
+  expect_no_error(authentication_billomat(NULL))
+  expect_no_error(authentication_asana(NULL))
+  expect_no_error(authentication_msgraph_delegated(NULL))
+  expect_no_error(authentication_personio(NULL))
+  expect_no_error(authentication_postgresql(NULL))
+})

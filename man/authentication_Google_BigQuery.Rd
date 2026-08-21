@@ -18,8 +18,9 @@ Previously returned its own error message - a 96-character string - where
 a credential belongs.
 }
 \details{
-Behaviour change, deliberate and the only one in this migration. This
-function used to report success to the caller whatever happened - including
+Behaviour change, deliberate. This is the one place the migration knowingly
+breaks its own preserve-every-return-shape rule, because the shape being
+preserved is wrong. This function used to report success to the caller whatever happened - including
 a failed decrypt - so a job continued unauthenticated and the fault surfaced
 later as an unrelated API error, or not at all if a cached token was still
 valid. Errors now propagate, so an unattended job crashes loudly.
