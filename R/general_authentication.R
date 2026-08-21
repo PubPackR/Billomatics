@@ -1,9 +1,5 @@
 # -------------------------- Start script --------------------------------
 
-library(safer)
-library(tidyverse)
-library(googlesheets4)
-library(googleAuthR)
 
 #' Authenticate Multiple Services
 #'
@@ -80,536 +76,415 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
 
   return(keys)
 }
-
 #' authentication_billomat
 #'
-#' This function executes the billomat authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Returns `c(legacy_data_key, billomat_api_key)`.
+#'
+#' Element `[1]` is NOT a copy of the API key. It is the data-encryption key for
+#' `base-data/` RDS files and the shinymanager SQLite stores, and roughly 49
+#' call sites across the organisation depend on it. Under the `file` backend it
+#' is the password the caller supplied, which is what those call sites receive
+#' today; under `gsm` it is the stored secret
+#' `studyflix-legacy-data-key-billomat`.
+#'
+#' The password is resolved ONCE and threaded into both calls, so the two
+#' elements always derive from the same string. Resolving twice would let an
+#' operator who types differently on a second prompt receive a data key that
+#' silently does not match the credential.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_billomat <-  function(args) {
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-
-      encryption_db <-
-        getPass::getPass("Enter the password for Billomat-DB: ")
-      billomatApiKey <-
-        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
-
-    } else {
-
-      encryption_db <- args
-      billomatApiKey <-
-        safer::decrypt_string(readLines("../../keys/billomat.txt"), key = encryption_db)
-    }
-
-    c(encryption_db, billomatApiKey)
+#' @return `character[2]`: the legacy data key, then the Billomat API key.
+authentication_billomat <- function(args) {
+  # ---- start ---- #
+  prompt <- "Enter the password for Billomat-DB: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
+  c(billomatics_legacy_data_key("billomat", args, key = key, prompt = prompt),
+    billomatics_secret("studyflix-billomat-api-key", args, prompt, key = key))
 }
-
 #' authentication_crm
 #'
-#' This function executes the CRM authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the CRM API key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_crm <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/CRM.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für CRM eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_crm <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-crm-api-key", args,
+                     "Bitte Decryption_Key fuer CRM eingeben: ")
 }
-
 #' authentication_crm_lm
 #'
-#' This function executes the CRM LM authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the CRM Lead-Management API key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_crm_lm <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/CRM_LM.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für CRM LM eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_crm_lm <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-crm-lm-api-key", args,
+                     "Bitte Decryption_Key fuer CRM LM eingeben: ")
 }
-
 #' authentication_GSheet
 #'
-#' This function executes the Google Sheet authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates googlesheets4 with the Google Sheets service account.
+#'
+#' Behaviour change, deliberate. This is the one place the migration knowingly
+#' breaks its own preserve-every-return-shape rule, because the shape being
+#' preserved is wrong. This function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_GSheet <-  function(args) {
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_google_sheets_key <-
-        getPass::getPass("Enter the password for Google Sheets: ")
-
-    } else {
-      decrypt_google_sheets_key <- args
-    }
-
-    encrypted_file <-
-      "../../keys/GoogleSheets/encrypted_google_sheets.bin"
-    decrypted_file <-
-      "../../keys/GoogleSheets/google_sheets_auth.json"
-
-    tryCatch({
-      decrypted_data <-
-        safer::decrypt_file(infile = encrypted_file,
-                            key = decrypt_google_sheets_key,
-                            outfile = decrypted_file)
-      print("Decryption successful. Data saved to google_sheets_auth.json")
-
-      # Authentifizieren bei Google Sheets
-      creds <- googlesheets4::gs4_auth(path = decrypted_file)
-
-    },
-    error = function(e) {
-      # Error handling
-      cat("An error occurred: ", e$message, "\n")
-      print("Please check also if you have ../../keys/GoogleSheets/encrypted_google_sheets.bin")
-    },
-    finally = {
-      # Cleanup of private key afterwards
-      unlink(decrypted_file)
-      print("google_sheets_auth.json deleted.")
-
-      return("No Key")
-    })
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_GSheet <- function(args) {
+  # ---- start ---- #
+  json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
+                              "Enter the password for Google Sheets: ")
+  googlesheets4::gs4_auth(path = json)
+  "OK"
 }
-
-
 #' authentication_asana
 #'
-#' This function executes the Asana authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
+#' Returns `c(legacy_data_key, asana_access_token)`.
+#'
+#' Element `[1]` is the data key `base-02-asana_auswertung` encrypts its pipeline
+#' output with and `base-18_export_billomat2sap` reads it back with. It is a
+#' DIFFERENT string from billomat's - each service has its own password - so it
+#' resolves to `studyflix-legacy-data-key-asana` under `gsm` and cannot be
+#' collapsed into the billomat key.
+#'
+#' Same one-prompt threading as `authentication_billomat()`; see its note.
 #'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_asana <-  function(args) {
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-
-    asana_key <-
-      getPass::getPass("Enter the password for Asana: ")
-    asana_access_token <-
-      safer::decrypt_string(readLines("../../keys/asana.txt"), key = asana_key)
-
-  } else {
-
-    asana_key <- args
-    asana_access_token <-
-      safer::decrypt_string(readLines("../../keys/asana.txt"), key = asana_key)
-  }
-
-  c(asana_key, asana_access_token)
+#' @return `character[2]`: the legacy data key, then the Asana access token.
+authentication_asana <- function(args) {
+  # ---- start ---- #
+  prompt <- "Enter the password for Asana: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
+  c(billomatics_legacy_data_key("asana", args, key = key, prompt = prompt),
+    billomatics_secret("studyflix-asana-token", args, prompt, key = key))
 }
-
-
 #' authentication_msgraph
 #'
-#' This function executes the MSGraph authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the MSGraph app secret.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_msgraph <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/Microsoft365R/microsoft365r.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <-
-      getPass::getPass("Bitte Decryption_Key für MSGraph eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_msgraph <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-msgraph-secret", args,
+                     "Bitte Decryption_Key fuer MSGraph eingeben: ")
 }
-
 #' authentication_msgraph_scoped_app
 #'
-#' Decryptet das Client-Secret der gescopten app-only-MSGraph-App (neuer Weg).
-#' @param args FlowForce-Decryption-Key.
-#' @return App-Secret als String.
+#' Resolves the client secret of the scoped app-only MSGraph app.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_msgraph_scoped_app <- function(args) {
   # ---- start ---- #
-  encrypted_api_key <- readLines("../../keys/Microsoft365R/msgraph_scoped_app.txt")
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph Scoped App eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+  billomatics_secret("studyflix-msgraph-scoped-app-secret", args,
+                     "Bitte Decryption_Key fuer MSGraph Scoped App eingeben: ")
 }
-
 #' authentication_msgraph_delegated
 #'
-#' Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs.
+#' Decryptet Delegated-App-Secret und Store-Key des Service-Account-Wegs. Beide
+#' teilen sich unter dem `file`-Backend ein Passwort, das einmal aufgeloest und
+#' an beide Aufrufe durchgereicht wird.
+#'
 #' @param args FlowForce-Decryption-Key.
 #' @return Named list(client_secret, store_key).
 authentication_msgraph_delegated <- function(args) {
   # ---- start ---- #
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph Delegated eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
+  prompt <- "Bitte Decryption_Key fuer MSGraph Delegated eingeben: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
   list(
-    client_secret = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_secret.txt"), key = decrypt_key),
-    store_key     = safer::decrypt_string(readLines("../../keys/Microsoft365R/msgraph_delegated_storekey.txt"), key = decrypt_key)
+    client_secret = billomatics_secret("studyflix-msgraph-delegated-secret", args, prompt, key = key),
+    store_key     = billomatics_secret("studyflix-msgraph-delegated-storekey", args, prompt, key = key)
   )
 }
-
 #' authentication_msgraph_sharepoint
 #'
 #' Decryptet die Konfiguration des delegierten SharePoint-Zugriffs (n8n-App):
 #' ein JSON mit tenant_id, client_id, client_secret, store_key, store_path,
-#' site_url. Siehe Spec docs/superpowers/specs/2026-08-18-msgraph-sharepoint-
-#' delegated-design.md.
+#' site_url. Unter dem `file`-Backend liegt das JSON als verschluesselter
+#' STRING, nicht als verschluesselte Datei, also ist es ein gewoehnliches
+#' `secret_get()`-Secret trotz strukturierter Inhalte.
+#'
 #' @param args FlowForce-Decryption-Key.
 #' @return Named list(tenant_id, client_id, client_secret, store_key,
 #'   store_path, site_url).
 authentication_msgraph_sharepoint <- function(args) {
   # ---- start ---- #
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key fuer MSGraph SharePoint eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-  json <- safer::decrypt_string(
-    readLines("../../keys/Microsoft365R/msgraph_sharepoint.txt"), key = decrypt_key)
-  auth <- jsonlite::fromJSON(json, simplifyVector = TRUE)
+  json <- billomatics_secret("studyflix-msgraph-sharepoint-config", args,
+                             "Bitte Decryption_Key fuer MSGraph SharePoint eingeben: ")
+  auth <- billomatics_parse_json(json, "studyflix-msgraph-sharepoint-config")
   required <- c("tenant_id", "client_id", "client_secret",
                 "store_key", "store_path", "site_url")
   missing <- setdiff(required, names(auth))
   if (length(missing)) {
+    # Wording kept close to the original so a caller matching on
+    # "unvollstaendig" keeps working.
     stop("msgraph_sharepoint.txt unvollstaendig, fehlt: ",
          paste(missing, collapse = ", "), call. = FALSE)
   }
   auth
 }
-
 #' authentication_brevo
 #'
-#' This function executes the Brevo authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the Brevo SMTP key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_brevo <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/Brevo/smpt-key.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für Brevo eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_brevo <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-brevo-smtp-key", args,
+                     "Bitte Decryption_Key fuer Brevo eingeben: ")
 }
-
-
 #' authentication_Google_Analytics
 #'
-#' This function executes the Google Analytics authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates googleAuthR with the Google Analytics service account.
+#'
+#' Behaviour change, deliberate. This is the one place the migration knowingly
+#' breaks its own preserve-every-return-shape rule, because the shape being
+#' preserved is wrong. This function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_Google_Analytics <-  function(args) {
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_google_analytics_key <-
-      getPass::getPass("Enter the password for Google Analytics: ")
-
-  } else {
-    decrypt_google_analytics_key <- args
-  }
-
-  encrypted_file <-
-    "../../keys/GoogleAnalytics/encrypted_google_analytics.bin"
-  decrypted_file <-
-    "../../keys/GoogleAnalytics/google_analytics_auth.json"
-
-  tryCatch({
-    decrypted_data <-
-      safer::decrypt_file(infile = encrypted_file,
-                          key = decrypt_google_analytics_key,
-                          outfile = decrypted_file)
-    print("Decryption successful. Data saved to google_analytics_auth.json")
-
-    # Authentifizieren bei Google Analytics
-    google_analytics_auth <- googleAuthR::gar_auth_service(
-      json_file = decrypted_file
-    )
-
-  },
-  error = function(e) {
-    # Error handling
-    cat("An error occurred: ", e$message, "\n")
-    print("Please check also if you have ../../keys/GoogleAnalytics/encrypted_google_analytics.bin")
-  },
-  finally = {
-    # Cleanup of private key afterwards
-    unlink(decrypted_file)
-    print("google_analytics_auth.json deleted.")
-
-    return("No Key")
-  })
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_Google_Analytics <- function(args) {
+  # ---- start ---- #
+  json <- billomatics_sa_json("studyflix-google-analytics-service-account", args,
+                              "Enter the password for Google Analytics: ")
+  googleAuthR::gar_auth_service(json_file = json)
+  "OK"
 }
-
 #' authentication_bonus_db
 #'
-#' This function executes the Bonus DB authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Resolves the Bonus-DB key.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @param return_keys optional, vector with already acquired keys
-#' @return authentication key in vector
-authentication_bonus_db <-  function(args) {
-
-    encrypted_api_key <- readLines("../../keys/BonusDB/bonusDBKey.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <-
-        getPass::getPass("Bitte Decryption_Key für Bonus DB eingeben: ")
-    } else{
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' @return The credential as a character scalar.
+authentication_bonus_db <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-bonusdb-key", args,
+                     "Bitte Decryption_Key fuer Bonus DB eingeben: ")
 }
-
 #' authentication_Google_BigQuery
 #'
-#' This function executes the Google_BigQuery authentication process.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
+#' Authenticates bigrquery with the search-console service account.
+#' Previously returned its own error message - a 96-character string - where
+#' a credential belongs.
+#'
+#' Behaviour change, deliberate. This is the one place the migration knowingly
+#' breaks its own preserve-every-return-shape rule, because the shape being
+#' preserved is wrong. This function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
 #' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_Google_BigQuery <-  function(args) {
-  if (interactive()  & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_google_BigQuery_key <-
-      getPass::getPass("Enter the password for BigQuery: ")
-
-  } else {
-    decrypt_google_BigQuery_key <- args
-  }
-
-  encrypted_file <-
-    "../../keys/gsc_bigQuery/encrypted_key_service_account_bigQuery.bin"
-  decrypted_file <-
-    "../../keys/gsc_bigQuery/search-console-api-399013-5cb724656590.json"
-
-  tryCatch({
-    decrypted_data <-
-      safer::decrypt_file(infile = encrypted_file,
-                          key = decrypt_google_BigQuery_key,
-                          outfile = decrypted_file)
-    print("Decryption successful. Data saved to search-console-api-399013-5cb724656590.json")
-
-    # Authentifizieren bei Google BigQuery
-    google_gsc_BigQuery_auth <- bigrquery::bq_auth(path = decrypted_file)
-
-
-  },
-  error = function(e) {
-    # Error handling
-    cat("An error occurred: ", e$message, "\n")
-    print("Please check also if you have ../../keys/gsc_bigQuery/encrypted_key_service_account_bigQuery.bin")
-  },
-  finally = {
-    # Cleanup of private key afterwards
-    unlink(decrypted_file)
-    print(paste0(decrypted_file, " deleted."))
-  })
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_Google_BigQuery <- function(args) {
+  # ---- start ---- #
+  # Checked before the decrypt, so a credential is not decrypted just to be
+  # discarded when the package turns out to be absent.
+  billomatics_require("bigrquery")
+  json <- billomatics_sa_json("studyflix-bigquery-gsc-service-account", args,
+                              "Enter the password for BigQuery: ")
+  bigrquery::bq_auth(path = json)
+  "OK"
 }
-
 #' authentication_Google_BigQuery_GA4
 #'
-#' This function executes the GA4 BigQuery authentication process for the
-#' bigquery@ga4studyflix.iam.gserviceaccount.com service account.
-#' It decrypts the encrypted key file, authenticates via googleAuthR and bigrquery,
-#' verifies the connection, and deletes the decrypted file afterwards.
-#' It can handle manual password inputs as well as Flow Force args Inputs.
-
-#' @param args Additional Input Parameter, only needed through FlowForce Job
-#' @return no return values
-authentication_Google_BigQuery_GA4 <- function(args) {
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <-
-      getPass::getPass("Enter the password for BigQuery GA4: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  encrypted_file <-
-    "../../keys/ga4_bigQuery/encrypted_ga4_bigquery.bin"
-  decrypted_file <-
-    "../../keys/ga4_bigQuery/ga4studyflix-c43a79c8c2cb.json"
-
-  project_id <- "ga4studyflix"
-
-  tryCatch({
-    safer::decrypt_file(
-      infile  = encrypted_file,
-      key     = decrypt_key,
-      outfile = decrypted_file
-    )
-    print("Decryption successful. Data saved to ga4studyflix-c43a79c8c2cb.json")
-
-    # Authenticate with GA4 BigQuery service account
-    googleAuthR::gar_auth_service(
-      json_file = decrypted_file,
-      scope     = "https://www.googleapis.com/auth/bigquery"
-    )
-    bigrquery::bq_auth(token = googleAuthR::gar_token())
-
-    # Verify authentication
-    bigrquery::bq_project_datasets(project_id)
-    message("Authentication successful — connected to '", project_id, "'.")
-  },
-  error = function(e) {
-    cat("An error occurred: ", e$message, "\n")
-    print("Please check also if you have ../../keys/ga4_bigQuery/encrypted_ga4_bigquery.bin")
-  },
-  finally = {
-    # Cleanup of decrypted key file
-    unlink(decrypted_file)
-    print(paste0(decrypted_file, " deleted."))
-  })
-}
-
-#' authentication_cleverReach
+#' Authenticates bigrquery for the ga4studyflix project, then verifies the
+#' connection. Previously returned NULL on success and a non-NULL string on
+#' failure - inverted, so the natural `is.null()` guard aborted on success
+#' and continued on failure.
 #'
-#' Diese Funktion führt den Authentifizierungsprozess für CleverReach-RESTAPI durch.
-#' Sie kann sowohl manuelle Passwort-Eingaben als auch FlowForce-Argumente verarbeiten.
-
-#' @param args Zusätzlicher Eingabeparameter, nur erforderlich bei FlowForce-Jobs
-#' @return Authentifizierungs-Token als Zeichenkette
-authentication_cleverreach <- function(args) {
-    encrypted_api_key <- readLines("../../keys/cleverReach_key.txt")
-
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      decrypt_key <- getPass::getPass("Bitte Decryption_Key für CleverReach eingeben: ")
-    } else {
-      decrypt_key <- args
-    }
-
-    safer::decrypt_string(encrypted_api_key, key = decrypt_key)
-
+#' Behaviour change, deliberate. This is the one place the migration knowingly
+#' breaks its own preserve-every-return-shape rule, because the shape being
+#' preserved is wrong. This function used to report success to the caller whatever happened - including
+#' a failed decrypt - so a job continued unauthenticated and the fault surfaced
+#' later as an unrelated API error, or not at all if a cached token was still
+#' valid. Errors now propagate, so an unattended job crashes loudly.
+#'
+#' It returns the sentinel "OK" rather than NULL because
+#' `authentication_process()` does `keys[[service]] <- <result>`, and assigning
+#' NULL REMOVES the element - a 22-service call would come back with 18 entries
+#' and every caller using length() or names() would change behaviour silently.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_Google_BigQuery_GA4 <- function(args) {
+  # ---- start ---- #
+  billomatics_require("bigrquery")
+  json <- billomatics_sa_json("studyflix-bigquery-ga4-service-account", args,
+                              "Enter the password for BigQuery GA4: ")
+  googleAuthR::gar_auth_service(
+    json_file = json,
+    scope     = "https://www.googleapis.com/auth/bigquery"
+  )
+  bigrquery::bq_auth(token = googleAuthR::gar_token())
+  # Retained from the original: the only one of the four that proves the
+  # credential works rather than merely parses.
+  bigrquery::bq_project_datasets("ga4studyflix")
+  "OK"
 }
-
-
+#' authentication_cleverreach
+#'
+#' Resolves the CleverReach REST API token.
+#'
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_cleverreach <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-cleverreach-token", args,
+                     "Bitte Decryption_Key fuer CleverReach eingeben: ")
+}
 #' authentication_postgresql
 #'
-#' This function handles the key encryption for a PostgreSQL database authentication.
-#' It supports manual password input as well as FlowForce arguments.
-
+#' Returns the connection vector `postgres_connect()` consumes:
+#' `c(password, user, dbname, host, port)` - the order documented at
+#' `postgres_connect.R:882-886`.
+#'
+#' The backends store this asymmetrically. GSM holds ONE JSON secret; the legacy
+#' folder holds the password in `postgresql_key.txt` and
+#' `"user, dbname, host, port"` in `postgresql_server.txt`. secretsR
+#' deliberately does not compose them - doing so would mean inventing the GSM
+#' payload format inside the credential package - so the composition lives here.
+#'
 #' @param args Additional input parameter, only needed through FlowForce Job
-#' @return PostgreSQL DB Key as String
+#' @return `character[5]`: password, user, dbname, host, port.
 authentication_postgresql <- function(args) {
-    encrypted_credentials <- readLines("../../keys/PostgreSQL_DB/postgresql_key.txt")
-    encrypted_server_info <- readLines("../../keys/PostgreSQL_DB/postgresql_server.txt")
+  # ---- start ---- #
+  gsm <- secretsR::secret_backend() == "gsm"
 
-    if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-      #decrypt_key <- getPass::getPass("Bitte Decryption_Key für PostgreSQL eingeben: ")
-      print("Postgres-Key wird lokal nicht benötigt")
-      return(c("Postgres-Credentials werden lokal nicht benötigt", "Postgres-Server-Info wird lokal nicht benötigt"))
-    } else {
-      decrypt_key <- args
+  if (!gsm && billomatics_interactive() && is.null(billomatics_file_key(args))) {
+    # Unchanged: production credentials are not needed for local development.
+    print("Postgres-Key wird lokal nicht benötigt")
+    return(c("Postgres-Credentials werden lokal nicht benötigt",
+             "Postgres-Server-Info wird lokal nicht benötigt"))
+  }
 
-      credentials <- safer::decrypt_string(encrypted_credentials, key = decrypt_key)
-      server_info <- (safer::decrypt_string(encrypted_server_info, key = decrypt_key) %>% strsplit(", "))[[1]]
-
-      return(c(credentials, server_info))
+  if (gsm) {
+    conn <- billomatics_parse_json(
+      secretsR::secret_get("studyflix-postgresql-connection"),
+      "studyflix-postgresql-connection")
+    required <- c("password", "user", "dbname", "host", "port")
+    missing <- setdiff(required, names(conn))
+    if (length(missing)) {
+      stop("studyflix-postgresql-connection is missing: ",
+           paste(missing, collapse = ", "), call. = FALSE)
     }
+    return(as.character(c(conn$password, conn$user, conn$dbname,
+                          conn$host, conn$port)))
+  }
 
+  prompt <- "Bitte Decryption_Key fuer PostgreSQL eingeben: "
+  key <- billomatics_resolve_key(args, prompt)
+  credentials <- billomatics_secret("file:postgresql-credentials", args, prompt, key = key)
+  server_info <- strsplit(
+    billomatics_secret("file:postgresql-server", args, prompt, key = key),
+    ", ", fixed = TRUE)[[1]]
+  if (length(server_info) != 4L) {
+    stop(sprintf("postgresql_server.txt decrypted to %d fields, expected 4 (user, dbname, host, port)",
+                 length(server_info)), call. = FALSE)
+  }
+  c(credentials, server_info)
 }
-
 #' authentication_gemini
 #'
-#' This function handles the key decryption for the Gemini API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the Gemini API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return Gemini API Key as String
-authentication_gemini <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/gemini_key.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Gemini eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_gemini <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-gemini-api-key", args,
+                     "Bitte Decryption_Key fuer Gemini eingeben: ")
 }
-
 #' authentication_openrouter
 #'
-#' This function handles the key decryption for the OpenRouter API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the OpenRouter API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return Openrouter API Key as String
-authentication_openrouter <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/openrouter.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für OpenRouter eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_openrouter <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-openrouter-api-key", args,
+                     "Bitte Decryption_Key fuer OpenRouter eingeben: ")
 }
-
 #' authentication_openai_admin
 #'
-#' This function handles the key decryption for the OpenAI Admin API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the OpenAI Admin API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return OpenAI Admin API Key as String
-authentication_openai_admin <-  function(args) {
-
-  encrypted_api_key <- readLines("../../keys/openai_admin.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für OpenAI Admin eingeben: ")
-  } else{
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
+authentication_openai_admin <- function(args) {
+  # ---- start ---- #
+  billomatics_secret("studyflix-openai-admin-api-key", args,
+                     "Bitte Decryption_Key fuer OpenAI Admin eingeben: ")
 }
 
 #' authentication_personio
@@ -621,19 +496,12 @@ authentication_openai_admin <-  function(args) {
 #' @param args Additional input parameter, only needed through FlowForce Job
 #' @return Named list containing decrypted client_id, client_secret, and access_token
 authentication_personio <- function(args) {
-
-  encrypted_client_id <- readLines("../../keys/Personio/personio_client_id.txt")
-  encrypted_client_secret <- readLines("../../keys/Personio/personio_client_secret.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Personio eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  # Entschlüssele client_id und client_secret
-  client_id <- safer::decrypt_string(encrypted_client_id, key = decrypt_key)
-  client_secret <- safer::decrypt_string(encrypted_client_secret, key = decrypt_key)
+  # ---- start ---- #
+  prompt <- "Bitte Decryption_Key fuer Personio eingeben: "
+  key <- if (secretsR::secret_backend() == "gsm") NULL else
+    billomatics_resolve_key(args, prompt)
+  client_id     <- billomatics_secret("studyflix-personio-client-id", args, prompt, key = key)
+  client_secret <- billomatics_secret("studyflix-personio-client-secret", args, prompt, key = key)
 
   # Erstelle den Request Body als JSON
   request_body <- jsonlite::toJSON(list(
@@ -671,43 +539,33 @@ authentication_personio <- function(args) {
     stop(e)
   })
 }
-
 #' authentication_github
 #'
-#' This function handles the key decryption for the GitHub API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the GitHub personal access token.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return GitHub Personal Access Token as String
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_github <- function(args) {
-
-  encrypted_api_key <- readLines("../../keys/Github/github_token.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für GitHub eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+  # ---- start ---- #
+  billomatics_secret("studyflix-github-token", args,
+                     "Bitte Decryption_Key fuer GitHub eingeben: ")
 }
-
 #' authentication_metabase
 #'
-#' This function handles the key decryption for the Metabase API authentication.
-#' It supports manual decryption key input as well as FlowForce arguments.
+#' Resolves the Metabase API key.
 #'
-#' @param args Additional input parameter, only needed through FlowForce Job
-#' @return Metabase API Key as String
+#' Under the `file` backend the password arrives through `args` exactly as
+#' before; under `gsm` it is ignored and Application Default Credentials are
+#' used.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The credential as a character scalar.
 authentication_metabase <- function(args) {
-
-  encrypted_api_key <- readLines("../../keys/metabase.txt")
-
-  if (interactive() & (length(args) == 0 | is.na(args[1]))) {
-    decrypt_key <- getPass::getPass("Bitte Decryption_Key für Metabase eingeben: ")
-  } else {
-    decrypt_key <- args
-  }
-
-  safer::decrypt_string(encrypted_api_key, key = decrypt_key)
+  # ---- start ---- #
+  billomatics_secret("studyflix-metabase-api-key", args,
+                     "Bitte Decryption_Key fuer Metabase eingeben: ")
 }

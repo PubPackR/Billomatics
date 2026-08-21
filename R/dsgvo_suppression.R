@@ -73,13 +73,26 @@ dsgvo_email_tombstone <- function(email_hash) {
   paste0("[geloescht]-", email_hash)
 }
 
-#' Liest das Pepper-Geheimnis (ENV -> Key-Datei-Fallback)
+#' Liest das Pepper-Geheimnis (Secret Manager -> ENV -> Key-Datei-Fallback)
+#'
+#' Unter dem `gsm`-Backend kommt der Pepper aus Secret Manager. Die bisherigen
+#' Fallbacks bleiben fuer `file` und die lokale Entwicklung erhalten, damit
+#' dieser Wechsel nichts bricht.
+#'
+#' Ein falscher Pepper scheitert **lautlos**: die Hashes stimmen nicht mehr,
+#' `dsgvo_load_suppression()` findet keine Treffer, Datensaetze von
+#' Loesch-Betroffenen werden ohne Fehler wieder eingelesen. Der Wert muss bei
+#' der Migration daher verifiziert werden, nicht nur kopiert.
+#'
 #' @param env_var Name der ENV-Variable.
 #' @param key_file Optionaler Pfad (Fallback). Erste Zeile, getrimmt.
-#' @return Character mit dem Pepper. Fehler, wenn weder ENV noch Datei etwas liefert.
+#' @return Character mit dem Pepper. Fehler, wenn keine Quelle etwas liefert.
 #' @export
 get_deletion_pepper <- function(env_var = "DELETION_LOG_PEPPER", key_file = NULL) {
   # ---- start ---- #
+  if (secretsR::secret_backend() == "gsm") {
+    return(secretsR::secret_get("studyflix-deletion-log-pepper"))
+  }
   pepper <- Sys.getenv(env_var, unset = "")
   if (nzchar(pepper)) return(pepper)
   if (!is.null(key_file)) {

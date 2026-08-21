@@ -10,9 +10,17 @@ authentication_postgresql(args)
 \item{args}{Additional input parameter, only needed through FlowForce Job}
 }
 \value{
-PostgreSQL DB Key as String
+\code{character[5]}: password, user, dbname, host, port.
 }
 \description{
-This function handles the key encryption for a PostgreSQL database authentication.
-It supports manual password input as well as FlowForce arguments.
+Returns the connection vector \code{postgres_connect()} consumes:
+\code{c(password, user, dbname, host, port)} - the order documented at
+\code{postgres_connect.R:882-886}.
+}
+\details{
+The backends store this asymmetrically. GSM holds ONE JSON secret; the legacy
+folder holds the password in \code{postgresql_key.txt} and
+\code{"user, dbname, host, port"} in \code{postgresql_server.txt}. secretsR
+deliberately does not compose them - doing so would mean inventing the GSM
+payload format inside the credential package - so the composition lives here.
 }

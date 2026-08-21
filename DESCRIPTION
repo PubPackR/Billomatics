@@ -6,6 +6,8 @@ Authors@R:
            comment = c(ORCID = "0000-0002-6413-4513"))
 Description: The package allows to download and wrangle billomat data and crm data into a df to work with.
 Imports:
+    secretsR (>= 0.2.0),
+    googlesheets4,
     magrittr,
     dplyr,
     lubridate,
@@ -36,14 +38,15 @@ Imports:
     openxlsx2,
     pool
 Remotes:
-    url::https://cran.r-project.org/src/contrib/Archive/log4r/log4r_0.4.4.tar.gz
+    url::https://cran.r-project.org/src/contrib/Archive/log4r/log4r_0.4.4.tar.gz,
+    PubPackR/secretsR@ef27b47610de34f69e8d3f920030900601a6d041
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Suggests:
-    testthat (>= 3.0.0),
+    testthat (>= 3.2.0),
+    bigrquery,
     mockery,
     DT,
     msoc,
@@ -51,3 +54,4 @@ Suggests:
     withr,
     webfakes
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

@@ -2,17 +2,21 @@
 % Please edit documentation in R/general_authentication.R
 \name{authentication_cleverreach}
 \alias{authentication_cleverreach}
-\title{authentication_cleverReach}
+\title{authentication_cleverreach}
 \usage{
 authentication_cleverreach(args)
 }
 \arguments{
-\item{args}{Zusätzlicher Eingabeparameter, nur erforderlich bei FlowForce-Jobs}
+\item{args}{Additional Input Parameter, only needed through FlowForce Job}
 }
 \value{
-Authentifizierungs-Token als Zeichenkette
+The credential as a character scalar.
 }
 \description{
-Diese Funktion führt den Authentifizierungsprozess für CleverReach-RESTAPI durch.
-Sie kann sowohl manuelle Passwort-Eingaben als auch FlowForce-Argumente verarbeiten.
+Resolves the CleverReach REST API token.
+}
+\details{
+Under the \code{file} backend the password arrives through \code{args} exactly as
+before; under \code{gsm} it is ignored and Application Default Credentials are
+used.
 }

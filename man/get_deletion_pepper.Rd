@@ -2,7 +2,7 @@
 % Please edit documentation in R/dsgvo_suppression.R
 \name{get_deletion_pepper}
 \alias{get_deletion_pepper}
-\title{Liest das Pepper-Geheimnis (ENV -> Key-Datei-Fallback)}
+\title{Liest das Pepper-Geheimnis (Secret Manager -> ENV -> Key-Datei-Fallback)}
 \usage{
 get_deletion_pepper(env_var = "DELETION_LOG_PEPPER", key_file = NULL)
 }
@@ -12,8 +12,16 @@ get_deletion_pepper(env_var = "DELETION_LOG_PEPPER", key_file = NULL)
 \item{key_file}{Optionaler Pfad (Fallback). Erste Zeile, getrimmt.}
 }
 \value{
-Character mit dem Pepper. Fehler, wenn weder ENV noch Datei etwas liefert.
+Character mit dem Pepper. Fehler, wenn keine Quelle etwas liefert.
 }
 \description{
-Liest das Pepper-Geheimnis (ENV -> Key-Datei-Fallback)
+Unter dem \code{gsm}-Backend kommt der Pepper aus Secret Manager. Die bisherigen
+Fallbacks bleiben fuer \code{file} und die lokale Entwicklung erhalten, damit
+dieser Wechsel nichts bricht.
+}
+\details{
+Ein falscher Pepper scheitert \strong{lautlos}: die Hashes stimmen nicht mehr,
+\code{dsgvo_load_suppression()} findet keine Treffer, Datensaetze von
+Loesch-Betroffenen werden ohne Fehler wieder eingelesen. Der Wert muss bei
+der Migration daher verifiziert werden, nicht nur kopiert.
 }

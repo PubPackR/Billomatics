@@ -7,11 +7,16 @@
 authentication_msgraph_scoped_app(args)
 }
 \arguments{
-\item{args}{FlowForce-Decryption-Key.}
+\item{args}{Additional Input Parameter, only needed through FlowForce Job}
 }
 \value{
-App-Secret als String.
+The credential as a character scalar.
 }
 \description{
-Decryptet das Client-Secret der gescopten app-only-MSGraph-App (neuer Weg).
+Resolves the client secret of the scoped app-only MSGraph app.
+}
+\details{
+Under the \code{file} backend the password arrives through \code{args} exactly as
+before; under \code{gsm} it is ignored and Application Default Credentials are
+used.
 }
