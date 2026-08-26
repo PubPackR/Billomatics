@@ -21,4 +21,5 @@ attachable_id - id of the company (required)
 action - has to be value "update"
 field_type - has to be value "company"
 name - optional (company name)
+group_id - optional (group assignment in CRM)
 }
