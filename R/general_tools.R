@@ -274,6 +274,11 @@ replace_external_ids_with_internal <- function(external_table, external_id_colum
 #' @param shiny_download_files Path to the download files directory (default: "../../base-data/shiny_download_files")
 #' @param download_encrypted Logical indicating if download is encrypted (default: TRUE, saved in YAML metadata)
 #' @param shiny_repos Character vector of shiny repository names (saved as comma-separated string in YAML metadata)
+#' @param shiny_users Character vector of shiny login names (saved as comma-separated
+#'   string in YAML metadata). Restricts the download to those users within the
+#'   repos named in \code{shiny_repos}. Leave at \code{NULL} to make the file
+#'   visible to every user of those repos (previous behaviour). Login names must
+#'   match the \code{user} column in shiny_users.sqlite exactly.
 #'
 #' @return Invisibly returns the file path of the created Excel file
 #'
@@ -285,7 +290,8 @@ save_downloadable_excel_2 <- function(data,
                                       description,
                                       shiny_download_files = "../../base-data/shiny_download_files",
                                       download_encrypted = TRUE,
-                                      shiny_repos = NULL) {
+                                      shiny_repos = NULL,
+                                      shiny_users = NULL) {
 
   # Create filename from title (convert umlauts, remove spaces and special characters)
 
@@ -330,7 +336,8 @@ save_downloadable_excel_2 <- function(data,
     created_at = as.character(Sys.time()),
     file_name = paste0(file_name_base, ".xlsx"),
     download_encrypted = download_encrypted,
-    shiny_repos = if (!is.null(shiny_repos) && length(shiny_repos) > 0) paste(shiny_repos, collapse = ",") else ""
+    shiny_repos = if (!is.null(shiny_repos) && length(shiny_repos) > 0) paste(shiny_repos, collapse = ",") else "",
+    shiny_users = if (!is.null(shiny_users) && length(shiny_users) > 0) paste(shiny_users, collapse = ",") else ""
   )
 
   yaml::write_yaml(metadata, yaml_path)

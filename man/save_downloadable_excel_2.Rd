@@ -11,7 +11,8 @@ save_downloadable_excel_2(
   description,
   shiny_download_files = "../../base-data/shiny_download_files",
   download_encrypted = TRUE,
-  shiny_repos = NULL
+  shiny_repos = NULL,
+  shiny_users = NULL
 )
 }
 \arguments{
@@ -28,6 +29,12 @@ save_downloadable_excel_2(
 \item{download_encrypted}{Logical indicating if download is encrypted (default: TRUE, saved in YAML metadata)}
 
 \item{shiny_repos}{Character vector of shiny repository names (saved as comma-separated string in YAML metadata)}
+
+\item{shiny_users}{Character vector of shiny login names (saved as comma-separated
+string in YAML metadata). Restricts the download to those users within the
+repos named in \code{shiny_repos}. Leave at \code{NULL} to make the file
+visible to every user of those repos (previous behaviour). Login names must
+match the \code{user} column in shiny_users.sqlite exactly.}
 }
 \value{
 Invisibly returns the file path of the created Excel file
