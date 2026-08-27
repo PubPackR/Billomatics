@@ -100,33 +100,38 @@ dsgvo_email_tombstone <- function(email_hash) {
 #' @export
 get_deletion_pepper <- function(env_var = "DELETION_LOG_PEPPER", key_file = NULL) {
   # ---- start ---- #
-  if (billomatics_on_gsm()) {
-    # trimws() spiegelt den file-Zweig unten. Ohne das liefern die beiden
-    # Backends fuer denselben Pepper verschiedene Hashes, sobald der Wert in
-    # Secret Manager Whitespace traegt -- und der uebliche Weg, eine Version
-    # anzulegen, haengt genau einen Zeilenumbruch an:
-    #   echo "..." | gcloud secrets versions add --data-file=-
-    # secretsR_validate() faengt "" und NA ab, aber nicht "pepper\n".
-    #
-    # version = "1", nicht "latest": siehe oben.
-    pepper <- trimws(billomatics_gsm_secret("studyflix-deletion-log-pepper", version = "1"))
-    if (!nzchar(pepper)) {
-      stop("Pepper-Geheimnis 'studyflix-deletion-log-pepper' ist leer oder nur Whitespace.",
-           call. = FALSE)
-    }
-    return(pepper)
+  # Every source is normalised the SAME way, then checked once. Doing it per
+  # branch is how the backends drifted apart in the first place: the file branch
+  # trimmed, the gsm branch did not, and the ENV branch still does neither --
+  # nzchar("   ") is TRUE, so a whitespace-only variable was a valid pepper.
+  #
+  # `first line, trimmed` is readLines(n = 1) semantics, applied everywhere.
+  # trimws() alone does NOT reproduce it: trimws("a\nb") is "a\nb", while
+  # readLines(n = 1) is "a". A two-line secret passes secretsR_validate(), so
+  # nothing upstream would have caught that.
+  normalise <- function(x) trimws(sub("\n.*$", "", x))
+
+  raw <- if (billomatics_on_gsm()) {
+    # version = "1", not "latest". For a credential, rotation is the point; for
+    # a pepper it is the opposite -- see the roxygen above. Verified 2026-08-27:
+    # studyflix-deletion-log-pepper has exactly one enabled version, so the pin
+    # names the value every canary was run against.
+    billomatics_gsm_secret("studyflix-deletion-log-pepper", version = "1")
+  } else if (nzchar(Sys.getenv(env_var, unset = ""))) {
+    Sys.getenv(env_var)
+  } else if (!is.null(key_file) && file.exists(path.expand(key_file))) {
+    readLines(path.expand(key_file), n = 1, warn = FALSE)
+  } else {
+    stop(sprintf("Pepper-Geheimnis fehlt: weder ENV '%s' gesetzt noch nicht-leere Datei unter key_file (%s).",
+                 env_var, if (is.null(key_file)) "nicht angegeben" else key_file),
+         call. = FALSE)
   }
-  pepper <- Sys.getenv(env_var, unset = "")
-  if (nzchar(pepper)) return(pepper)
-  if (!is.null(key_file)) {
-    path <- path.expand(key_file)
-    if (file.exists(path)) {
-      pepper <- trimws(readLines(path, n = 1, warn = FALSE))
-      if (nzchar(pepper)) return(pepper)
-    }
+
+  pepper <- normalise(raw)
+  if (!nzchar(pepper)) {
+    stop("Pepper-Geheimnis ist leer oder nur Whitespace.", call. = FALSE)
   }
-  stop(sprintf("Pepper-Geheimnis fehlt: weder ENV '%s' gesetzt noch nicht-leere Datei unter key_file (%s).",
-               env_var, if (is.null(key_file)) "nicht angegeben" else key_file))
+  pepper
 }
 
 #' Lädt die Sperrlisten-Hashes aus config.privacy_deletion_log

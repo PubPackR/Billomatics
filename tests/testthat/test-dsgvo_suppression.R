@@ -169,3 +169,40 @@ test_that("a blank gsm pepper errors instead of returning silently", {
   expect_error(Billomatics::get_deletion_pepper(), "leer oder nur Whitespace")
 })
 
+test_that("all three sources normalise identically: first line, trimmed", {
+  # The three branches drifted apart before: file trimmed, gsm did not, ENV did
+  # neither. Same input, same pepper, whichever source it came from -- otherwise
+  # a value carrying whitespace hashes differently per backend, silently.
+  kf <- withr::local_tempfile()
+  writeLines(c("  padded-and-multiline  ", "second line ignored"), kf)
+
+  local_mocked_bindings(.package = "secretsR", secret_backend = function() "file")
+  withr::with_envvar(c(DELETION_LOG_PEPPER = NA), {
+    expect_identical(Billomatics::get_deletion_pepper(key_file = kf),
+                     "padded-and-multiline")
+  })
+  withr::with_envvar(c(DELETION_LOG_PEPPER = "  padded-and-multiline  "), {
+    expect_identical(Billomatics::get_deletion_pepper(), "padded-and-multiline")
+  })
+
+  local_mocked_bindings(
+    .package = "secretsR",
+    secret_backend = function() "gsm",
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      expect_identical(name, "studyflix-deletion-log-pepper")
+      "  padded-and-multiline  
+second line ignored"
+    }
+  )
+  expect_identical(Billomatics::get_deletion_pepper(), "padded-and-multiline")
+})
+
+test_that("a whitespace-only ENV pepper errors instead of being accepted", {
+  # nzchar("   ") is TRUE, so this used to be a valid pepper on the file backend
+  # while gsm rejected it -- the divergence in the opposite direction.
+  local_mocked_bindings(.package = "secretsR", secret_backend = function() "file")
+  withr::with_envvar(c(DELETION_LOG_PEPPER = "   "), {
+    expect_error(Billomatics::get_deletion_pepper(), "leer oder nur Whitespace")
+  })
+})
+

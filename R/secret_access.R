@@ -180,10 +180,10 @@ billomatics_legacy_data_key <- function(which, args, key = NULL,
   if (!which %in% c("billomat", "asana")) {
     stop(sprintf("unknown legacy data key: '%s'", which), call. = FALSE)
   }
-  if (secretsR::secret_backend() == "gsm") {
+  if (billomatics_on_gsm()) {
     # Constructed rather than literal; the two full names are
     # studyflix-legacy-data-key-billomat and studyflix-legacy-data-key-asana.
-    return(secretsR::secret_get(paste0("studyflix-legacy-data-key-", which)))
+    return(billomatics_gsm_secret(paste0("studyflix-legacy-data-key-", which)))
   }
   if (is.null(key)) key <- billomatics_resolve_key(args, prompt)
   key
@@ -228,8 +228,8 @@ billomatics_sa_dir <- function() {
 billomatics_sa_json <- function(name, args,
                                 prompt = "Enter the decryption password: ") {
   # ---- start ---- #
-  if (secretsR::secret_backend() == "gsm") {
-    return(secretsR::secret_get(name))
+  if (billomatics_on_gsm()) {
+    return(billomatics_gsm_secret(name))
   }
   key <- billomatics_resolve_key(args, prompt)
   infile <- billomatics_sa_encrypted_path(name)

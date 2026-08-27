@@ -7,12 +7,16 @@
 get_deletion_pepper(env_var = "DELETION_LOG_PEPPER", key_file = NULL)
 }
 \arguments{
-\item{env_var}{Name der ENV-Variable.}
+\item{env_var}{Name der ENV-Variable. \strong{Unter dem \code{gsm}-Backend ignoriert.}}
 
-\item{key_file}{Optionaler Pfad (Fallback). Erste Zeile, getrimmt.}
+\item{key_file}{Optionaler Pfad (Fallback). Erste Zeile, getrimmt.
+\strong{Unter dem \code{gsm}-Backend ignoriert} -- der Aufrufer erhaelt dann einen
+anderen Pepper, keinen Fehler.}
 }
 \value{
-Character mit dem Pepper. Fehler, wenn keine Quelle etwas liefert.
+Character mit dem Pepper: erste Zeile, getrimmt, aus welcher Quelle auch
+immer. Fehler, wenn keine Quelle etwas liefert oder der Wert leer bzw. nur
+Whitespace ist.
 }
 \description{
 Unter dem \code{gsm}-Backend kommt der Pepper aus Secret Manager. Die bisherigen
@@ -24,4 +28,14 @@ Ein falscher Pepper scheitert \strong{lautlos}: die Hashes stimmen nicht mehr,
 \code{dsgvo_load_suppression()} findet keine Treffer, Datensaetze von
 Loesch-Betroffenen werden ohne Fehler wieder eingelesen. Der Wert muss bei
 der Migration daher verifiziert werden, nicht nur kopiert.
+
+\strong{Dieses Geheimnis darf niemals eine neue Version bekommen.} Es wird
+bewusst auf \code{version = "1"} gepinnt, nicht auf \code{latest}. Bei einem
+API-Key ist Rotation der Sinn der Sache; bei einem Pepper ist sie das Gegenteil:
+er muss unveraendert bleiben, solange auch nur ein damit erzeugter Hash in
+\code{config.privacy_deletion_log} steht. Wer in der GCP-Konsole eine Version
+hinzufuegt, entwertet stillschweigend jede historische Zeile.
+
+Alle drei Quellen werden identisch normalisiert -- erste Zeile, getrimmt --
+damit derselbe Pepper unter beiden Backends denselben Hash ergibt.
 }
