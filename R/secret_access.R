@@ -134,6 +134,24 @@ billomatics_gsm_secret <- function(name, version = "latest") {
   secretsR::secret_get(name, version = version)
 }
 
+#' The file backend's key, or NULL when there is none to resolve
+#'
+#' Four functions carried this as a byte-identical two-line ternary. Mutating
+#' any one of them to always resolve produced no test failure in any of the
+#' four, and the next service copied from a neighbour would have inherited it.
+#' One definition removes the defect class rather than testing around it.
+#'
+#' @param args Arguments as passed to authentication_process().
+#' @param prompt Prompt shown when a key must be asked for interactively.
+#' @return The resolved key, or NULL under the gsm backend, where there is no
+#'   file to decrypt and so no password to resolve.
+#' @noRd
+billomatics_file_key_or_null <- function(args, prompt) {
+  # ---- start ---- #
+  if (billomatics_on_gsm()) return(NULL)
+  billomatics_resolve_key(args, prompt)
+}
+
 #' Parse a JSON secret without putting it in the error message
 #'
 #' jsonlite's lexer error embeds its input verbatim:

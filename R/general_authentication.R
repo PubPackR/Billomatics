@@ -97,8 +97,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
 authentication_billomat <- function(args) {
   # ---- start ---- #
   prompt <- "Enter the password for Billomat-DB: "
-  key <- if (billomatics_on_gsm()) NULL else
-    billomatics_resolve_key(args, prompt)
+  key <- billomatics_file_key_or_null(args, prompt)
   c(billomatics_legacy_data_key("billomat", args, key = key, prompt = prompt),
     billomatics_secret("studyflix-billomat-api-key", args, prompt, key = key))
 }
@@ -174,8 +173,7 @@ authentication_GSheet <- function(args) {
 authentication_asana <- function(args) {
   # ---- start ---- #
   prompt <- "Enter the password for Asana: "
-  key <- if (billomatics_on_gsm()) NULL else
-    billomatics_resolve_key(args, prompt)
+  key <- billomatics_file_key_or_null(args, prompt)
   c(billomatics_legacy_data_key("asana", args, key = key, prompt = prompt),
     billomatics_secret("studyflix-asana-token", args, prompt, key = key))
 }
@@ -220,8 +218,7 @@ authentication_msgraph_scoped_app <- function(args) {
 authentication_msgraph_delegated <- function(args) {
   # ---- start ---- #
   prompt <- "Bitte Decryption_Key fuer MSGraph Delegated eingeben: "
-  key <- if (billomatics_on_gsm()) NULL else
-    billomatics_resolve_key(args, prompt)
+  key <- billomatics_file_key_or_null(args, prompt)
   list(
     client_secret = billomatics_secret("studyflix-msgraph-delegated-secret", args, prompt, key = key),
     store_key     = billomatics_secret("studyflix-msgraph-delegated-storekey", args, prompt, key = key)
@@ -521,8 +518,7 @@ authentication_openai_admin <- function(args) {
 authentication_personio <- function(args) {
   # ---- start ---- #
   prompt <- "Bitte Decryption_Key fuer Personio eingeben: "
-  key <- if (billomatics_on_gsm()) NULL else
-    billomatics_resolve_key(args, prompt)
+  key <- billomatics_file_key_or_null(args, prompt)
   client_id     <- billomatics_secret("studyflix-personio-client-id", args, prompt, key = key)
   client_secret <- billomatics_secret("studyflix-personio-client-secret", args, prompt, key = key)
 
