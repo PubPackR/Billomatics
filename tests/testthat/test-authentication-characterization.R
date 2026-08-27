@@ -440,7 +440,10 @@ test_that("a present-but-null postgres field is caught, not silently dropped", {
       '{"password":"pw","user":"u","dbname":"db","host":"h","port":null}'
     }
   )
-  expect_error(authentication_postgresql(NA), "composed to 4 fields, expected 5")
+  # The per-field arity check fires first and names the culprit, which is more
+  # useful than the composed-length message. Both guards are needed: neither
+  # catches the other's case -- see the array-valued test below.
+  expect_error(authentication_postgresql(NA), "non-scalar field", fixed = TRUE)
 })
 
 test_that("a complete postgres secret composes to five elements", {
@@ -452,5 +455,19 @@ test_that("a complete postgres secret composes to five elements", {
   )
   expect_identical(authentication_postgresql(NA),
                    c("pw", "u", "db", "h", "5432"))
+})
+
+test_that("an array-valued postgres field is caught, not compensated for", {
+  # One array-valued field cancels one null field in the composed length:
+  #   {"password":["pw1","pw2"], ..., "port":null}  -> five elements
+  # so the length guard passes while the password is split and the port is gone.
+  # postgres_connect.R indexes [1..5] at fourteen sites.
+  local_mocked_bindings(billomatics_on_gsm = function() TRUE)
+  local_mocked_bindings(
+    billomatics_gsm_secret = function(name, version = "latest") {
+      '{"password":["pw1","pw2"],"user":"u","dbname":"db","host":"h","port":null}'
+    }
+  )
+  expect_error(authentication_postgresql(NA), "non-scalar field")
 })
 

@@ -432,6 +432,17 @@ authentication_postgresql <- function(args) {
     # and this is the branch that becomes the default at cutover.
     # simplifyVector = TRUE opens the same door from the other end: an
     # array-valued field flattens into extra elements.
+    # Per-field arity BEFORE composing. The composed-length check alone is not
+    # sufficient: one array-valued field compensates for one null one.
+    #   {"password":["pw1","pw2"], ..., "port":null}
+    # composes to five elements -- c("pw1","pw2","u","db","h") -- so the length
+    # guard passes while the password is split and the port is gone.
+    # simplifyVector = TRUE is what turns a JSON array into that vector.
+    bad <- required[vapply(required, function(f) length(conn[[f]]) != 1L, logical(1))]
+    if (length(bad)) {
+      stop("studyflix-postgresql-connection has non-scalar field(s): ",
+           paste(bad, collapse = ", "), call. = FALSE)
+    }
     out <- as.character(c(conn$password, conn$user, conn$dbname,
                           conn$host, conn$port))
     if (length(out) != 5L) {

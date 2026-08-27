@@ -309,3 +309,40 @@ test_that("valid JSON that is not a service account is refused", {
   expect_error(billomatics_validate_sa_json('{"project_id":"p"}', "n"), "absent")
 })
 
+test_that("a malformed payload is caught INSIDE billomatics_sa_json, gsm branch", {
+  # The direct-call tests above do not pin the fix: reverting both call sites in
+  # billomatics_sa_json() -- i.e. undoing it entirely -- left the whole suite
+  # green, because nothing exercised the guard through the function that uses it.
+  # That is the same mutation-invisibility this guard was added to remove.
+  local_mocked_bindings(billomatics_on_gsm = function() TRUE)
+  local_mocked_bindings(
+    billomatics_gsm_secret = function(name, version = "latest") {
+      "-----BEGIN PRIVATE KEY-----SUPER-SECRET-abc123"
+    }
+  )
+  msg <- tryCatch(billomatics_sa_json("studyflix-gsheets-service-account", NA),
+                  error = conditionMessage)
+  expect_false(grepl("SUPER-SECRET-abc123", msg, fixed = TRUE))
+})
+
+test_that("a malformed payload is caught INSIDE billomatics_sa_json, file branch", {
+  skip_if_not_installed("safer")
+  plain <- withr::local_tempfile(fileext = ".json")
+  writeLines("-----BEGIN PRIVATE KEY-----SUPER-SECRET-abc123", plain)
+  enc <- withr::local_tempfile(fileext = ".bin")
+  safer::encrypt_file(infile = plain, key = "pw", outfile = enc)
+
+  local_mocked_bindings(secret_backend = function() "file", .package = "secretsR")
+  local_mocked_bindings(billomatics_sa_encrypted_path = function(name) enc)
+  local_mocked_bindings(
+    billomatics_sa_dir = function() {
+      d <- file.path(tempdir(), paste0("sa-test-", as.integer(runif(1) * 1e6)))
+      dir.create(d, mode = "0700")
+      d
+    }
+  )
+  msg <- tryCatch(billomatics_sa_json("studyflix-gsheets-service-account", "pw"),
+                  error = conditionMessage)
+  expect_false(grepl("SUPER-SECRET-abc123", msg, fixed = TRUE))
+})
+
