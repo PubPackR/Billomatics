@@ -428,3 +428,29 @@ test_that("no multi-secret service prompts under gsm, even interactively", {
   expect_no_error(authentication_personio(NULL))
   expect_no_error(authentication_postgresql(NULL))
 })
+
+test_that("a present-but-null postgres field is caught, not silently dropped", {
+  # The names check passes for {"port":null} -- the key IS present -- and c()
+  # drops NULL without a word, composing four elements where five are required.
+  # postgres_connect.R indexes postgres_keys[1..5] at fourteen sites, so a
+  # four-element vector builds a wrong connection rather than failing.
+  local_mocked_bindings(billomatics_on_gsm = function() TRUE)
+  local_mocked_bindings(
+    billomatics_gsm_secret = function(name, version = "latest") {
+      '{"password":"pw","user":"u","dbname":"db","host":"h","port":null}'
+    }
+  )
+  expect_error(authentication_postgresql(NA), "composed to 4 fields, expected 5")
+})
+
+test_that("a complete postgres secret composes to five elements", {
+  local_mocked_bindings(billomatics_on_gsm = function() TRUE)
+  local_mocked_bindings(
+    billomatics_gsm_secret = function(name, version = "latest") {
+      '{"password":"pw","user":"u","dbname":"db","host":"h","port":"5432"}'
+    }
+  )
+  expect_identical(authentication_postgresql(NA),
+                   c("pw", "u", "db", "h", "5432"))
+})
+

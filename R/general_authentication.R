@@ -425,8 +425,20 @@ authentication_postgresql <- function(args) {
       stop("studyflix-postgresql-connection is missing: ",
            paste(missing, collapse = ", "), call. = FALSE)
     }
-    return(as.character(c(conn$password, conn$user, conn$dbname,
-                          conn$host, conn$port)))
+    # Assert the COMPOSED result, not the input. The names check above passes
+    # for a field that is present-but-null, and c() drops NULL without a word:
+    #   {"...","port":null} -> names complete -> c(...) is length 4
+    # That is the same defect the file branch guards against twenty lines below,
+    # and this is the branch that becomes the default at cutover.
+    # simplifyVector = TRUE opens the same door from the other end: an
+    # array-valued field flattens into extra elements.
+    out <- as.character(c(conn$password, conn$user, conn$dbname,
+                          conn$host, conn$port))
+    if (length(out) != 5L) {
+      stop(sprintf("studyflix-postgresql-connection composed to %d fields, expected 5 (password, user, dbname, host, port)",
+                   length(out)), call. = FALSE)
+    }
+    return(out)
   }
 
   prompt <- "Bitte Decryption_Key fuer PostgreSQL eingeben: "

@@ -286,3 +286,26 @@ test_that("billomatics_gsm_secret() passes the version through", {
   expect_identical(captured$version, "latest")
 })
 
+test_that("a malformed service-account payload never reaches a client's lexer", {
+  # billomatics_parse_json() exists because jsonlite echoes its input verbatim in
+  # a lexer error, and these four payloads were the one place it was not applied:
+  # the raw string went to gar_auth_service() / credentials_service_account(),
+  # which both call fromJSON() unguarded. A malformed payload therefore put part
+  # of a service-account PRIVATE KEY into an unattended FlowForce log.
+  secret <- "-----BEGIN PRIVATE KEY-----SUPER-SECRET-abc123"
+  msg <- tryCatch(billomatics_validate_sa_json(secret, "studyflix-gsheets-service-account"),
+                  error = conditionMessage)
+  expect_false(grepl("SUPER-SECRET-abc123", msg, fixed = TRUE))
+  expect_match(msg, "studyflix-gsheets-service-account")
+})
+
+test_that("valid JSON that is not a service account is refused", {
+  # Well-formed JSON passes the lexer, so the type check is what stops a wrongly
+  # provisioned secret reaching a Google client and failing further away.
+  ok <- '{"type":"service_account","project_id":"p","private_key":"k"}'
+  expect_identical(billomatics_validate_sa_json(ok, "n"), ok)
+  expect_error(billomatics_validate_sa_json('{"type":"authorized_user"}', "n"),
+               "not a service-account document")
+  expect_error(billomatics_validate_sa_json('{"project_id":"p"}', "n"), "absent")
+})
+

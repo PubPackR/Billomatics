@@ -229,7 +229,7 @@ billomatics_sa_json <- function(name, args,
                                 prompt = "Enter the decryption password: ") {
   # ---- start ---- #
   if (billomatics_on_gsm()) {
-    return(billomatics_gsm_secret(name))
+    return(billomatics_validate_sa_json(billomatics_gsm_secret(name), name))
   }
   key <- billomatics_resolve_key(args, prompt)
   infile <- billomatics_sa_encrypted_path(name)
@@ -241,7 +241,36 @@ billomatics_sa_json <- function(name, args,
   on.exit(unlink(dir, recursive = TRUE, force = TRUE), add = TRUE)
   outfile <- file.path(dir, "sa.json")
   safer::decrypt_file(infile = infile, key = key, outfile = outfile)
-  paste(readLines(outfile, warn = FALSE), collapse = "\n")
+  billomatics_validate_sa_json(paste(readLines(outfile, warn = FALSE), collapse = "\n"), name)
+}
+
+#' Check a service-account payload before any client's lexer sees it
+#'
+#' billomatics_parse_json() exists because jsonlite's lexer error echoes its
+#' input verbatim. These four payloads were the one place it was not applied:
+#' the raw string went straight to googleAuthR::gar_auth_service() and
+#' gargle::credentials_service_account(), which both call jsonlite::fromJSON()
+#' on it unguarded. A malformed payload therefore put part of a service-account
+#' PRIVATE KEY -- the highest-value secret in the set -- into an unattended
+#' FlowForce log.
+#'
+#' Narrow under `file`, where safer::decrypt_file() fails first on a wrong key.
+#' Wide open under `gsm`, where whatever Secret Manager holds reaches the lexer
+#' directly -- the path Plan C2b depends on.
+#'
+#' @param json The payload.
+#' @param name Secret name, for the error message.
+#' @return `json` unchanged, once it is known to be a service-account document.
+#' @noRd
+billomatics_validate_sa_json <- function(json, name) {
+  # ---- start ---- #
+  parsed <- billomatics_parse_json(json, name)
+  if (!identical(parsed$type, "service_account")) {
+    stop(sprintf("%s is not a service-account document (type: %s)",
+                 name, if (is.null(parsed$type)) "absent" else "unexpected"),
+         call. = FALSE)
+  }
+  json
 }
 
 #' Encrypted-file paths for the four service-account services
