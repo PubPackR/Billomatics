@@ -95,11 +95,43 @@ billomatics_secret <- function(name, args,
                                prompt = "Enter the decryption password: ",
                                key = NULL) {
   # ---- start ---- #
-  if (secretsR::secret_backend() == "gsm") {
-    return(secretsR::secret_get(name))
+  if (billomatics_on_gsm()) {
+    return(billomatics_gsm_secret(name))
   }
   if (is.null(key)) key <- billomatics_resolve_key(args, prompt)
   secretsR::secret_get(name, file_key = key)
+}
+
+#' Is this process resolving secrets from Secret Manager?
+#'
+#' A seam, so that `secretsR` is called from this file and nowhere else. The
+#' probe was repeated at eight sites across three files, which quietly falsified
+#' the claim that this file is the package's only door to `secretsR` -- and that
+#' claim is what Plan F's "delete one file" estimate rests on.
+#'
+#' @return TRUE when the active backend is `gsm`.
+#' @noRd
+billomatics_on_gsm <- function() {
+  # ---- start ---- #
+  identical(secretsR::secret_backend(), "gsm")
+}
+
+#' Fetch a secret that exists only under the gsm backend
+#'
+#' For call sites already inside a `billomatics_on_gsm()` branch, where there is
+#' no file-backend password to resolve and so `billomatics_secret()`'s `args`
+#' argument would be meaningless.
+#'
+#' @param name Secret name.
+#' @param version Secret version. `"latest"` is right for a credential, where
+#'   rotation is the point. It is wrong for anything whose value must stay
+#'   stable for the lifetime of data derived from it -- see
+#'   `get_deletion_pepper()`, which pins to `"1"` for exactly that reason.
+#' @return The secret as a character scalar.
+#' @noRd
+billomatics_gsm_secret <- function(name, version = "latest") {
+  # ---- start ---- #
+  secretsR::secret_get(name, version = version)
 }
 
 #' Parse a JSON secret without putting it in the error message

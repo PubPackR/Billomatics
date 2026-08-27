@@ -84,14 +84,37 @@ dsgvo_email_tombstone <- function(email_hash) {
 #' Loesch-Betroffenen werden ohne Fehler wieder eingelesen. Der Wert muss bei
 #' der Migration daher verifiziert werden, nicht nur kopiert.
 #'
-#' @param env_var Name der ENV-Variable.
+#' **Dieses Geheimnis darf niemals eine neue Version bekommen.** Es wird
+#' bewusst auf `version = "1"` gepinnt, nicht auf `latest`. Bei einem API-Key
+#' ist Rotation der Sinn der Sache; bei einem Pepper ist sie das Gegenteil: er
+#' muss unveraendert bleiben, solange auch nur ein damit erzeugter Hash in
+#' `config.privacy_deletion_log` steht. Wer in der GCP-Konsole eine Version
+#' hinzufuegt, entwertet stillschweigend jede historische Zeile.
+#'
+#' @param env_var Name der ENV-Variable. **Unter dem `gsm`-Backend ignoriert.**
 #' @param key_file Optionaler Pfad (Fallback). Erste Zeile, getrimmt.
-#' @return Character mit dem Pepper. Fehler, wenn keine Quelle etwas liefert.
+#'   **Unter dem `gsm`-Backend ignoriert** -- der Aufrufer erhaelt dann einen
+#'   anderen Pepper, keinen Fehler.
+#' @return Character mit dem Pepper. Fehler, wenn keine Quelle etwas liefert,
+#'   auch unter `gsm`, wenn das Geheimnis leer oder nur Whitespace ist.
 #' @export
 get_deletion_pepper <- function(env_var = "DELETION_LOG_PEPPER", key_file = NULL) {
   # ---- start ---- #
-  if (secretsR::secret_backend() == "gsm") {
-    return(secretsR::secret_get("studyflix-deletion-log-pepper"))
+  if (billomatics_on_gsm()) {
+    # trimws() spiegelt den file-Zweig unten. Ohne das liefern die beiden
+    # Backends fuer denselben Pepper verschiedene Hashes, sobald der Wert in
+    # Secret Manager Whitespace traegt -- und der uebliche Weg, eine Version
+    # anzulegen, haengt genau einen Zeilenumbruch an:
+    #   echo "..." | gcloud secrets versions add --data-file=-
+    # secretsR_validate() faengt "" und NA ab, aber nicht "pepper\n".
+    #
+    # version = "1", nicht "latest": siehe oben.
+    pepper <- trimws(billomatics_gsm_secret("studyflix-deletion-log-pepper", version = "1"))
+    if (!nzchar(pepper)) {
+      stop("Pepper-Geheimnis 'studyflix-deletion-log-pepper' ist leer oder nur Whitespace.",
+           call. = FALSE)
+    }
+    return(pepper)
   }
   pepper <- Sys.getenv(env_var, unset = "")
   if (nzchar(pepper)) return(pepper)

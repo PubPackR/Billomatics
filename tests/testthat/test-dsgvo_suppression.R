@@ -139,3 +139,33 @@ test_that("dsgvo_suppress_msgraph_record matches a UPN-form mail against the rea
   expect_equal(out$call_identity_mail, Billomatics::dsgvo_email_tombstone(blocked))
   expect_true(is.na(out$call_identity_name))
 })
+
+test_that("the gsm pepper is trimmed, pinned to version 1, and rejected when blank", {
+  # The file branch trims; the gsm branch did not. The same pepper then yields
+  # different hashes under the two backends, silently -- and the usual way to add
+  # a version appends exactly one newline:
+  #   echo "..." | gcloud secrets versions add --data-file=-
+  seen <- NULL
+  local_mocked_bindings(
+    .package = "secretsR",
+    secret_backend = function() "gsm",
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      seen <<- version
+      "  pepper-with-space  "
+    }
+  )
+  expect_identical(Billomatics::get_deletion_pepper(), "pepper-with-space")
+  # A pepper must never follow `latest`: adding a version would invalidate every
+  # hash already written to config.privacy_deletion_log.
+  expect_identical(seen, "1")
+})
+
+test_that("a blank gsm pepper errors instead of returning silently", {
+  local_mocked_bindings(
+    .package = "secretsR",
+    secret_backend = function() "gsm",
+    secret_get = function(name, version = "latest", file_key = NULL) "   "
+  )
+  expect_error(Billomatics::get_deletion_pepper(), "leer oder nur Whitespace")
+})
+

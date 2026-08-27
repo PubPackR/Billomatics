@@ -97,7 +97,7 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
 authentication_billomat <- function(args) {
   # ---- start ---- #
   prompt <- "Enter the password for Billomat-DB: "
-  key <- if (secretsR::secret_backend() == "gsm") NULL else
+  key <- if (billomatics_on_gsm()) NULL else
     billomatics_resolve_key(args, prompt)
   c(billomatics_legacy_data_key("billomat", args, key = key, prompt = prompt),
     billomatics_secret("studyflix-billomat-api-key", args, prompt, key = key))
@@ -174,7 +174,7 @@ authentication_GSheet <- function(args) {
 authentication_asana <- function(args) {
   # ---- start ---- #
   prompt <- "Enter the password for Asana: "
-  key <- if (secretsR::secret_backend() == "gsm") NULL else
+  key <- if (billomatics_on_gsm()) NULL else
     billomatics_resolve_key(args, prompt)
   c(billomatics_legacy_data_key("asana", args, key = key, prompt = prompt),
     billomatics_secret("studyflix-asana-token", args, prompt, key = key))
@@ -220,7 +220,7 @@ authentication_msgraph_scoped_app <- function(args) {
 authentication_msgraph_delegated <- function(args) {
   # ---- start ---- #
   prompt <- "Bitte Decryption_Key fuer MSGraph Delegated eingeben: "
-  key <- if (secretsR::secret_backend() == "gsm") NULL else
+  key <- if (billomatics_on_gsm()) NULL else
     billomatics_resolve_key(args, prompt)
   list(
     client_secret = billomatics_secret("studyflix-msgraph-delegated-secret", args, prompt, key = key),
@@ -406,7 +406,7 @@ authentication_cleverreach <- function(args) {
 #' @return `character[5]`: password, user, dbname, host, port.
 authentication_postgresql <- function(args) {
   # ---- start ---- #
-  gsm <- secretsR::secret_backend() == "gsm"
+  gsm <- billomatics_on_gsm()
 
   if (!gsm && billomatics_interactive() && is.null(billomatics_file_key(args))) {
     # Unchanged: production credentials are not needed for local development.
@@ -417,7 +417,7 @@ authentication_postgresql <- function(args) {
 
   if (gsm) {
     conn <- billomatics_parse_json(
-      secretsR::secret_get("studyflix-postgresql-connection"),
+      billomatics_gsm_secret("studyflix-postgresql-connection"),
       "studyflix-postgresql-connection")
     required <- c("password", "user", "dbname", "host", "port")
     missing <- setdiff(required, names(conn))
@@ -498,7 +498,7 @@ authentication_openai_admin <- function(args) {
 authentication_personio <- function(args) {
   # ---- start ---- #
   prompt <- "Bitte Decryption_Key fuer Personio eingeben: "
-  key <- if (secretsR::secret_backend() == "gsm") NULL else
+  key <- if (billomatics_on_gsm()) NULL else
     billomatics_resolve_key(args, prompt)
   client_id     <- billomatics_secret("studyflix-personio-client-id", args, prompt, key = key)
   client_secret <- billomatics_secret("studyflix-personio-client-secret", args, prompt, key = key)

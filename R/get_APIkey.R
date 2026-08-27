@@ -39,8 +39,8 @@ get_billomatApiKey <- function(location_key = NULL) {
 #' @export
 get_billomatApiKey_server <- function() {
   # ---- start ---- #
-  if (secretsR::secret_backend() == "gsm") {
-    return(invisible(secretsR::secret_get("studyflix-billomat-api-key")))
+  if (billomatics_on_gsm()) {
+    return(invisible(billomatics_gsm_secret("studyflix-billomat-api-key")))
   }
   payload <- Sys.getenv("ENCRYPTION_PAYLOAD")
   key <- Sys.getenv("ENCRYPTION_SECRET")

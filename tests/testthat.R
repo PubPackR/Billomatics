@@ -1,4 +1,4 @@
-﻿# This file is part of the automatic testing infrastructure.
+# This file is part of the automatic testing infrastructure.
 library(testthat)
 library(Billomatics)
 

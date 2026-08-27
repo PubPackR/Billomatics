@@ -245,3 +245,44 @@ test_that("billomatics_sa_json reads the secret directly under gsm", {
   expect_identical(seen, "studyflix-gsheets-service-account")
   expect_identical(out, '{"type":"service_account"}')
 })
+
+# --- the seams themselves -----------------------------------------------------
+
+test_that("billomatics_interactive() really is interactive()", {
+  # The seam is mocked at eight sites and was asserted at none, so mutating its
+  # body to a literal TRUE left the whole suite green. In production that means
+  # a FlowForce job reaching getPass::getPass() and blocking on stdin forever --
+  # exactly the failure the seam exists to prevent. This one line is the only
+  # assertion that can pin it.
+  expect_identical(billomatics_interactive(), interactive())
+})
+
+test_that("billomatics_on_gsm() tracks the backend", {
+  # Guards the other seam the same way. Without this, hard-coding it to FALSE
+  # would route every gsm call site down the file branch with nothing failing.
+  withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"), {
+    expect_true(billomatics_on_gsm())
+  })
+  withr::with_envvar(c(SF_SECRET_BACKEND = "file"), {
+    expect_false(billomatics_on_gsm())
+  })
+})
+
+test_that("billomatics_gsm_secret() passes the version through", {
+  # get_deletion_pepper() pins to version "1" because a pepper must stay
+  # immutable for the lifetime of every hash derived from it. If this helper
+  # dropped the argument, that pin would silently become "latest" again.
+  captured <- NULL
+  local_mocked_bindings(
+    .package = "secretsR",
+    secret_get = function(name, version = "latest", file_key = NULL) {
+      captured <<- list(name = name, version = version)
+      "value"
+    }
+  )
+  billomatics_gsm_secret("studyflix-deletion-log-pepper", version = "1")
+  expect_identical(captured$version, "1")
+  billomatics_gsm_secret("studyflix-crm-api-key")
+  expect_identical(captured$version, "latest")
+})
+
