@@ -7,12 +7,16 @@
 authentication_openrouter(args)
 }
 \arguments{
-\item{args}{Additional input parameter, only needed through FlowForce Job}
+\item{args}{Additional Input Parameter, only needed through FlowForce Job}
 }
 \value{
-Openrouter API Key as String
+The credential as a character scalar.
 }
 \description{
-This function handles the key decryption for the OpenRouter API authentication.
-It supports manual decryption key input as well as FlowForce arguments.
+Resolves the OpenRouter API key.
+}
+\details{
+Under the \code{file} backend the password arrives through \code{args} exactly as
+before; under \code{gsm} it is ignored and Application Default Credentials are
+used.
 }

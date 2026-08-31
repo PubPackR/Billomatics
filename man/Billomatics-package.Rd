@@ -11,5 +11,10 @@ The package allows to download and wrangle billomat data and crm data into a df 
 \author{
 \strong{Maintainer}: Johannes Leder \email{johannes.leder@gmail.com} (\href{https://orcid.org/0000-0002-6413-4513}{ORCID})
 
+Authors:
+\itemize{
+  \item Johannes Leder \email{johannes.leder@gmail.com} (\href{https://orcid.org/0000-0002-6413-4513}{ORCID})
+}
+
 }
 \keyword{internal}

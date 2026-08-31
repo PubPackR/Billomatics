@@ -8,13 +8,23 @@ authentication_billomat(args)
 }
 \arguments{
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
-
-\item{return_keys}{optional, vector with already acquired keys}
 }
 \value{
-authentication key in vector
+\code{character[2]}: the legacy data key, then the Billomat API key.
 }
 \description{
-This function executes the billomat authentication process.
-It can handle manual password inputs as well as Flow Force args Inputs.
+Returns \code{c(legacy_data_key, billomat_api_key)}.
+}
+\details{
+Element \verb{[1]} is NOT a copy of the API key. It is the data-encryption key for
+\verb{base-data/} RDS files and the shinymanager SQLite stores, and roughly 49
+call sites across the organisation depend on it. Under the \code{file} backend it
+is the password the caller supplied, which is what those call sites receive
+today; under \code{gsm} it is the stored secret
+\code{studyflix-legacy-data-key-billomat}.
+
+The password is resolved ONCE and threaded into both calls, so the two
+elements always derive from the same string. Resolving twice would let an
+operator who types differently on a second prompt receive a data key that
+silently does not match the credential.
 }

@@ -6,13 +6,17 @@
 \usage{
 get_billomatApiKey_server()
 }
-\arguments{
-\item{location_key}{this is the location where the key is found as txt file,
-just put it above in the main folder and call it with location_key <- "../key"}
-}
 \value{
-the call returns the decrypted key
+The decrypted API key, invisibly.
 }
 \description{
-this function authenticates at billomat. You will need to enter your created password
+Resolves the Billomat API key in an unattended context.
+}
+\details{
+Off \code{gsm} this keeps reading \code{ENCRYPTION_PAYLOAD} and \code{ENCRYPTION_SECRET} from
+the environment. Those are live \strong{GitHub Actions} secrets and a CI runner has
+no \verb{keys/} checkout, so routing this through the file backend would turn a
+working function into one that always errors. The environment path retires
+when CI gains a \code{gsm} identity through Workload Identity Federation - the two
+changes belong together, and separating them breaks deployment.
 }

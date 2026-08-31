@@ -51,6 +51,6 @@ wird basierend auf dem \code{timeout}-Parameter berechnet (1 Versuch pro 10 Seku
 
 }
 \seealso{
-\code{\link[ssh:ssh]{ssh::ssh_connect()}}
+\code{\link[ssh:ssh_connect]{ssh::ssh_connect()}}
 }
 \keyword{internal}

@@ -8,13 +8,15 @@ authentication_brevo(args)
 }
 \arguments{
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
-
-\item{return_keys}{optional, vector with already acquired keys}
 }
 \value{
-authentication key in vector
+The credential as a character scalar.
 }
 \description{
-This function executes the Brevo authentication process.
-It can handle manual password inputs as well as Flow Force args Inputs.
+Resolves the Brevo SMTP key.
+}
+\details{
+Under the \code{file} backend the password arrives through \code{args} exactly as
+before; under \code{gsm} it is ignored and Application Default Credentials are
+used.
 }

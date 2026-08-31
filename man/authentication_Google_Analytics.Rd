@@ -10,9 +10,21 @@ authentication_Google_Analytics(args)
 \item{args}{Additional Input Parameter, only needed through FlowForce Job}
 }
 \value{
-no return values
+The string "OK". Signals an error if authentication fails.
 }
 \description{
-This function executes the Google Analytics authentication process.
-It can handle manual password inputs as well as Flow Force args Inputs.
+Authenticates googleAuthR with the Google Analytics service account.
+}
+\details{
+Behaviour change, deliberate. This is the one place the migration knowingly
+breaks its own preserve-every-return-shape rule, because the shape being
+preserved is wrong. This function used to report success to the caller whatever happened - including
+a failed decrypt - so a job continued unauthenticated and the fault surfaced
+later as an unrelated API error, or not at all if a cached token was still
+valid. Errors now propagate, so an unattended job crashes loudly.
+
+It returns the sentinel "OK" rather than NULL because
+\code{authentication_process()} does \verb{keys[[service]] <- <result>}, and assigning
+NULL REMOVES the element - a 22-service call would come back with 18 entries
+and every caller using length() or names() would change behaviour silently.
 }

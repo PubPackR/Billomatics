@@ -16,6 +16,7 @@ store_path, site_url).
 \description{
 Decryptet die Konfiguration des delegierten SharePoint-Zugriffs (n8n-App):
 ein JSON mit tenant_id, client_id, client_secret, store_key, store_path,
-site_url. Siehe Spec docs/superpowers/specs/2026-08-18-msgraph-sharepoint-
-delegated-design.md.
+site_url. Unter dem \code{file}-Backend liegt das JSON als verschluesselter
+STRING, nicht als verschluesselte Datei, also ist es ein gewoehnliches
+\code{secret_get()}-Secret trotz strukturierter Inhalte.
 }

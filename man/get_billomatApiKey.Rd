@@ -4,15 +4,27 @@
 \alias{get_billomatApiKey}
 \title{get access to Billomat}
 \usage{
-get_billomatApiKey(location_key)
+get_billomatApiKey(location_key = NULL)
 }
 \arguments{
-\item{location_key}{this is the location where the key is found as txt file,
-just put it above in the main folder and call it with location_key <- "../key"}
+\item{location_key}{Deprecated and ignored; kept so existing call sites work.}
 }
 \value{
-the call returns the decrypted key
+The decrypted API key, invisibly.
 }
 \description{
-this function authenticates at billomat. You will need to enter your created password
+Resolves the Billomat API key.
+}
+\details{
+Two declared behaviour changes.
+
+The previous implementation ran \code{message("key is set to: ", key)}, printing
+the supplied password to stderr on every call - from an exported function in
+a public repository, into any log that captured stderr. That is removed.
+
+\code{location_key} is retained for backwards compatibility and is now \strong{ignored}:
+the path comes from secretsR's legacy map, so a caller that passed a
+non-default directory now reads \code{../../keys/billomat.txt}. Resolution also
+goes through the seam, so this errors in a non-interactive session rather
+than blocking on a prompt nobody can answer.
 }

@@ -73,24 +73,65 @@ dsgvo_email_tombstone <- function(email_hash) {
   paste0("[geloescht]-", email_hash)
 }
 
-#' Liest das Pepper-Geheimnis (ENV -> Key-Datei-Fallback)
-#' @param env_var Name der ENV-Variable.
+#' Liest das Pepper-Geheimnis (Secret Manager -> ENV -> Key-Datei-Fallback)
+#'
+#' Unter dem `gsm`-Backend kommt der Pepper aus Secret Manager. Die bisherigen
+#' Fallbacks bleiben fuer `file` und die lokale Entwicklung erhalten, damit
+#' dieser Wechsel nichts bricht.
+#'
+#' Ein falscher Pepper scheitert **lautlos**: die Hashes stimmen nicht mehr,
+#' `dsgvo_load_suppression()` findet keine Treffer, Datensaetze von
+#' Loesch-Betroffenen werden ohne Fehler wieder eingelesen. Der Wert muss bei
+#' der Migration daher verifiziert werden, nicht nur kopiert.
+#'
+#' **Dieses Geheimnis darf niemals eine neue Version bekommen.** Es wird
+#' bewusst auf `version = "1"` gepinnt, nicht auf `latest`. Bei einem API-Key
+#' ist Rotation der Sinn der Sache; bei einem Pepper ist sie das Gegenteil: er
+#' muss unveraendert bleiben, solange auch nur ein damit erzeugter Hash in
+#' `config.privacy_deletion_log` steht. Wer in der GCP-Konsole eine Version
+#' hinzufuegt, entwertet stillschweigend jede historische Zeile.
+#'
+#' @param env_var Name der ENV-Variable. **Unter dem `gsm`-Backend ignoriert.**
 #' @param key_file Optionaler Pfad (Fallback). Erste Zeile, getrimmt.
-#' @return Character mit dem Pepper. Fehler, wenn weder ENV noch Datei etwas liefert.
+#'   **Unter dem `gsm`-Backend ignoriert** -- der Aufrufer erhaelt dann einen
+#'   anderen Pepper, keinen Fehler.
+#' @return Character mit dem Pepper. Fehler, wenn keine Quelle etwas liefert,
+#'   auch unter `gsm`, wenn das Geheimnis leer oder nur Whitespace ist.
 #' @export
 get_deletion_pepper <- function(env_var = "DELETION_LOG_PEPPER", key_file = NULL) {
   # ---- start ---- #
-  pepper <- Sys.getenv(env_var, unset = "")
-  if (nzchar(pepper)) return(pepper)
-  if (!is.null(key_file)) {
-    path <- path.expand(key_file)
-    if (file.exists(path)) {
-      pepper <- trimws(readLines(path, n = 1, warn = FALSE))
-      if (nzchar(pepper)) return(pepper)
-    }
+  # Every source is normalised the SAME way, then checked once. Doing it per
+  # branch is how the backends drifted apart in the first place: the file branch
+  # trimmed, the gsm branch did not, and the ENV branch still does neither --
+  # nzchar("   ") is TRUE, so a whitespace-only variable was a valid pepper.
+  #
+  # `first line, trimmed` is readLines(n = 1) semantics, applied everywhere.
+  # trimws() alone does NOT reproduce it: trimws("a\nb") is "a\nb", while
+  # readLines(n = 1) is "a". A two-line secret passes secretsR_validate(), so
+  # nothing upstream would have caught that.
+  normalise <- function(x) trimws(sub("\n.*$", "", x))
+
+  raw <- if (billomatics_on_gsm()) {
+    # version = "1", not "latest". For a credential, rotation is the point; for
+    # a pepper it is the opposite -- see the roxygen above. Verified 2026-08-27:
+    # studyflix-deletion-log-pepper has exactly one enabled version, so the pin
+    # names the value every canary was run against.
+    billomatics_gsm_secret("studyflix-deletion-log-pepper", version = "1")
+  } else if (nzchar(Sys.getenv(env_var, unset = ""))) {
+    Sys.getenv(env_var)
+  } else if (!is.null(key_file) && file.exists(path.expand(key_file))) {
+    readLines(path.expand(key_file), n = 1, warn = FALSE)
+  } else {
+    stop(sprintf("Pepper-Geheimnis fehlt: weder ENV '%s' gesetzt noch nicht-leere Datei unter key_file (%s).",
+                 env_var, if (is.null(key_file)) "nicht angegeben" else key_file),
+         call. = FALSE)
   }
-  stop(sprintf("Pepper-Geheimnis fehlt: weder ENV '%s' gesetzt noch nicht-leere Datei unter key_file (%s).",
-               env_var, if (is.null(key_file)) "nicht angegeben" else key_file))
+
+  pepper <- normalise(raw)
+  if (!nzchar(pepper)) {
+    stop("Pepper-Geheimnis ist leer oder nur Whitespace.", call. = FALSE)
+  }
+  pepper
 }
 
 #' Lädt die Sperrlisten-Hashes aus config.privacy_deletion_log
