@@ -369,6 +369,101 @@ postgres_read_metadata <- function(con, key) {
   return(result)
 }
 
+#' assert_jobs_fresh
+#'
+#' Checks the run marks of upstream jobs and aborts loudly when one of them is
+#' missing or stale. Meant for scripts that compute on the output of other jobs.
+#'
+#' FlowForce does not model job dependencies: it starts scripts at a time of day,
+#' not after a predecessor. A script that does not check its upstream job keeps
+#' computing on yesterday's stock after that job failed, and materialises the
+#' result as an official figure.
+#'
+#' What is checked is the run mark in `raw.metadata_jobs_and_datafiles`, written
+#' by [postgres_add_metadata()] -- NOT the age of the source tables. Measured on
+#' 2026-08-31, the Billomat upsert only bumps rows that actually changed: 2 to 32
+#' out of 16,163 per night, with regular three-day gaps. `max(updated_at)` on a
+#' source table therefore measures data change and not job execution, and no
+#' threshold separates "upstream failed" from "nothing happened".
+#'
+#' Lookup tables for a person or product axis deliberately get no check. Stale,
+#' they yield one person too few, never a wrong figure.
+#'
+#' All database timestamps are UTC. The comparison against `Sys.time()` runs on
+#' the instant, not on the label, so no conversion is needed.
+#'
+#' @param con The database connection object (pool or DBI connection).
+#' @param job_keys Character vector of run mark keys, e.g.
+#'   `"job_billomat_processed_export"`.
+#' @param max_age_hours Maximum age per mark in hours. Default 26 allows a
+#'   nightly predecessor two hours of delay while still catching a failed run.
+#' @return Invisibly, a data frame with `job_key` and `last_run`. The function is
+#'   called for its abort, not for its value.
+#' @details
+#' - A missing key aborts rather than passing: it is indistinguishable from a job
+#'   that never ran.
+#' - Consequence: the first run after a deploy fails until the predecessor has
+#'   stamped once.
+#'
+#' @examples
+#' \dontrun{
+#' con <- postgres_connect(needed_tables = c("raw.metadata_jobs_and_datafiles"))
+#' assert_jobs_fresh(con, c("job_billomat_processed_export"))
+#' }
+#'
+#' @export
+assert_jobs_fresh <- function(con, job_keys, max_age_hours = 26) {
+
+  limit <- Sys.time() - as.difftime(max_age_hours, units = "hours")
+
+  # Deliberately without a WHERE clause and without a bound array: RPostgres does
+  # not map an R vector onto a Postgres array, so `= ANY($1)` does not carry. The
+  # table holds a handful of rows, filtering in R costs nothing.
+  all_marks <- DBI::dbGetQuery(
+    con,
+    "SELECT key, updated_at FROM raw.metadata_jobs_and_datafiles"
+  )
+
+  marks <- all_marks[all_marks$key %in% job_keys, ]
+
+  missing <- setdiff(job_keys, marks$key)
+
+  if (length(missing) > 0) {
+    stop(
+      "No run mark for: ", paste(missing, collapse = ", "),
+      ". Either the upstream job never ran, or it does not write its mark yet - ",
+      "both are a reason to abort, not a reason to keep computing."
+    )
+  }
+
+  status <- data.frame(
+    job_key = marks$key,
+    last_run = marks$updated_at,
+    stringsAsFactors = FALSE
+  )
+
+  stale <- status[is.na(status$last_run) | status$last_run < limit, ]
+
+  if (nrow(stale) > 0) {
+    stop(
+      "Upstream jobs are older than ", max_age_hours, " hours: ",
+      paste0(
+        stale$job_key, " (",
+        ifelse(
+          is.na(stale$last_run),
+          "no timestamp",
+          format(stale$last_run, "%Y-%m-%d %H:%M")
+        ),
+        ")",
+        collapse = ", "
+      ),
+      ". Aborting instead of computing on stale data."
+    )
+  }
+
+  invisible(status)
+}
+
 #' postgres_select
 #'
 #' Selects data from a PostgreSQL table and logs the access in raw.metadata_data_selection_log.
