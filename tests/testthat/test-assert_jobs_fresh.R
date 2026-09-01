@@ -1,49 +1,59 @@
-test_that("assert_jobs_fresh: fresh, stale, missing and multiple keys", {
+test_that("check_job_marks: fresh, stale, missing and multiple keys", {
 
-  # The function's only outside contact is the one dbGetQuery() against
-  # raw.metadata_jobs_and_datafiles. Mocking it is enough for the whole
-  # decision logic - no database is involved.
-  fake_marks <- function(...) {
-    data.frame(
-      key = c("job_fresh", "job_stale", "job_no_timestamp"),
-      updated_at = c(
-        Sys.time() - as.difftime(2, units = "hours"),
-        Sys.time() - as.difftime(48, units = "hours"),
-        as.POSIXct(NA)
-      ),
-      stringsAsFactors = FALSE
-    )
-  }
+  # Kein Mock und keine Verbindung: assert_jobs_fresh() liest die Tabelle,
+  # check_job_marks() entscheidet. Getestet wird die Entscheidung, und die
+  # nimmt ein schlichtes data.frame entgegen.
+  jetzt <- as.POSIXct("2026-09-01 12:00:00", tz = "UTC")
 
-  testthat::local_mocked_bindings(dbGetQuery = fake_marks, .package = "DBI")
+  marken <- data.frame(
+    key = c("job_fresh", "job_stale", "job_no_timestamp"),
+    updated_at = c(
+      jetzt - as.difftime(2, units = "hours"),
+      jetzt - as.difftime(48, units = "hours"),
+      as.POSIXct(NA)
+    ),
+    stringsAsFactors = FALSE
+  )
 
-  # 1. A fresh mark passes and comes back invisibly
-  status <- assert_jobs_fresh(NULL, "job_fresh")
-  expect_equal(status$job_key, "job_fresh")
-  expect_s3_class(status$last_run, "POSIXct")
+  # 1. Eine frische Marke passiert und kommt unsichtbar zurueck
+  stand <- check_job_marks(marken, "job_fresh", now = jetzt)
+  expect_equal(stand$job_key, "job_fresh")
+  expect_s3_class(stand$last_run, "POSIXct")
 
-  # 2. A stale mark aborts - this is the case the function exists for
-  expect_error(assert_jobs_fresh(NULL, "job_stale"), "older than 26 hours")
-
-  # 3. A missing key aborts too. It is indistinguishable from a job that never
-  #    ran, so it must not pass silently.
-  expect_error(assert_jobs_fresh(NULL, "job_never_stamped"), "No run mark for")
-
-  # 4. A mark without a timestamp counts as stale, not as fresh
-  expect_error(assert_jobs_fresh(NULL, "job_no_timestamp"), "no timestamp")
-
-  # 5. Several keys at once: one bad one is enough to abort, and the message
-  #    names the offender rather than the whole list
+  # 2. Eine veraltete Marke bricht ab - dafuer gibt es die Funktion
   expect_error(
-    assert_jobs_fresh(NULL, c("job_fresh", "job_stale")),
-    "job_stale"
+    check_job_marks(marken, "job_stale", now = jetzt),
+    "older than 26 hours"
   )
-  expect_silent(assert_jobs_fresh(NULL, c("job_fresh")))
 
-  # 6. The threshold is a parameter, not a constant: the 48h-old mark passes
-  #    once the caller allows it
-  expect_equal(
-    assert_jobs_fresh(NULL, "job_stale", max_age_hours = 72)$job_key,
+  # 3. Ein fehlender Schluessel bricht ebenfalls ab. Von einem Job, der nie
+  #    gelaufen ist, ist er nicht zu unterscheiden, er darf nicht durchwinken.
+  expect_error(
+    check_job_marks(marken, "job_never_stamped", now = jetzt),
+    "No run mark for"
+  )
+
+  # 4. Eine Marke ohne Zeitstempel gilt als veraltet, nicht als frisch
+  expect_error(
+    check_job_marks(marken, "job_no_timestamp", now = jetzt),
+    "no timestamp"
+  )
+
+  # 5. Mehrere Schluessel: eine schlechte reicht zum Abbruch, und die Meldung
+  #    nennt den Schuldigen statt der ganzen Liste
+  expect_error(
+    check_job_marks(marken, c("job_fresh", "job_stale"), now = jetzt),
     "job_stale"
   )
+
+  # 6. Die Schwelle ist ein Parameter und keine Konstante
+  expect_equal(
+    check_job_marks(marken, "job_stale", max_age_hours = 72, now = jetzt)$job_key,
+    "job_stale"
+  )
+
+  # 7. Eine leere Markentabelle winkt nicht durch, sondern bricht ab. Das ist
+  #    der Zustand direkt nach einem Deploy, bevor der Vorgaenger gestempelt hat.
+  leer <- marken[0, ]
+  expect_error(check_job_marks(leer, "job_fresh", now = jetzt), "No run mark for")
 })

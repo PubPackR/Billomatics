@@ -414,8 +414,6 @@ postgres_read_metadata <- function(con, key) {
 #' @export
 assert_jobs_fresh <- function(con, job_keys, max_age_hours = 26) {
 
-  limit <- Sys.time() - as.difftime(max_age_hours, units = "hours")
-
   # Deliberately without a WHERE clause and without a bound array: RPostgres does
   # not map an R vector onto a Postgres array, so `= ANY($1)` does not carry. The
   # table holds a handful of rows, filtering in R costs nothing.
@@ -423,6 +421,29 @@ assert_jobs_fresh <- function(con, job_keys, max_age_hours = 26) {
     con,
     "SELECT key, updated_at FROM raw.metadata_jobs_and_datafiles"
   )
+
+  check_job_marks(all_marks, job_keys, max_age_hours)
+}
+
+#' check_job_marks
+#'
+#' The decision half of [assert_jobs_fresh()], separated from the database read
+#' so it can be tested against a plain data frame -- no connection, no mocking.
+#'
+#' @param all_marks A data frame with `key` and `updated_at`, as read from
+#'   `raw.metadata_jobs_and_datafiles`.
+#' @param job_keys Character vector of run mark keys that must be present and
+#'   fresh.
+#' @param max_age_hours Maximum age per mark in hours.
+#' @param now Reference point for the age comparison. Only worth setting in
+#'   tests; the default is the current time.
+#' @return Invisibly, a data frame with `job_key` and `last_run`.
+#'
+#' @keywords internal
+check_job_marks <- function(all_marks, job_keys, max_age_hours = 26,
+                            now = Sys.time()) {
+
+  limit <- now - as.difftime(max_age_hours, units = "hours")
 
   marks <- all_marks[all_marks$key %in% job_keys, ]
 
