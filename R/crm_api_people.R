@@ -103,7 +103,17 @@ get_central_station_contacts <- function (api_key, pages = "all", person_id = NU
       persons <- dplyr::bind_rows(persons, data)
     }
   }
-  persons %>% tidyr::unnest(person)
+  persons <- persons %>% tidyr::unnest(person)
+
+  # on a page where no person has e.g. tags or custom_fields, jsonlite returns
+  # list() instead of a data.frame for every row -> tidyr::unnest() downstream
+  # can't combine it with the data.frames of other pages. Empty entries -> NULL.
+  list_cols <- vapply(persons, function(col) is.list(col) && !is.data.frame(col), logical(1))
+  persons[list_cols] <- lapply(persons[list_cols], function(col) {
+    lapply(col, function(x) if (is.list(x) && !is.data.frame(x) && length(x) == 0) NULL else x)
+  })
+
+  persons
 }
 
 #' get_responsible_person
