@@ -206,14 +206,16 @@ get_crm_contact_details <- function(headers, df) {
       if (length(type_cols) > 0) {
         tryCatch({
           # Select only columns for this type, unnest, and add type label
+          # .env: the API returns its own type / attachable_id / attachable_type
+          # fields ("Tel", "Person"), which would otherwise shadow the locals
           type_data <- contact_data %>%
             dplyr::select(dplyr::all_of(type_cols)) %>%
             tidyr::unnest(cols = dplyr::everything(), names_repair = "minimal") %>%
             dplyr::filter(!is.na(id)) %>%
             dplyr::mutate(
-              contact_type = type,
-              attachable_id = attachable_id,
-              attachable_type = attachable_type
+              contact_type = .env$type,
+              attachable_id = .env$attachable_id,
+              attachable_type = .env$attachable_type
             )
 
           if (nrow(type_data) > 0) {
