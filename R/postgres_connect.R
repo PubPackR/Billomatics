@@ -119,8 +119,11 @@ postgres_connect <- function(postgres_keys = NULL,
     message("ℹ️ Interaktiver Modus erkannt – verbinde mit lokaler PostgreSQL-Datenbank")
     if (is.null(con)) { # Wenn keine Connection übergeben wird, dann erstelle eine neue
       if (is.null(local_pw)) { # Wenn kein Passwort übergeben wird, dann frage es ab
-        local_pw <- getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
-        local_password_is_product <- TRUE # Wenn kein Passwort initial übergeben wird, dann ist es der Produktnutzer
+        # Only the local database's password: since 0.0.0.9179 nothing else
+        # (no keys database, no production credential) is unlocked with it.
+        local_pw <- getPass::getPass(sprintf(
+          "Password of your local PostgreSQL user '%s' (local database, not production):", local_user
+        ))
         if (is.null(local_pw)) { # Wenn immer noch kein Passwort übergeben wird, dann stoppe die Funktion
           stop("Bitte entweder eine bestehende Connection übergeben oder das Passwort für die lokale DB angeben.")
         }
@@ -365,7 +368,7 @@ connect_with_retry <- function(postgres_keys, local_pw, local_host, local_port, 
     list(connection = con, local_pw = local_pw)
   }, error = function(e) {
     message("First connection attempt failed: ", e$message)
-    retry_pw <- getPass::getPass("Please enter your product passwort again: ")
+    retry_pw <- getPass::getPass(sprintf("Password of your local PostgreSQL user '%s', again:", local_user))
 
     # Zweiter Versuch
     con <- postgres_connect_intern_function(
