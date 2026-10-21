@@ -46,8 +46,8 @@ If \code{FALSE} (default), only missing local tables will be downloaded.}
 
 \item{load_in_memory}{Logical. Currently not used. Default is \code{FALSE}.}
 
-\item{local_password_is_product}{Logical. Indicates whether the local password is the same as the production password
-(only relevant for SSH-based data transfer).}
+\item{local_password_is_product}{Logical. No longer used: since 0.0.0.9179 the table sync needs no decrypt
+key. Kept so existing calls keep working.}
 
 \item{chunk_size}{Integer. Number of rows to process at once when downloading large tables. Default is \code{10000}.
 Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.}
@@ -55,9 +55,10 @@ Smaller values use less memory but may be slower. Increase for faster transfers 
 \item{verbose}{Logical. If \code{TRUE}, shows detailed output including function loading, foreign keys, ID ranges, etc.
 If \code{FALSE} (default), only shows table name and progress bar.}
 
-\item{path_to_keys_db}{Character. Optional path to the keys database. If \code{NULL} (default), uses the standard path.}
+\item{path_to_keys_db}{Character. No longer used: since 0.0.0.9179 the table sync reads no keys database.
+Kept so existing calls keep working.}
 
-\item{path_to_user_db}{Character. Optional path to the user database. If \code{NULL} (default), uses the standard path.}
+\item{path_to_user_db}{Character. No longer used, as \code{path_to_keys_db}.}
 
 \item{force_interactive}{Logical. If \code{TRUE}, forces interactive mode (local database connection) even if \code{interactive()} returns \code{FALSE}.
 If \code{FALSE}, forces non-interactive mode (production database connection). If \code{NULL} (default), uses the result of \code{interactive()}.}

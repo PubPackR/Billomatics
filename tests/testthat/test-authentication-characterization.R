@@ -139,7 +139,7 @@ test_that("postgresql composes character[5] from the single GSM secret", {
     },
     .package = "secretsR"
   )
-  # The order postgres_connect() consumes, documented at postgres_connect.R:882-886.
+  # The order postgres_connect() consumes, documented on postgres_connect_intern_function().
   expect_identical(authentication_postgresql("ignored"),
                    c("pw", "u", "db", "h.rds.amazonaws.com", "5432"))
 })
@@ -432,7 +432,7 @@ test_that("no multi-secret service prompts under gsm, even interactively", {
 test_that("a present-but-null postgres field is caught, not silently dropped", {
   # The names check passes for {"port":null} -- the key IS present -- and c()
   # drops NULL without a word, composing four elements where five are required.
-  # postgres_connect.R indexes postgres_keys[1..5] at fourteen sites, so a
+  # postgres_connect_intern_function() indexes postgres_keys[[1..5]], so a
   # four-element vector builds a wrong connection rather than failing.
   local_mocked_bindings(billomatics_on_gsm = function() TRUE)
   local_mocked_bindings(
@@ -461,7 +461,7 @@ test_that("an array-valued postgres field is caught, not compensated for", {
   # One array-valued field cancels one null field in the composed length:
   #   {"password":["pw1","pw2"], ..., "port":null}  -> five elements
   # so the length guard passes while the password is split and the port is gone.
-  # postgres_connect.R indexes [1..5] at fourteen sites.
+  # postgres_connect_intern_function() indexes postgres_keys[[1..5]].
   local_mocked_bindings(billomatics_on_gsm = function() TRUE)
   local_mocked_bindings(
     billomatics_gsm_secret = function(name, version = "latest") {

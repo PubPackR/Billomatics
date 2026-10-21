@@ -16,15 +16,16 @@
 #' @param ssh_key_path Path to the SSH key used to access the production database.
 #' @param ssl_cert_path Path to the SSL certificate file for the database connection.
 #' @param local_dbname, local_host, local_port, local_user, local_pw Parameters for configuring the local database connection.
-#' @param local_password_is_product Logical. Indicates whether the local password is the same as the production password
-#'        (only relevant for SSH-based data transfer).
+#' @param local_password_is_product Logical. No longer used: since 0.0.0.9179 the table sync needs no decrypt
+#'        key. Kept so existing calls keep working.
 #' @param load_in_memory Logical. Currently not used. Default is `FALSE`.
 #' @param chunk_size Integer. Number of rows to process at once when downloading large tables. Default is `10000`.
 #'        Smaller values use less memory but may be slower. Increase for faster transfers if memory allows.
 #' @param verbose Logical. If `TRUE`, shows detailed output including function loading, foreign keys, ID ranges, etc.
 #'        If `FALSE` (default), only shows table name and progress bar.
-#' @param path_to_keys_db Character. Optional path to the keys database. If `NULL` (default), uses the standard path.
-#' @param path_to_user_db Character. Optional path to the user database. If `NULL` (default), uses the standard path.
+#' @param path_to_keys_db Character. No longer used: since 0.0.0.9179 the table sync reads no keys database.
+#'        Kept so existing calls keep working.
+#' @param path_to_user_db Character. No longer used, as `path_to_keys_db`.
 #' @param force_interactive Logical. If `TRUE`, forces interactive mode (local database connection) even if `interactive()` returns `FALSE`.
 #'        If `FALSE`, forces non-interactive mode (production database connection). If `NULL` (default), uses the result of `interactive()`.
 #'
@@ -138,21 +139,15 @@ postgres_connect <- function(postgres_keys = NULL,
 
     # Bei update_local_tables = TRUE: SSH-Verbindung für intelligente Prüfung aufbauen
     ssh_session_for_check <- NULL
-    postgres_keys_for_check <- NULL
 
     if (update_local_tables) {
       if (verbose) {
         message("📡 Baue SSH-Verbindung für intelligente Update-Prüfung auf...")
       }
 
+      # No credential is fetched: the remote psql calls connect through
+      # application-user's pg service (see remote_psql()).
       ssh_session_for_check <- connect_to_studyflix_ssh(ssh_key_path = ssh_key_path, preset_ssh_key = "")
-      decrypt_key <- load_postgres_decrypt_key(
-        local_password = local_pw,
-        local_password_is_product = local_password_is_product,
-        path_to_keys_db = path_to_keys_db,
-        path_to_user_db = path_to_user_db
-      )
-      postgres_keys_for_check <- get_postgres_keys_via_ssh(ssh_session = ssh_session_for_check, decrypt_key = decrypt_key)
 
       # Automatisch trennen bei Funktionsende
       on.exit({
@@ -164,7 +159,6 @@ postgres_connect <- function(postgres_keys = NULL,
     tables_to_pull <- postgres_get_tables_to_pull(
       needed_tables, con, update_local_tables,
       ssh_session = if (!is.null(ssh_session_for_check)) ssh_session_for_check[[1]] else NULL,
-      postgres_keys = postgres_keys_for_check,
       verbose = verbose
     )
 
@@ -218,16 +212,12 @@ postgres_connect <- function(postgres_keys = NULL,
           table = table_name,  # einzeln übergeben
           local_con = con,
           ssh_key_path = ssh_key_path,
-          local_password = local_pw,
           load_in_memory = load_in_memory,
-          local_password_is_product = local_password_is_product,
           load_functions_to_db = first_table, # Load Functions only in first run
           preset_ssh_key = results,
           available_tables = available_tables,
           chunk_size = chunk_size,
-          verbose = verbose,
-          path_to_keys_db = path_to_keys_db,
-          path_to_user_db = path_to_user_db
+          verbose = verbose
         )
 
         available_tables <- c(available_tables, table_name)  # Füge die Tabelle der Liste hinzu
@@ -296,12 +286,11 @@ postgres_connect <- function(postgres_keys = NULL,
         sync_schemas_to_local(
           con = con,
           ssh_session = ssh_session_for_check[[1]],
-          postgres_keys = postgres_keys_for_check,
           verbose = verbose
         )
         load_functions_to_new_db(
           con = con,
-          function_string = get_all_functions(ssh_session_for_check[[1]], postgres_keys_for_check),
+          function_string = get_all_functions(ssh_session_for_check[[1]]),
           verbose = verbose
         )
       }
@@ -493,20 +482,16 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
 #' It also loads metadata (like view definitions and SQL functions) if configured.
 #'
 #' @param table A single fully qualified table name (e.g., `"schema.table"`) to retrieve from the remote database.
-#'              If `NULL`, no data is loaded and only the decrypted credentials are returned.
 #' @param local_con A live DBI connection to the local target database. Must be provided if `load_in_memory = FALSE`.
 #' @param ssh_key_path File path to the private SSH key used to connect to the production environment. If `NULL`, a default path is assumed.
-#' @param local_password Optional password for the local database. If `local_password_is_product = TRUE`, this must already be decrypted.
 #' @param load_in_memory Logical. If `TRUE`, data is kept in memory (e.g. for testing or lightweight workflows). Not yet implemented.
-#' @param local_password_is_product Logical. If `TRUE`, `local_password` is assumed to already contain the decrypted key.
 #' @param load_functions_to_db Logical. If `TRUE` (default), all PostgreSQL functions from the remote DB are imported into the local DB.
 #' @param preset_ssh_key Optional string name to select from preconfigured SSH key paths (e.g. `"ci"`).
 #' @param available_tables Character vector of all known tables (optional). Used to assist metadata writing.
 #' @param chunk_size Integer. Number of rows to process at once when downloading the table. Default is `10000`.
-#' @param path_to_keys_db Character. Optional path to the keys database. If `NULL` (default), uses the standard path.
-#' @param path_to_user_db Character. Optional path to the user database. If `NULL` (default), uses the standard path.
 #'
-#' @return Returns the decrypted production credentials invisibly (as a named list), e.g., for further use.
+#' @return The SSH key passphrase (`ssh_session[[2]]`), so the next call can reuse it. The remote psql calls
+#'   connect through application-user's pg service; no production credential is fetched (see `remote_psql()`).
 #'
 #' @details
 #' This function automatically checks whether the requested object is a table or a view. If it's a view,
@@ -519,16 +504,12 @@ establish_ssh_connection <- function(ssh_key_path, remote_user, remote_host, pas
 postgres_pull_production_tables <- function(table = NULL,
                                             local_con = NULL,
                                             ssh_key_path = NULL,
-                                            local_password = NULL,
                                             load_in_memory = FALSE,
-                                            local_password_is_product = FALSE,
                                             load_functions_to_db = TRUE,
                                             preset_ssh_key = "",
                                             available_tables = c(),
                                             chunk_size = 10000,
-                                            verbose = FALSE,
-                                            path_to_keys_db = NULL,
-                                            path_to_user_db = NULL) {
+                                            verbose = FALSE) {
 
   if (!interactive()) {
     message("Die Funktion 'pull_production_tables' wird nur in interaktiven Sitzungen ausgeführt.")
@@ -543,27 +524,24 @@ postgres_pull_production_tables <- function(table = NULL,
     try(ssh::ssh_disconnect(ssh_session[[1]]), silent = TRUE)
   })
 
-  decrypt_key <- load_postgres_decrypt_key(local_password = local_password, local_password_is_product = local_password_is_product, path_to_keys_db = path_to_keys_db, path_to_user_db = path_to_user_db)
-  postgres_keys <- get_postgres_keys_via_ssh(ssh_session = ssh_session, decrypt_key = decrypt_key)
-
   # Lade Funktionen in die lokale DB, wenn es die erste Tabelle ist
   # Vorher alle Schemas der Produktion lokal sicherstellen, damit schema-qualifizierte
   # Funktionsdefinitionen (z. B. config.xxx) nicht an fehlenden Schemas scheitern
   if (load_functions_to_db) {
-    sync_schemas_to_local(con = local_con, ssh_session = ssh_session[[1]], postgres_keys = postgres_keys, verbose = verbose)
-    load_functions_to_new_db(con = local_con, function_string = get_all_functions(ssh_session[[1]], postgres_keys), verbose = verbose)
+    sync_schemas_to_local(con = local_con, ssh_session = ssh_session[[1]], verbose = verbose)
+    load_functions_to_new_db(con = local_con, function_string = get_all_functions(ssh_session[[1]]), verbose = verbose)
   }
 
-  table_is_view <- test_view_or_table(ssh_session[[1]], postgres_keys, table)
+  table_is_view <- test_view_or_table(ssh_session[[1]], table)
 
   if (table_is_view) {
 
-    view_definitions <- get_requested_views(ssh_session[[1]], postgres_keys, table)
+    view_definitions <- get_requested_views(ssh_session[[1]], table)
     load_view_definitions_to_new_db(con = local_con, view_definitions = view_definitions)
 
   } else {
 
-    tables_data <- load_postgres_table_via_ssh(table, ssh_session, postgres_keys, ssh_key_path = ssh_key_path, preset_ssh_key = ssh_session[[2]], chunk_size = chunk_size, verbose = verbose)
+    tables_data <- load_postgres_table_via_ssh(table, ssh_session, ssh_key_path = ssh_key_path, preset_ssh_key = ssh_session[[2]], chunk_size = chunk_size, verbose = verbose)
     ssh_session <- tables_data$ssh_session
     if (is.null(tables_data)) { return(ssh_session[[2]]) }
 
@@ -592,51 +570,6 @@ postgres_pull_production_tables <- function(table = NULL,
   return(ssh_session[[2]])
 }
 
-load_postgres_decrypt_key <- function(local_password, local_password_is_product = FALSE, path_to_keys_db = NULL, path_to_user_db = NULL) {
-  # Passwort bestimmen
-  produkt_key <- if (local_password_is_product) {
-    local_password
-  } else {
-    getPass::getPass("Gib das Passwort für den Produktnutzer ein:")
-  }
-
-  # Versuch, den Decrypt-Key zu laden – mit doppeltem Fallback
-  tryCatch({
-    if(is.null(path_to_keys_db) && is.null(path_to_user_db)) {
-      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key))
-    } else if(!is.null(path_to_keys_db) && is.null(path_to_user_db)) {
-      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db))
-    } else if(is.null(path_to_keys_db) && !is.null(path_to_user_db)) {
-      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_user_db = path_to_user_db))
-    } else {
-      return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db, path_to_user_db = path_to_user_db))
-    }
-  }, error = function(e1) {
-    tryCatch({
-          if(is.null(path_to_keys_db) && is.null(path_to_user_db)) {
-            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key))
-          } else if(!is.null(path_to_keys_db) && is.null(path_to_user_db)) {
-            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db))
-          } else if(is.null(path_to_keys_db) && !is.null(path_to_user_db)) {
-            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_user_db = path_to_user_db))
-          } else {
-            return(shinymanager::custom_access_keys_2(name_of_secret = "postgresql_public_key", preset_key = produkt_key, path_to_keys_db = path_to_keys_db, path_to_user_db = path_to_user_db))
-          }
-    }, error = function(e2) {
-      stop(
-        paste(
-          "Fehler beim Auslesen der Keys-DB. Mögliche Fehlerquellen:",
-          "- falsches Produktpasswort",
-          "- inkompatible `shinymanager`-Version",
-          "- veraltete oder beschädigte Keys-Datenbank.",
-          "\nUrsprüngliche Fehlermeldung:",
-          e2$message
-        )
-      )
-    })
-  })
-}
-
 connect_to_studyflix_ssh <- function(ssh_key_path = NULL, preset_ssh_key = "") {
   # SSH-Key automatisch bestimmen, falls nicht angegeben
   if (is.null(ssh_key_path)) {
@@ -662,7 +595,29 @@ connect_to_studyflix_ssh <- function(ssh_key_path = NULL, preset_ssh_key = "") {
   return(ssh_session)
 }
 
+#' Remote psql command for the production database
+#'
+#' Builds the psql call that runs on the Shiny host as application-user. The
+#' connection comes from that user's ~/.pg_service.conf and ~/.pgpass, written
+#' by Shiny-0-studyflix-infrastructure's pg-service role for the read-only role
+#' olap2_devsync_ro. So the command carries no credential: sshd runs it as
+#' `$SHELL -c "<command>"`, which every user on the host can read with ps.
+#'
+#' @param psql_args Character. Everything after the connection, e.g.
+#'   `-t -A -c "SELECT 1"`, including any redirection that follows psql.
+#' @return Character. The command for `ssh::ssh_exec_internal()`.
+#'
+#' @keywords internal
+# ---- start ---- #
+remote_psql <- function(psql_args) {
+  paste('psql "service=studyflix"', psql_args)
+}
 
+
+# No longer used by the table sync (0.0.0.9179). Kept only because
+# config-01-claude's MCP refresh scripts (mcp-servers/db-schema/get_db_schema.R,
+# mcp-servers/flowforce-jobs/get_flowforce_jobs.R) call it via `:::`. Its
+# command carries the decrypt key, so remove it once they use remote_psql().
 get_postgres_keys_via_ssh <- function(ssh_session, decrypt_key) {
   if (length(ssh_session) < 1) {
     stop("SSH-Session ist leer oder ungültig.")
@@ -699,7 +654,7 @@ EORSCRIPT
   return(split_output)
 }
 
-load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_key_path = ssh_key_path, preset_ssh_key = preset_ssh_key, chunk_size = 10000, verbose = FALSE) {
+load_postgres_table_via_ssh <- function(table, ssh_session, ssh_key_path = ssh_key_path, preset_ssh_key = preset_ssh_key, chunk_size = 10000, verbose = FALSE) {
   if (!verbose) {
     # Im non-verbose Modus: nur Tabellenname anzeigen
     message(sprintf("📥 %s", table))
@@ -708,7 +663,7 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
   }
 
   # Metadaten abrufen
-  metadata <- get_table_metadata(table, ssh_session[[1]], postgres_keys)
+  metadata <- get_table_metadata(table, ssh_session[[1]])
 
   # ORDER BY Spalte dynamisch bestimmen (Primary Key oder erste Spalte als Fallback)
   if (!is.null(metadata$primary_keys) && nrow(metadata$primary_keys) > 0) {
@@ -720,10 +675,10 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
   }
 
   # Zähle zuerst die Zeilen, um zu entscheiden ob Chunking nötig ist
-  count_cmd <- sprintf(
-    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -t -A -c \"SELECT COUNT(*) FROM %s;\" 2>&1; echo \"EXIT_STATUS:$?\"',
-    postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], table
-  )
+  count_cmd <- remote_psql(sprintf(
+    '-t -A -c \"SELECT COUNT(*) FROM %s;\" 2>&1; echo \"EXIT_STATUS:$?\"',
+    table
+  ))
 
   count_result <- ssh::ssh_exec_internal(ssh_session[[1]], count_cmd)
   output <- rawToChar(count_result$stdout)
@@ -788,11 +743,10 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
     # Befehl für SSH-psql mit LIMIT und OFFSET
     # Wichtig: ORDER BY Primary Key um sicherzustellen, dass LIMIT/OFFSET konsistent ist
     # NULL wird als \N exportiert (PostgreSQL Standard für CSV NULL)
-    cmd <- sprintf(
-      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s ORDER BY %s LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
-      postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+    cmd <- remote_psql(sprintf(
+      '-c \"\\\\copy (SELECT * FROM %s ORDER BY %s LIMIT %d OFFSET %d) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
       table, order_column, adjusted_chunk_size, offset
-    )
+    ))
 
     result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
     output <- rawToChar(result$stdout)
@@ -874,82 +828,17 @@ load_postgres_table_via_ssh <- function(table, ssh_session, postgres_keys, ssh_k
   }
 }
 
-# Hilfsfunktion für kleine Tabellen (keine Chunks nötig)
-load_table_full <- function(table, ssh_session, postgres_keys, metadata) {
-  # NULL wird als \N exportiert (PostgreSQL Standard für CSV NULL)
-  cmd <- sprintf(
-    'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT * FROM %s) TO STDOUT WITH (FORMAT CSV, HEADER true)\" 2>&1; echo \"EXIT_STATUS:$?\"',
-    postgres_keys[1], # Passwort
-    postgres_keys[3], # DB-Name
-    postgres_keys[2], # User
-    postgres_keys[4], # Host
-    postgres_keys[5], # Port
-    table
-  )
-
-  result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
-  output <- rawToChar(result$stdout)
-  parts <- strsplit(output, "EXIT_STATUS:")[[1]]
-
-  data_part <- parts[1]
-  status <- as.integer(parts[2])
-
-  # Fehlerbehandlung
-  if (status != 0 || (grepl("error", data_part, ignore.case = TRUE) & grepl("^ERROR:", output, ignore.case = TRUE))) {
-    error_msg <- if (grepl("error", data_part, ignore.case = TRUE)) data_part else "Unbekannter Fehler"
-
-    if (grepl("does not exist|existiert nicht|relation.*not found", error_msg, ignore.case = TRUE)) {
-      message(sprintf("❌ Tabelle %s existiert nicht", table))
-    } else if (grepl("permission denied|Zugriff verweigert", error_msg, ignore.case = TRUE)) {
-      message(sprintf("❌ Keine Berechtigung für Tabelle %s", table))
-    } else {
-      message(sprintf("❌ Fehler bei Tabelle %s: %s", table, error_msg))
-    }
-    return(NULL)
-  }
-
-  # Daten einlesen & typisieren
-  # WICHTIG: PostgreSQL verwendet \N für NULL in CSV-Export
-  # WICHTIG: colClasses = "character" verhindert automatische Typ-Konvertierung
-  # (z.B. führende Nullen bei Tel-Nummern würden sonst verloren gehen)
-  df <- tryCatch({
-    tmp_df <- utils::read.csv(text = data_part, stringsAsFactors = FALSE,
-                             na.strings = c("\\N"), colClasses = "character")
-
-    # WICHTIG: read.csv konvertiert \N in character-Spalten zu "" statt NA
-    # Alle "" in character-Spalten zu NA konvertieren
-    for (col in names(tmp_df)) {
-      if (is.character(tmp_df[[col]])) {
-        tmp_df[[col]][tmp_df[[col]] == ""] <- NA_character_
-      }
-    }
-
-    tmp_df <- apply_column_types(tmp_df, metadata$data_types)
-    as.data.frame(tmp_df, stringsAsFactors = FALSE)
-  }, error = function(e) {
-    message(sprintf("❌ Fehler beim Parsen der Daten von Tabelle %s: %s", table, e$message))
-    return(NULL)
-  })
-
-  return(df)
-}
-
-test_view_or_table <- function(ssh_session, postgres_keys, table) {
+test_view_or_table <- function(ssh_session, table) {
 
   split <- strsplit(table, "\\.")[[1]]
   schema <- split[1]
   table_name <- split[2]
 
-  cmd <- sprintf(
-    'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "SELECT table_type FROM information_schema.tables WHERE table_schema = \'%s\' AND table_name = \'%s\';"',
-    postgres_keys[1],
-    postgres_keys[3],
-    postgres_keys[2],
-    postgres_keys[4],
-    postgres_keys[5],
+  cmd <- remote_psql(sprintf(
+    '-t -A -c "SELECT table_type FROM information_schema.tables WHERE table_schema = \'%s\' AND table_name = \'%s\';"',
     schema,
     table_name
-  )
+  ))
   result <- ssh::ssh_exec_internal(ssh_session, cmd)
   output <- trimws(rawToChar(result$stdout))
 
@@ -1582,7 +1471,7 @@ categorize_sql_string <- function(input_string) {
   return(list(type = "String Literal", needs_quotes = TRUE))
 }
 
-get_requested_views <- function(ssh_session, postgres_keys, views) {
+get_requested_views <- function(ssh_session, views) {
 
   view_definitions <- list()
 
@@ -1594,12 +1483,10 @@ get_requested_views <- function(ssh_session, postgres_keys, views) {
     message(paste("📥 Versuche View zu laden:", view))
 
     view_full_name <- sprintf('"%s"."%s"', schema, view_name)
-    cmd <- sprintf(
-      'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "SELECT pg_get_viewdef(\'%s\'::regclass, true);"',
-      postgres_keys[1], postgres_keys[3], postgres_keys[2],
-      postgres_keys[4], postgres_keys[5],
+    cmd <- remote_psql(sprintf(
+      '-t -A -c "SELECT pg_get_viewdef(\'%s\'::regclass, true);"',
       view_full_name
-    )
+    ))
 
     result <- ssh::ssh_exec_internal(ssh_session, cmd)
     definition <- trimws(rawToChar(result$stdout))
@@ -1615,7 +1502,7 @@ get_requested_views <- function(ssh_session, postgres_keys, views) {
 
 }
 
-get_all_functions <- function(ssh_session, postgres_keys) {
+get_all_functions <- function(ssh_session) {
 
   # Abfrage, um alle definierten Funktionen abzurufen
   query <- "
@@ -1633,7 +1520,7 @@ COPY (
 ) TO STDOUT WITH CSV DELIMITER ',' QUOTE '\"' ESCAPE '\"';
 "
 
-  data_result <- execute_functions_query(query, ssh_session, postgres_keys)
+  data_result <- execute_functions_query(query, ssh_session)
 
   # Gibt das DataFrame mit den Funktionen zurück
   return(data_result)
@@ -1719,19 +1606,21 @@ load_functions_to_new_db <- function(function_string, con, verbose = FALSE) {
 #'
 #' @param con Lokale DBI-Verbindung, in der die Schemas angelegt werden.
 #' @param ssh_session Aktive SSH-Session (Session-Objekt, nicht die Liste) zur Produktion.
-#' @param postgres_keys Zerlegte Produktions-Keys (Passwort, User, DB, Host, Port).
 #' @param verbose Logical. Bei \code{TRUE} wird die Anzahl sichergestellter Schemas gemeldet.
 #'
 #' @return \code{invisible(NULL)}. Aufruf erfolgt wegen des Seiteneffekts (Schema-Erstellung).
 #'
 #' @keywords internal
-sync_schemas_to_local <- function(con, ssh_session, postgres_keys, verbose = FALSE) {
+sync_schemas_to_local <- function(con, ssh_session, verbose = FALSE) {
 
   # Alle Nicht-System-Schemas der Produktion abfragen
-  schema_query <- "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema') AND schema_name NOT LIKE 'pg_%' ORDER BY schema_name;"
+  # From pg_namespace, not information_schema.schemata: the read-only sync role
+  # sees only the schemas it holds USAGE on there, and functions defined in any
+  # other schema would then fail to load for want of their schema.
+  schema_query <- "SELECT nspname AS schema_name FROM pg_catalog.pg_namespace WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg_%' ORDER BY nspname;"
 
   schemas_df <- tryCatch({
-    execute_psql_query(schema_query, ssh_session, postgres_keys)
+    execute_psql_query(schema_query, ssh_session)
   }, error = function(e) {
     if (verbose) message(sprintf("⚠️ Schema-Abgleich fehlgeschlagen: %s", e$message))
     NULL
@@ -1801,10 +1690,9 @@ parse_pg_meta <- function(text_output) {
 }
 
 # Function to execute a psql query over SSH and retrieve the result
-execute_functions_query <- function(query, ssh_session, postgres_keys) {
-  # Build the psql command with provided credentials
-  psql_command <- sprintf("PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" <<'EOF'\n%s\nEOF",
-                          postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], query)
+execute_functions_query <- function(query, ssh_session) {
+  # Build the psql command; the connection comes from the pg service
+  psql_command <- remote_psql(sprintf("<<'EOF'\n%s\nEOF", query))
 
   # Execute the query over SSH
   result <- ssh::ssh_exec_internal(ssh_session, psql_command)
@@ -1820,10 +1708,9 @@ execute_functions_query <- function(query, ssh_session, postgres_keys) {
 
 
 # Function to execute a psql query over SSH and retrieve the result
-execute_psql_query <- function(query, ssh_session, postgres_keys) {
-  # Build the psql command with provided credentials
-  psql_command <- sprintf("PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -A -F '|' -P footer=off -c \"%s\"",
-                          postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5], query)
+execute_psql_query <- function(query, ssh_session) {
+  # Build the psql command; the connection comes from the pg service
+  psql_command <- remote_psql(sprintf("-A -F '|' -P footer=off -c \"%s\"", query))
 
   # Execute the query over SSH
   result <- ssh::ssh_exec_internal(ssh_session, psql_command)
@@ -1836,7 +1723,7 @@ execute_psql_query <- function(query, ssh_session, postgres_keys) {
 }
 
 # Function to retrieve all essential metadata from a table
-get_table_metadata <- function(table, ssh_session, postgres_keys) {
+get_table_metadata <- function(table, ssh_session) {
 
   split <- strsplit(table, "\\.")[[1]]
   schema <- split[1]
@@ -1849,7 +1736,7 @@ get_table_metadata <- function(table, ssh_session, postgres_keys) {
       SELECT column_name, data_type, udt_name
       FROM information_schema.columns
       WHERE table_name = '%s' AND table_schema = '%s';", table_name, schema)
-    data_types <- execute_psql_query(data_type_query, ssh_session, postgres_keys)
+    data_types <- execute_psql_query(data_type_query, ssh_session)
 
     # Fallback für Materialized Views (nicht in information_schema enthalten)
     if (is.null(data_types) || nrow(data_types) == 0) {
@@ -1866,21 +1753,28 @@ get_table_metadata <- function(table, ssh_session, postgres_keys) {
           AND a.attnum > 0
           AND NOT a.attisdropped
         ORDER BY a.attnum;", table_name, schema)
-      data_types <- execute_psql_query(pg_catalog_type_query, ssh_session, postgres_keys)
+      data_types <- execute_psql_query(pg_catalog_type_query, ssh_session)
     }
+
+    # Primary keys, foreign keys and unique constraints come from pg_catalog.
+    # information_schema shows them only on tables where the role holds a
+    # privilege other than SELECT, so the read-only sync role would get none
+    # (checked 21.10.2026: 0 of raw's 126 primary keys). The PK also orders the
+    # chunked pulls in load_postgres_table_via_ssh().
 
     # Abfrage nur für Primary Keys (über constraint_type, nicht Namenskonvention)
     pk_query <- sprintf("
-      SELECT kcu.column_name
-      FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu
-        ON tc.constraint_name = kcu.constraint_name
-        AND tc.table_schema = kcu.table_schema
-      WHERE tc.table_name = '%s'
-        AND tc.table_schema = '%s'
-        AND tc.constraint_type = 'PRIMARY KEY'
-      ORDER BY kcu.ordinal_position;", table_name, schema)
-    primary_keys <- execute_psql_query(pk_query, ssh_session, postgres_keys)
+      SELECT a.attname AS column_name
+      FROM pg_catalog.pg_constraint con
+      JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
+      CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+      JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+      WHERE con.contype = 'p'
+        AND rel.relname = '%s'
+        AND nsp.nspname = '%s'
+      ORDER BY k.ord;", table_name, schema)
+    primary_keys <- execute_psql_query(pk_query, ssh_session)
 
     # Abfrage nur für Identities
     identity_query <- sprintf("
@@ -1891,73 +1785,72 @@ get_table_metadata <- function(table, ssh_session, postgres_keys) {
     WHERE table_schema = '%s'
       AND table_name = '%s'
       AND identity_generation IS NOT NULL;", schema, table_name)
-    identity_keys <- execute_psql_query(identity_query, ssh_session, postgres_keys)
+    identity_keys <- execute_psql_query(identity_query, ssh_session)
 
     # Foreign Keys
+    # One row per column pair: unnest(conkey, confkey) pairs each referencing
+    # column with its referenced column, in key order.
     fk_query <- sprintf(
       "
 SELECT
-    tc.constraint_name,
-    tc.table_schema AS constraint_schema,
-    tc.table_name AS constraint_table,
-    kcu.column_name AS constraint_column,
-    ccu.table_schema AS referenced_schema,
-    ccu.table_name AS referenced_table,
-    ccu.column_name AS referenced_column,
-    rc.update_rule,
-    rc.delete_rule
+    con.conname AS constraint_name,
+    nsp.nspname AS constraint_schema,
+    rel.relname AS constraint_table,
+    a.attname AS constraint_column,
+    fnsp.nspname AS referenced_schema,
+    frel.relname AS referenced_table,
+    fa.attname AS referenced_column,
+    CASE con.confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE'
+                         WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS update_rule,
+    CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE'
+                         WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS delete_rule
 FROM
-    information_schema.table_constraints AS tc
-JOIN
-    information_schema.key_column_usage AS kcu
-        ON tc.constraint_name = kcu.constraint_name
-        AND tc.table_schema = kcu.table_schema
-        AND tc.table_name = kcu.table_name
-JOIN
-    information_schema.referential_constraints AS rc
-        ON tc.constraint_name = rc.constraint_name
-        AND tc.table_schema = rc.constraint_schema
-JOIN
-    information_schema.constraint_column_usage AS ccu
-        ON rc.unique_constraint_name = ccu.constraint_name
-        AND rc.unique_constraint_schema = ccu.constraint_schema
+    pg_catalog.pg_constraint con
+JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
+JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
+JOIN pg_catalog.pg_class frel ON frel.oid = con.confrelid
+JOIN pg_catalog.pg_namespace fnsp ON fnsp.oid = frel.relnamespace
+CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(attnum, fattnum, ord)
+JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+JOIN pg_catalog.pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = k.fattnum
 WHERE
-    tc.constraint_type = 'FOREIGN KEY'
-    AND tc.table_name = '%s'
-    AND tc.table_schema = '%s';
+    con.contype = 'f'
+    AND rel.relname = '%s'
+    AND nsp.nspname = '%s'
+ORDER BY con.conname, k.ord;
       ",
       table_name,
       schema
     )
-    foreign_keys <- execute_psql_query(fk_query, ssh_session, postgres_keys)
+    foreign_keys <- execute_psql_query(fk_query, ssh_session)
 
 
     # Unique Constraints
     unique_query <- sprintf("
   SELECT
-    tc.constraint_name,
-    kcu.column_name
+    con.conname AS constraint_name,
+    a.attname AS column_name
   FROM
-    information_schema.table_constraints tc
-  JOIN
-    information_schema.key_column_usage kcu
-  ON
-    tc.constraint_name = kcu.constraint_name
+    pg_catalog.pg_constraint con
+  JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
+  JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
+  CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+  JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
   WHERE
-    tc.table_schema = '%s' AND
-    tc.table_name = '%s' AND
-    tc.constraint_type = 'UNIQUE'
+    nsp.nspname = '%s' AND
+    rel.relname = '%s' AND
+    con.contype = 'u'
   ORDER BY
-    tc.constraint_name, kcu.ordinal_position;
+    con.conname, k.ord;
 ", schema, table_name)
-    unique_constraints <- execute_psql_query(unique_query, ssh_session, postgres_keys)
+    unique_constraints <- execute_psql_query(unique_query, ssh_session)
 
     # Not Null Constraints
     not_null_query <- sprintf("
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = '%s' AND table_schema = '%s' AND is_nullable = 'NO';", table_name, schema)
-    not_null_columns <- execute_psql_query(not_null_query, ssh_session, postgres_keys)
+    not_null_columns <- execute_psql_query(not_null_query, ssh_session)
 
     # Check Constraints
     check_query <- sprintf("
@@ -1973,7 +1866,7 @@ WHERE
         AND rel.relname = '%s'
         AND nsp.nspname = '%s';
     ", table_name, schema)
-    check_constraints <- execute_psql_query(check_query, ssh_session, postgres_keys)
+    check_constraints <- execute_psql_query(check_query, ssh_session)
 
     # Default Values (normale defaults, OHNE GENERATED COLUMNS)
     # GENERATED COLUMNS werden separat behandelt weil generation_expression mehrzeilig ist
@@ -1983,14 +1876,13 @@ WHERE
       WHERE table_name = '%s' AND table_schema = '%s'
         AND column_default IS NOT NULL
         AND (is_generated IS NULL OR is_generated = 'NEVER');", table_name, schema)
-    default_values <- execute_psql_query(default_query, ssh_session, postgres_keys)
+    default_values <- execute_psql_query(default_query, ssh_session)
 
     # Generated Columns separat holen (mit CSV wegen mehrzeiligen Expressions)
-    gen_col_cmd <- sprintf(
-      'PGPASSWORD=\"%s\" psql -d \"%s\" -U \"%s\" -h \"%s\" -p \"%s\" -c \"\\\\copy (SELECT column_name, generation_expression FROM information_schema.columns WHERE table_name = \'%s\' AND table_schema = \'%s\' AND is_generated = \'ALWAYS\') TO STDOUT WITH CSV HEADER\"',
-      postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+    gen_col_cmd <- remote_psql(sprintf(
+      '-c \"\\\\copy (SELECT column_name, generation_expression FROM information_schema.columns WHERE table_name = \'%s\' AND table_schema = \'%s\' AND is_generated = \'ALWAYS\') TO STDOUT WITH CSV HEADER\"',
       table_name, schema
-    )
+    ))
     result <- ssh::ssh_exec_internal(ssh_session, gen_col_cmd)
     gen_csv <- rawToChar(result$stdout)
     generated_columns <- if (nchar(trimws(gen_csv)) > 0 && grepl("column_name", gen_csv)) {
@@ -2004,14 +1896,14 @@ WHERE
       SELECT indexname, indexdef
       FROM pg_indexes
       WHERE tablename = '%s' AND schemaname = '%s';", table_name, schema)
-    indexes <- execute_psql_query(index_query, ssh_session, postgres_keys)
+    indexes <- execute_psql_query(index_query, ssh_session)
 
     # Table Comments
     table_comment_query <- sprintf("
       SELECT obj_description(oid)
       FROM pg_class
       WHERE relname = '%s';", table_name)
-    table_comment <- execute_psql_query(table_comment_query, ssh_session, postgres_keys)
+    table_comment <- execute_psql_query(table_comment_query, ssh_session)
 
     # Get all triggers for a given table
     trigger_query <- sprintf("
@@ -2027,7 +1919,7 @@ WHERE
         AND c.relname = '%s'
         AND NOT tg.tgisinternal;", schema, table_name)
 
-    trigger_info <- execute_psql_query(trigger_query, ssh_session, postgres_keys)
+    trigger_info <- execute_psql_query(trigger_query, ssh_session)
 
     # Column Comments
     column_comment_query <- sprintf("
@@ -2047,7 +1939,7 @@ WHERE
       AND n.nspname = '%s'
       AND a.attnum > 0
       AND NOT a.attisdropped;", table_name, schema)
-    column_comments <- execute_psql_query(column_comment_query, ssh_session, postgres_keys)
+    column_comments <- execute_psql_query(column_comment_query, ssh_session)
 
     # Combine all information into a list for easy access
     return(list(
@@ -2193,16 +2085,15 @@ apply_column_types <- function(df, type_info) {
 #'
 #' @param tables Ein Character-Vektor mit vollqualifizierten Tabellennamen im Format `"schema.tabelle"`.
 #' @param con Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.
-#' @param update_local_tables Logisch. Wenn `TRUE`, werden Tabellen intelligent geprüft (erfordert ssh_session und postgres_keys).
+#' @param update_local_tables Logisch. Wenn `TRUE`, werden Tabellen intelligent geprüft (erfordert ssh_session).
 #' @param ssh_session Optional. SSH-Session zur Produktionsdatenbank für intelligente Update-Prüfung.
-#' @param postgres_keys Optional. Credentials für die Produktionsdatenbank.
 #' @param verbose Logisch. Wenn `TRUE`, werden Statusmeldungen ausgegeben.
 #'
 #' @return Character-Vektor mit den Tabellennamen, die noch aus der Produktion gezogen werden müssen.
 #'
 #' @keywords internal
 postgres_get_tables_to_pull <- function(tables, con, update_local_tables,
-                                       ssh_session = NULL, postgres_keys = NULL,
+                                       ssh_session = NULL,
                                        verbose = FALSE) {
 
   # Bei update_local_tables = FALSE: Nur fehlende Tabellen laden
@@ -2222,7 +2113,7 @@ postgres_get_tables_to_pull <- function(tables, con, update_local_tables,
   }
 
   # Bei update_local_tables = TRUE mit SSH-Verbindung: Intelligente Prüfung
-  if (!is.null(ssh_session) && !is.null(postgres_keys)) {
+  if (!is.null(ssh_session)) {
     tables_to_update <- c()
 
     # Batched check für alle Tabellen (5*N SSH-Queries → 2-3 SSH-Queries)
@@ -2230,7 +2121,6 @@ postgres_get_tables_to_pull <- function(tables, con, update_local_tables,
       tables = tables,
       local_con = con,
       ssh_session = ssh_session,
-      postgres_keys = postgres_keys,
       verbose = FALSE
     )
 
@@ -2407,7 +2297,6 @@ postgres_connect_intern_function <- function(local_host = "localhost",
 #' @param tables Character vector mit Tabellennamen im Format "schema.table"
 #' @param local_con DBI connection zur lokalen Datenbank
 #' @param ssh_session SSH session object (aus ssh::ssh_connect)
-#' @param postgres_keys Character vector mit (password, user, database, host, port)
 #' @param verbose Logical, ob detaillierte Fortschrittsmeldungen ausgegeben werden
 #'
 #' @return Named list mit Tabellennamen als Namen und TRUE/FALSE als Werte
@@ -2416,21 +2305,19 @@ postgres_connect_intern_function <- function(local_host = "localhost",
 #' \dontrun{
 #' ssh_session <- ssh::ssh_connect("user@server")
 #' local_con <- DBI::dbConnect(RSQLite::SQLite(), "local.db")
-#' keys <- c("password", "user", "dbname", "localhost", "5432")
 #'
 #' # Prüfe mehrere Tabellen auf einmal
 #' results <- check_tables_needs_update_batched(
 #'   tables = c("public.users", "public.orders", "public.products"),
 #'   local_con = local_con,
 #'   ssh_session = ssh_session,
-#'   postgres_keys = keys,
 #'   verbose = TRUE
 #' )
 #' # results: list(public.users = TRUE, public.orders = FALSE, public.products = TRUE)
 #' }
 #'
 #' @keywords internal
-check_tables_needs_update_batched <- function(tables, local_con, ssh_session, postgres_keys, verbose = FALSE) {
+check_tables_needs_update_batched <- function(tables, local_con, ssh_session, verbose = FALSE) {
 
   tables <- unique(tables)
 
@@ -2444,16 +2331,15 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
 
   # Helper: Führt SQL-Queries in Batches über SSH aus (max 10 pro Batch)
   # Bei Fehler in einem Batch wird dieser übersprungen und eine Warnung ausgegeben
-  execute_batched_ssh_queries <- function(queries, ssh_session, postgres_keys, batch_size = 10) {
+  execute_batched_ssh_queries <- function(queries, ssh_session, batch_size = 10) {
     all_output_lines <- character(0)
     batches <- split(queries, ceiling(seq_along(queries) / batch_size))
 
     for (batch in batches) {
-      combined_query <- sprintf(
-        'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
-        postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+      combined_query <- remote_psql(sprintf(
+        '-t -A -c "%s"',
         paste(batch, collapse = " UNION ALL ")
-      )
+      ))
 
       result <- tryCatch({
         ssh::ssh_exec_internal(ssh_session, combined_query)
@@ -2469,11 +2355,10 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
       } else if (length(batch) > 1) {
         # Batch fehlgeschlagen: Einzeln nochmal versuchen um nur die problematische Tabelle zu verlieren
         for (single_query in batch) {
-          single_cmd <- sprintf(
-            'PGPASSWORD="%s" psql -d "%s" -U "%s" -h "%s" -p "%s" -t -A -c "%s"',
-            postgres_keys[1], postgres_keys[3], postgres_keys[2], postgres_keys[4], postgres_keys[5],
+          single_cmd <- remote_psql(sprintf(
+            '-t -A -c "%s"',
             single_query
-          )
+          ))
           single_result <- tryCatch({
             ssh::ssh_exec_internal(ssh_session, single_cmd)
           }, error = function(e) {
@@ -2514,7 +2399,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     )
   })
 
-  view_lines <- execute_batched_ssh_queries(view_checks, ssh_session, postgres_keys)
+  view_lines <- execute_batched_ssh_queries(view_checks, ssh_session)
 
   # Parse welche Objekte Views sind
   views_on_server <- character(0)
@@ -2541,7 +2426,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
       )
     })
 
-    mv_lines <- execute_batched_ssh_queries(mv_checks, ssh_session, postgres_keys)
+    mv_lines <- execute_batched_ssh_queries(mv_checks, ssh_session)
 
     for (line in mv_lines) {
       parts <- strsplit(line, "\\|")[[1]]
@@ -2669,7 +2554,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     )
   })
 
-  column_lines <- execute_batched_ssh_queries(column_checks, ssh_session, postgres_keys)
+  column_lines <- execute_batched_ssh_queries(column_checks, ssh_session)
 
   # Parse welche Tabellen updated_at haben
   server_has_updated_at <- character(0)
@@ -2705,7 +2590,7 @@ check_tables_needs_update_batched <- function(tables, local_con, ssh_session, po
     )
   })
 
-  stats_lines <- execute_batched_ssh_queries(stats_queries, ssh_session, postgres_keys)
+  stats_lines <- execute_batched_ssh_queries(stats_queries, ssh_session)
 
   # Parse Server Stats und vergleiche mit lokalen Stats
   for (line in stats_lines) {
