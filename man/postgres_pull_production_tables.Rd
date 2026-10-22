@@ -8,31 +8,22 @@ postgres_pull_production_tables(
   table = NULL,
   local_con = NULL,
   ssh_key_path = NULL,
-  local_password = NULL,
   load_in_memory = FALSE,
-  local_password_is_product = FALSE,
   load_functions_to_db = TRUE,
   preset_ssh_key = "",
   available_tables = c(),
   chunk_size = 10000,
-  verbose = FALSE,
-  path_to_keys_db = NULL,
-  path_to_user_db = NULL
+  verbose = FALSE
 )
 }
 \arguments{
-\item{table}{A single fully qualified table name (e.g., \code{"schema.table"}) to retrieve from the remote database.
-If \code{NULL}, no data is loaded and only the decrypted credentials are returned.}
+\item{table}{A single fully qualified table name (e.g., \code{"schema.table"}) to retrieve from the remote database.}
 
 \item{local_con}{A live DBI connection to the local target database. Must be provided if \code{load_in_memory = FALSE}.}
 
 \item{ssh_key_path}{File path to the private SSH key used to connect to the production environment. If \code{NULL}, a default path is assumed.}
 
-\item{local_password}{Optional password for the local database. If \code{local_password_is_product = TRUE}, this must already be decrypted.}
-
 \item{load_in_memory}{Logical. If \code{TRUE}, data is kept in memory (e.g. for testing or lightweight workflows). Not yet implemented.}
-
-\item{local_password_is_product}{Logical. If \code{TRUE}, \code{local_password} is assumed to already contain the decrypted key.}
 
 \item{load_functions_to_db}{Logical. If \code{TRUE} (default), all PostgreSQL functions from the remote DB are imported into the local DB.}
 
@@ -41,13 +32,10 @@ If \code{NULL}, no data is loaded and only the decrypted credentials are returne
 \item{available_tables}{Character vector of all known tables (optional). Used to assist metadata writing.}
 
 \item{chunk_size}{Integer. Number of rows to process at once when downloading the table. Default is \code{10000}.}
-
-\item{path_to_keys_db}{Character. Optional path to the keys database. If \code{NULL} (default), uses the standard path.}
-
-\item{path_to_user_db}{Character. Optional path to the user database. If \code{NULL} (default), uses the standard path.}
 }
 \value{
-Returns the decrypted production credentials invisibly (as a named list), e.g., for further use.
+The SSH key passphrase (\code{ssh_session[[2]]}), so the next call can reuse it. The remote psql calls
+connect through application-user's pg service; no production credential is fetched (see \code{remote_psql()}).
 }
 \description{
 This internal utility function connects to the production environment via SSH, retrieves the specified table

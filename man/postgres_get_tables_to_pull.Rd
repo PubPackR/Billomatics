@@ -9,7 +9,6 @@ postgres_get_tables_to_pull(
   con,
   update_local_tables,
   ssh_session = NULL,
-  postgres_keys = NULL,
   verbose = FALSE
 )
 }
@@ -18,11 +17,9 @@ postgres_get_tables_to_pull(
 
 \item{con}{Ein PostgreSQL-Verbindungsobjekt zur lokalen Datenbank.}
 
-\item{update_local_tables}{Logisch. Wenn \code{TRUE}, werden Tabellen intelligent geprüft (erfordert ssh_session und postgres_keys).}
+\item{update_local_tables}{Logisch. Wenn \code{TRUE}, werden Tabellen intelligent geprüft (erfordert ssh_session).}
 
 \item{ssh_session}{Optional. SSH-Session zur Produktionsdatenbank für intelligente Update-Prüfung.}
-
-\item{postgres_keys}{Optional. Credentials für die Produktionsdatenbank.}
 
 \item{verbose}{Logisch. Wenn \code{TRUE}, werden Statusmeldungen ausgegeben.}
 }

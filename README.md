@@ -2,13 +2,22 @@
 This package contains functions to get data and process it stemming from the contracts (Billomat) and the CRM (CentralStation).
 # Installation
 
-To install the package in your local R run: 
+To install or update the package in your local R, run:
 
 ```
-devtools::install_github("PubPackR/Billomatics",
-                          ref = "main",
-                          force = TRUE)
+remotes::install_github("PubPackR/Billomatics",
+                        ref = "main",
+                        dependencies = FALSE,
+                        upgrade = "never",
+                        force = TRUE)
 ```
+
+`dependencies = FALSE` skips the package's dependencies. Without it, the `url::` entry for log4r 0.4.4 under
+`Remotes:` in DESCRIPTION is rebuilt from source on every install, and that fails on Windows without Rtools.
+`devtools::install_github()` runs into the same problem and is deprecated since devtools 2.5.0.
+
+On a machine where Billomatics was never installed, its dependencies have to be installed once first. log4r 0.4.4
+comes as a source package from the CRAN archive and needs Rtools on Windows.
 # Package Description
 
 ## get billomat data:

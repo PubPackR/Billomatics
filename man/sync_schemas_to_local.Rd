@@ -4,14 +4,12 @@
 \alias{sync_schemas_to_local}
 \title{Alle Schemas der Produktion lokal sicherstellen}
 \usage{
-sync_schemas_to_local(con, ssh_session, postgres_keys, verbose = FALSE)
+sync_schemas_to_local(con, ssh_session, verbose = FALSE)
 }
 \arguments{
 \item{con}{Lokale DBI-Verbindung, in der die Schemas angelegt werden.}
 
 \item{ssh_session}{Aktive SSH-Session (Session-Objekt, nicht die Liste) zur Produktion.}
-
-\item{postgres_keys}{Zerlegte Produktions-Keys (Passwort, User, DB, Host, Port).}
 
 \item{verbose}{Logical. Bei \code{TRUE} wird die Anzahl sichergestellter Schemas gemeldet.}
 }

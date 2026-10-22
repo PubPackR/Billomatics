@@ -8,7 +8,6 @@ check_tables_needs_update_batched(
   tables,
   local_con,
   ssh_session,
-  postgres_keys,
   verbose = FALSE
 )
 }
@@ -18,8 +17,6 @@ check_tables_needs_update_batched(
 \item{local_con}{DBI connection zur lokalen Datenbank}
 
 \item{ssh_session}{SSH session object (aus ssh::ssh_connect)}
-
-\item{postgres_keys}{Character vector mit (password, user, database, host, port)}
 
 \item{verbose}{Logical, ob detaillierte Fortschrittsmeldungen ausgegeben werden}
 }
@@ -52,14 +49,12 @@ Logik für Update-Entscheidung (identisch zur Einzelprüfung):
 \dontrun{
 ssh_session <- ssh::ssh_connect("user@server")
 local_con <- DBI::dbConnect(RSQLite::SQLite(), "local.db")
-keys <- c("password", "user", "dbname", "localhost", "5432")
 
 # Prüfe mehrere Tabellen auf einmal
 results <- check_tables_needs_update_batched(
   tables = c("public.users", "public.orders", "public.products"),
   local_con = local_con,
   ssh_session = ssh_session,
-  postgres_keys = keys,
   verbose = TRUE
 )
 # results: list(public.users = TRUE, public.orders = FALSE, public.products = TRUE)
