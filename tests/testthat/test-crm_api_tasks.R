@@ -79,3 +79,47 @@ test_that("create_crm_task() skips protected test leads", {
   expect_null(result)
   mockery::expect_called(post_mock, 0)
 })
+
+test_that("create_crm_task() stops before any request on NA due times or unknown badges", {
+  post_mock <- mockery::mock()
+  mockery::stub(create_crm_task, "crm_POST", post_mock)
+  headers <- c("X-apikey" = "dummy", "content-type" = "application/json")
+  base_df <- data.frame(
+    attachable_id = 1234567,
+    attachable_type = "people",
+    user_id = 123456,
+    name = "Lead nachfassen",
+    precise_time = as.POSIXct("2026-10-27 09:00", tz = "Europe/Berlin")
+  )
+
+  na_time <- base_df
+  na_time$precise_time <- as.POSIXct(NA)
+  expect_error(create_crm_task(headers, na_time), "precise_time must not be NA")
+
+  bad_badge <- base_df
+  bad_badge$badge <- "Call"
+  expect_error(create_crm_task(headers, bad_badge), "Found: Call")
+
+  mockery::expect_called(post_mock, 0)
+})
+
+test_that("create_crm_task() keeps success = TRUE when the task was created but its ID is missing", {
+  mockery::stub(create_crm_task, "crm_POST", structure(list(), class = "response"))
+  mockery::stub(create_crm_task, "httr::status_code", 201)
+  mockery::stub(create_crm_task, "httr::content", '{"task":{}}')
+
+  result <- create_crm_task(
+    headers = c("X-apikey" = "dummy", "content-type" = "application/json"),
+    df = data.frame(
+      attachable_id = 1234567,
+      attachable_type = "people",
+      user_id = 123456,
+      name = "Lead nachfassen",
+      precise_time = as.POSIXct("2026-10-27 09:00", tz = "Europe/Berlin")
+    )
+  )
+
+  expect_true(result$success)
+  expect_true(is.na(result$task_id))
+  expect_match(result$error_message, "no task id")
+})

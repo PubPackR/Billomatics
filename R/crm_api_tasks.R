@@ -177,11 +177,14 @@ mark_crm_task_finished <- function(headers, df) {
 #'   - badge: one of "task", "call", "email", "visit", "preparation",
 #'     "important" (API default: "task")
 #'
-#' @return Tibble with one row per input row:
+#' @return Tibble with one row per sent task (rows for protected test leads
+#'   are skipped and do not appear, so match results by attachable_id, user_id
+#'   and name, not by position):
 #'   - attachable_id, user_id, name: echoed from the input
-#'   - success: TRUE if the API answered 200/201
+#'   - success: TRUE if the API answered 200/201, i.e. the task exists
 #'   - status_code: HTTP status code (NA on network error)
-#'   - task_id: ID of the created task, NA if it failed
+#'   - task_id: ID of the created task, NA if it failed or the response
+#'     carried no ID
 #'   - error_message: API or network error, NA on success
 #'
 #' @details
@@ -231,6 +234,9 @@ create_crm_task <- function(headers, df) {
   if (!inherits(df$precise_time, "POSIXct")) {
     stop("precise_time must be POSIXct")
   }
+  if (any(is.na(df$precise_time))) {
+    stop("precise_time must not be NA")
+  }
   if (any(is.na(df$name) | trimws(df$name) == "")) {
     stop("name must not be empty")
   }
@@ -246,6 +252,12 @@ create_crm_task <- function(headers, df) {
 
   if (!"badge" %in% names(df)) {
     df$badge <- NA_character_
+  }
+  allowed_badges <- c("task", "call", "email", "visit", "preparation", "important")
+  invalid_badges <- setdiff(df$badge[!is.na(df$badge)], allowed_badges)
+  if (length(invalid_badges) > 0) {
+    stop(paste0("badge must be one of ", paste(allowed_badges, collapse = ", "),
+                ". Found: ", paste(invalid_badges, collapse = ", ")))
   }
 
   message("Creating ", nrow(df), " tasks...")
@@ -279,8 +291,14 @@ create_crm_task <- function(headers, df) {
       content <- httr::content(response, "text", encoding = "UTF-8")
 
       if (row$status_code %in% c(200L, 201L)) {
+        # The task exists from here on, even if its ID cannot be read back
         row$success <- TRUE
-        row$task_id <- as.integer(jsonlite::fromJSON(content)$task$id)
+        task_id <- tryCatch(jsonlite::fromJSON(content)$task$id, error = function(e) NULL)
+        if (length(task_id) == 1) {
+          row$task_id <- as.integer(task_id)
+        } else {
+          row$error_message <- paste0("Task created, but no task id in response: ", content)
+        }
       } else {
         row$error_message <- content
       }
