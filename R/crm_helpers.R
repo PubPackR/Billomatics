@@ -33,6 +33,7 @@ PROTECTED_CRM_LEAD_IDS <- c(44595807L)
 #'   - add_contact_details, remove_contact_details
 #'   - update_crm_person, delete_crm_person
 #'   - update_crm_position, create_crm_position
+#'   - create_crm_task
 #'
 #' NOT PROTECTED (no attachable_id available — caller must filter upstream):
 #'   - mark_crm_task_finished (operates on task_id)
