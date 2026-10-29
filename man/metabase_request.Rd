@@ -12,7 +12,8 @@ metabase_request(
   query = NULL,
   body = NULL,
   max_retries = 3,
-  timeout_s = 30
+  timeout_s = 30,
+  unix_socket_path = NULL
 )
 }
 \arguments{
@@ -46,6 +47,13 @@ keine Rolle. Wer eine enge Obergrenze fuer die Gesamtwartezeit braucht,
 sollte sowohl \code{timeout_s} als auch \code{max_retries} senken;
 \code{max_retries = 0} entfernt den Backoff vollstaendig (nur ein
 einziger Versuch, keine Wiederholung).}
+
+\item{unix_socket_path}{Optional path of a Unix socket to reach Metabase
+through instead of the network: in a job container that run-image starts
+with \code{--metabase}, \code{Sys.getenv("METABASE_SOCKET")}. The socket
+carries plain HTTP, so \code{base_url} must then be an \code{http://} URL
+such as \code{"http://localhost"}. \code{NULL} (the default) connects to
+\code{base_url} as before.}
 }
 \value{
 Geparste JSON-Antwort als Liste.
