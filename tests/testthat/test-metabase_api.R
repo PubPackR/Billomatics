@@ -402,3 +402,157 @@ test_that("metabase_get_tables ruft den richtigen Pfad auf", {
   expect_equal(args$path, c("api", "table"))
   expect_equal(res, list(id = 3, name = "orders"))
 })
+
+# --- Unix socket (run-image --metabase) -------------------------------------
+
+# A stand-in for the socket: metabase_request only checks that the path exists.
+local_socket_file <- function(env = parent.frame()) {
+  socket <- withr::local_tempfile(.local_envir = env)
+  writeLines("", socket)
+  socket
+}
+
+stub_metabase_perform <- function(env = parent.frame()) {
+  captured <- new.env()
+  mockery::stub(metabase_request, "httr2::req_perform", function(req, ...) {
+    captured$req <- req
+    structure(list(), class = "metabase_fake_response")
+  })
+  mockery::stub(metabase_request, "httr2::resp_status", function(resp) 200L)
+  mockery::stub(metabase_request, "httr2::resp_body_json", function(resp, ...) list(ok = TRUE))
+  assign("metabase_request", metabase_request, envir = env)
+  captured
+}
+
+test_that("metabase_request sets the Unix socket option when unix_socket_path is given", {
+  socket <- local_socket_file()
+  captured <- stub_metabase_perform()
+
+  metabase_request(
+    "GET", c("api", "card", "42"),
+    api_key          = "geheim",
+    base_url         = "http://localhost",
+    unix_socket_path = socket
+  )
+
+  expect_equal(captured$req$options$unix_socket_path, socket)
+  expect_equal(captured$req$url, "http://localhost/api/card/42")
+})
+
+test_that("metabase_request sets no socket option without unix_socket_path", {
+  captured <- stub_metabase_perform()
+
+  metabase_request(
+    "GET", c("api", "card", "42"),
+    api_key  = "geheim",
+    base_url = "https://metabase.example.com"
+  )
+
+  expect_null(captured$req$options$unix_socket_path)
+  expect_equal(captured$req$url, "https://metabase.example.com/api/card/42")
+})
+
+test_that("metabase_request refuses an empty unix_socket_path and names METABASE_SOCKET", {
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+
+  for (bad in list("", NA_character_, c("/a.sock", "/b.sock"), 1)) {
+    expect_error(
+      metabase_request("GET", c("api", "card"), api_key = "k",
+                       base_url = "http://localhost", unix_socket_path = bad),
+      "METABASE_SOCKET"
+    )
+  }
+})
+
+test_that("metabase_request refuses a socket path that does not exist", {
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k",
+                     base_url = "http://localhost",
+                     unix_socket_path = file.path(tempdir(), "no-such-metabase.sock")),
+    "no socket at"
+  )
+})
+
+test_that("metabase_request refuses a directory at the socket path", {
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+  socket_dir <- withr::local_tempdir()
+
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k",
+                     base_url = "http://localhost", unix_socket_path = socket_dir),
+    "no socket at"
+  )
+})
+
+test_that("metabase_request refuses an NA base_url through a Unix socket", {
+  socket <- local_socket_file()
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k",
+                     base_url = NA_character_, unix_socket_path = socket),
+    "http://"
+  )
+})
+
+test_that("metabase_request refuses https through a Unix socket", {
+  socket <- local_socket_file()
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+
+  err <- expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "geheim",
+                     base_url = "https://metabase.studyflix.info",
+                     unix_socket_path = socket),
+    "http://"
+  )
+  expect_false(grepl("geheim", conditionMessage(err), fixed = TRUE))
+})
+
+test_that("every exported Metabase function passes unix_socket_path on, NULL by default", {
+  calls <- list(
+    metabase_get_collections      = function(f, ...) f(api_key = "k", ...),
+    metabase_get_collection_items = function(f, ...) f(7, api_key = "k", ...),
+    metabase_get_cards            = function(f, ...) f(api_key = "k", ...),
+    metabase_get_card             = function(f, ...) f(42, api_key = "k", ...),
+    metabase_get_tables           = function(f, ...) f(api_key = "k", ...),
+    metabase_update_card          = function(f, ...) f(9, list(name = "x"), api_key = "k", ...),
+    metabase_compile_query        = function(f, ...) f(list(), api_key = "k", ...)
+  )
+
+  for (name in names(calls)) {
+    seen <- "not called"
+    fn <- get(name)
+    mockery::stub(fn, "metabase_request", function(...) {
+      seen <<- list(...)$unix_socket_path
+      list(query = "SELECT 1")
+    })
+
+    calls[[name]](fn, base_url = "http://localhost", unix_socket_path = "/srv/x.sock")
+    expect_identical(seen, "/srv/x.sock", info = name)
+
+    calls[[name]](fn, base_url = "http://localhost")
+    expect_null(seen, info = name)
+  }
+})
+
+test_that("metabase_get_cards keeps its positional arguments (base-66 calls it so)", {
+  args <- NULL
+  mockery::stub(metabase_get_cards, "metabase_request",
+                function(method, path, api_key, base_url, ...) {
+                  args <<- c(list(api_key = api_key, base_url = base_url), list(...))
+                  list()
+                })
+
+  metabase_get_cards("k", "http://127.0.0.1:3000")
+
+  expect_equal(args$api_key, "k")
+  expect_equal(args$base_url, "http://127.0.0.1:3000")
+  expect_null(args$unix_socket_path)
+})

@@ -8,7 +8,8 @@ metabase_get_cards(
   api_key,
   base_url = "https://metabase.studyflix.info",
   timeout_s = 30,
-  max_retries = 3
+  max_retries = 3,
+  unix_socket_path = NULL
 )
 }
 \arguments{
@@ -30,6 +31,13 @@ senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.}
 
 \item{max_retries}{Maximale Anzahl zusaetzlicher Versuche bei transienten
 Fehlern (429/5xx), nach dem ersten Versuch.}
+
+\item{unix_socket_path}{Optional path of a Unix socket to reach Metabase
+through instead of the network: in a job container that run-image starts
+with \code{--metabase}, \code{Sys.getenv("METABASE_SOCKET")}. The socket
+carries plain HTTP, so \code{base_url} must then be an \code{http://} URL
+such as \code{"http://localhost"}. \code{NULL} (the default) connects to
+\code{base_url} as before.}
 }
 \value{
 Liste der Cards.

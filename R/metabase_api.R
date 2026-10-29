@@ -62,11 +62,17 @@ metabase_sanitize_card <- function(card, dynamic_fields = METABASE_DYNAMIC_FIELD
 #'   sollte sowohl \code{timeout_s} als auch \code{max_retries} senken;
 #'   \code{max_retries = 0} entfernt den Backoff vollstaendig (nur ein
 #'   einziger Versuch, keine Wiederholung).
+#' @param unix_socket_path Optional path of a Unix socket to reach Metabase
+#'   through instead of the network: in a job container that run-image starts
+#'   with \code{--metabase}, \code{Sys.getenv("METABASE_SOCKET")}. The socket
+#'   carries plain HTTP, so \code{base_url} must then be an \code{http://} URL
+#'   such as \code{"http://localhost"}. \code{NULL} (the default) connects to
+#'   \code{base_url} as before.
 #' @return Geparste JSON-Antwort als Liste.
 #' @keywords internal
 metabase_request <- function(method, path, api_key, base_url,
                              query = NULL, body = NULL, max_retries = 3,
-                             timeout_s = 30) {
+                             timeout_s = 30, unix_socket_path = NULL) {
 
   if (is.null(api_key) || length(api_key) == 0 || !nzchar(api_key[1])) {
     stop("Metabase-API-Key fehlt oder ist leer.", call. = FALSE)
@@ -81,12 +87,36 @@ metabase_request <- function(method, path, api_key, base_url,
       !is.numeric(timeout_s) || timeout_s[1] <= 0) {
     stop("Metabase-Timeout (timeout_s) muss eine positive Zahl sein.", call. = FALSE)
   }
+  # Checked here, because curl would only say "Couldn't connect" for a missing
+  # socket and fail the TLS handshake for https through a plain-HTTP socket.
+  if (!is.null(unix_socket_path)) {
+    if (!is.character(unix_socket_path) || length(unix_socket_path) != 1 ||
+        is.na(unix_socket_path) || !nzchar(unix_socket_path)) {
+      stop("Metabase-API: unix_socket_path must be one non-empty path. In a job ",
+           "container it comes from METABASE_SOCKET, which run-image sets only ",
+           "with --metabase.", call. = FALSE)
+    }
+    # file.exists() expands "~", curl does not: both get the same path.
+    unix_socket_path <- path.expand(unix_socket_path)
+    if (!file.exists(unix_socket_path) || dir.exists(unix_socket_path)) {
+      stop("Metabase-API: there is no socket at ", unix_socket_path,
+           ". Was the job started with run-image --metabase?", call. = FALSE)
+    }
+    if (!is.character(base_url) || !isTRUE(startsWith(tolower(base_url[1]), "http://"))) {
+      stop("Metabase-API: through a Unix socket, base_url must be an http:// URL ",
+           "such as http://localhost, because the socket carries plain HTTP. ",
+           "Got: ", base_url[1], call. = FALSE)
+    }
+  }
 
   req <- httr2::request(base_url)
   req <- do.call(httr2::req_url_path_append, c(list(req), as.list(path)))
   req <- httr2::req_headers_redacted(req, "X-API-Key" = api_key[1])
   req <- httr2::req_method(req, method)
   req <- httr2::req_timeout(req, timeout_s[1])
+  if (!is.null(unix_socket_path)) {
+    req <- httr2::req_options(req, unix_socket_path = unix_socket_path)
+  }
 
   if (!is.null(query)) {
     req <- do.call(httr2::req_url_query, c(list(req), query, list(.multi = "explode")))
@@ -155,13 +185,16 @@ metabase_request <- function(method, path, api_key, base_url,
 #'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
+#' @inheritParams metabase_request
 #' @return Liste der Collections.
 #' @export
 metabase_get_collections <- function(api_key,
                                      base_url = "https://metabase.studyflix.info",
-                                     timeout_s = 30, max_retries = 3) {
+                                     timeout_s = 30, max_retries = 3,
+                                     unix_socket_path = NULL) {
   metabase_request("GET", c("api", "collection"), api_key, base_url,
-                   timeout_s = timeout_s, max_retries = max_retries)
+                   timeout_s = timeout_s, max_retries = max_retries,
+                   unix_socket_path = unix_socket_path)
 }
 
 #' Inhalte einer Collection lesen
@@ -187,15 +220,18 @@ metabase_get_collections <- function(api_key,
 #'   \code{$limit}, \code{$offset}). Die eigentlichen Items liegen unter
 #'   \code{$data}; \code{$total} nennt die Gesamtzahl (inkl. ggf. nicht
 #'   zurueckgegebener Items).
+#' @inheritParams metabase_request
 #' @export
 metabase_get_collection_items <- function(collection_id, api_key,
                                           base_url = "https://metabase.studyflix.info",
                                           models = NULL,
-                                          timeout_s = 30, max_retries = 3) {
+                                          timeout_s = 30, max_retries = 3,
+                                          unix_socket_path = NULL) {
   query <- if (is.null(models)) NULL else list(models = models)
   metabase_request("GET", c("api", "collection", as.character(collection_id), "items"),
                    api_key, base_url, query = query,
-                   timeout_s = timeout_s, max_retries = max_retries)
+                   timeout_s = timeout_s, max_retries = max_retries,
+                   unix_socket_path = unix_socket_path)
 }
 
 #' Uebersicht aller Cards lesen
@@ -215,13 +251,16 @@ metabase_get_collection_items <- function(collection_id, api_key,
 #'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
+#' @inheritParams metabase_request
 #' @return Liste der Cards.
 #' @export
 metabase_get_cards <- function(api_key,
                                base_url = "https://metabase.studyflix.info",
-                               timeout_s = 30, max_retries = 3) {
+                               timeout_s = 30, max_retries = 3,
+                               unix_socket_path = NULL) {
   metabase_request("GET", c("api", "card"), api_key, base_url,
-                   timeout_s = timeout_s, max_retries = max_retries)
+                   timeout_s = timeout_s, max_retries = max_retries,
+                   unix_socket_path = unix_socket_path)
 }
 
 #' Vollstaendige Definition einer Card lesen
@@ -242,13 +281,16 @@ metabase_get_cards <- function(api_key,
 #'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
+#' @inheritParams metabase_request
 #' @return Liste mit der Card-Definition inklusive dataset_query.
 #' @export
 metabase_get_card <- function(card_id, api_key,
                               base_url = "https://metabase.studyflix.info",
-                              timeout_s = 30, max_retries = 3) {
+                              timeout_s = 30, max_retries = 3,
+                              unix_socket_path = NULL) {
   metabase_request("GET", c("api", "card", as.character(card_id)), api_key, base_url,
-                   timeout_s = timeout_s, max_retries = max_retries)
+                   timeout_s = timeout_s, max_retries = max_retries,
+                   unix_socket_path = unix_socket_path)
 }
 
 #' Tabellen-Metadaten lesen
@@ -271,13 +313,16 @@ metabase_get_card <- function(card_id, api_key,
 #'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
+#' @inheritParams metabase_request
 #' @return Liste der Tabellen.
 #' @export
 metabase_get_tables <- function(api_key,
                                 base_url = "https://metabase.studyflix.info",
-                                timeout_s = 30, max_retries = 3) {
+                                timeout_s = 30, max_retries = 3,
+                                unix_socket_path = NULL) {
   metabase_request("GET", c("api", "table"), api_key, base_url,
-                   timeout_s = timeout_s, max_retries = max_retries)
+                   timeout_s = timeout_s, max_retries = max_retries,
+                   unix_socket_path = unix_socket_path)
 }
 
 #' Card aktualisieren
@@ -305,14 +350,17 @@ metabase_get_tables <- function(api_key,
 #'   senken; \code{max_retries = 0} entfernt den Backoff vollstaendig.
 #' @param max_retries Maximale Anzahl zusaetzlicher Versuche bei transienten
 #'   Fehlern (429/5xx), nach dem ersten Versuch.
+#' @inheritParams metabase_request
 #' @return Liste mit der aktualisierten Card.
 #' @export
 metabase_update_card <- function(card_id, body, api_key,
                                  base_url = "https://metabase.studyflix.info",
-                                 timeout_s = 30, max_retries = 3) {
+                                 timeout_s = 30, max_retries = 3,
+                                 unix_socket_path = NULL) {
   metabase_request("PUT", c("api", "card", as.character(card_id)),
                    api_key, base_url, body = body,
-                   timeout_s = timeout_s, max_retries = max_retries)
+                   timeout_s = timeout_s, max_retries = max_retries,
+                   unix_socket_path = unix_socket_path)
 }
 
 #' Eine MBQL-Abfrage von Metabase nach SQL kompilieren lassen
@@ -337,13 +385,16 @@ metabase_update_card <- function(card_id, body, api_key,
 #'   Text ist (z.B. eine verschachtelte Liste durch eine API-Aenderung) -
 #'   damit im Fehlerfall sauber abgebrochen wird, statt still etwas Falsches
 #'   als SQL zurueckzugeben.
+#' @inheritParams metabase_request
 #' @export
 metabase_compile_query <- function(dataset_query, api_key,
                                    base_url = "https://metabase.studyflix.info",
-                                   timeout_s = 30, max_retries = 3) {
+                                   timeout_s = 30, max_retries = 3,
+                                   unix_socket_path = NULL) {
   res <- metabase_request("POST", c("api", "dataset", "native"),
                           api_key, base_url, body = dataset_query,
-                          timeout_s = timeout_s, max_retries = max_retries)
+                          timeout_s = timeout_s, max_retries = max_retries,
+                          unix_socket_path = unix_socket_path)
 
   sql <- res[["query"]]
   if (is.null(sql) || length(sql) == 0) {
