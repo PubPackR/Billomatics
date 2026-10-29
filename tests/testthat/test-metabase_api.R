@@ -477,6 +477,30 @@ test_that("metabase_request refuses a socket path that does not exist", {
   )
 })
 
+test_that("metabase_request refuses a directory at the socket path", {
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+  socket_dir <- withr::local_tempdir()
+
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k",
+                     base_url = "http://localhost", unix_socket_path = socket_dir),
+    "no socket at"
+  )
+})
+
+test_that("metabase_request refuses an NA base_url through a Unix socket", {
+  socket <- local_socket_file()
+  mockery::stub(metabase_request, "httr2::req_perform",
+                function(req, ...) stop("no request may be sent"))
+
+  expect_error(
+    metabase_request("GET", c("api", "card"), api_key = "k",
+                     base_url = NA_character_, unix_socket_path = socket),
+    "http://"
+  )
+})
+
 test_that("metabase_request refuses https through a Unix socket", {
   socket <- local_socket_file()
   mockery::stub(metabase_request, "httr2::req_perform",

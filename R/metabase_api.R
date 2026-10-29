@@ -92,15 +92,17 @@ metabase_request <- function(method, path, api_key, base_url,
   if (!is.null(unix_socket_path)) {
     if (!is.character(unix_socket_path) || length(unix_socket_path) != 1 ||
         is.na(unix_socket_path) || !nzchar(unix_socket_path)) {
-      stop("Metabase-API: unix_socket_path is empty. In a job container it comes ",
-           "from METABASE_SOCKET, which run-image sets only with --metabase.",
-           call. = FALSE)
+      stop("Metabase-API: unix_socket_path must be one non-empty path. In a job ",
+           "container it comes from METABASE_SOCKET, which run-image sets only ",
+           "with --metabase.", call. = FALSE)
     }
-    if (!file.exists(unix_socket_path)) {
+    # file.exists() expands "~", curl does not: both get the same path.
+    unix_socket_path <- path.expand(unix_socket_path)
+    if (!file.exists(unix_socket_path) || dir.exists(unix_socket_path)) {
       stop("Metabase-API: there is no socket at ", unix_socket_path,
            ". Was the job started with run-image --metabase?", call. = FALSE)
     }
-    if (!startsWith(tolower(base_url[1]), "http://")) {
+    if (!is.character(base_url) || !isTRUE(startsWith(tolower(base_url[1]), "http://"))) {
       stop("Metabase-API: through a Unix socket, base_url must be an http:// URL ",
            "such as http://localhost, because the socket carries plain HTTP. ",
            "Got: ", base_url[1], call. = FALSE)
