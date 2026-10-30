@@ -7,7 +7,7 @@ test_that("get_central_station_contacts() survives a page on which no person has
   page2_json <- '[{"person":{"id":3,"tags":[],"custom_fields":[]}},
                   {"person":{"id":4,"tags":[],"custom_fields":[]}}]'
 
-  mockery::stub(get_central_station_contacts, "httr::GET",
+  mockery::stub(get_central_station_contacts, "crm_GET",
                 mockery::mock(NULL, NULL, NULL))
   mockery::stub(get_central_station_contacts, "httr::content",
                 mockery::mock(count_json, page1_json, page2_json))
@@ -26,4 +26,25 @@ test_that("get_central_station_contacts() survives a page on which no person has
 
   custom_fields <- tidyr::unnest(result, custom_fields, names_sep = "_")
   expect_equal(custom_fields$custom_fields_name, "x")
+})
+
+test_that("get_central_station_contacts() retries a page the CRM rate limits with 429 'Retry later'", {
+  # Bug: the page loop called httr::GET directly, so the plain-text 429 body
+  # "Retry later" reached jsonlite::fromJSON and aborted crm_update_leads.
+  ok      <- structure(list(status_code = 200L, headers = list()), class = "response")
+  limited <- structure(list(status_code = 429L, headers = list(`retry-after` = "1")), class = "response")
+
+  # httr::GET is reached through crm_GET -> crm_request, so mock it in httr itself
+  get_mock <- mockery::mock(ok, limited, ok)
+  testthat::local_mocked_bindings(GET = get_mock, .package = "httr")
+  mockery::stub(get_central_station_contacts, "httr::content",
+                mockery::mock('{"total_entries": 1}', '[{"person":{"id":1}}]'))
+
+  invisible(capture.output(suppressMessages(
+    result <- get_central_station_contacts(api_key = "dummy")
+  )))
+
+  # count, page 1 rate limited, page 1 retried
+  mockery::expect_called(get_mock, 3)
+  expect_equal(result$id, 1L)
 })

@@ -58,8 +58,8 @@ get_central_station_contacts <- function (api_key, pages = "all", person_id = NU
   #define url to count all people
   url <- "https://api.centralstationcrm.net/api/people/count"
 
-  # create access with httr GET-function
-  response <- httr::GET(url, httr::add_headers(headers))
+  # create access with crm_GET (waits and retries on 429 rate limit)
+  response <- crm_GET(url, headers)
 
   # make response answer readable with jsonlite::fromJSON
   data <- jsonlite::fromJSON(httr::content(response, "text"))
@@ -85,12 +85,12 @@ get_central_station_contacts <- function (api_key, pages = "all", person_id = NU
 
   for (i in 1:pages) {
     print(paste0("Page:", i, " of ", ceiling(number_of_persons / 250)))
-    # create an response with httr and the GET function. In the function you paste
-    # url and your endpoint and you also need the headers
+    # create an response with crm_GET (waits and retries on 429 rate limit). In the
+    # function you paste url and your endpoint and you also need the headers
     response <-
-      httr::GET(
+      crm_GET(
         paste0(url, i),
-        httr::add_headers(headers),
+        headers,
         query = list(includes = includes, methods = methods)
       )
 
