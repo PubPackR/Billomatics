@@ -616,47 +616,6 @@ remote_psql <- function(psql_args) {
   paste('psql "service=studyflix"', psql_args)
 }
 
-
-# No longer used by the table sync (0.0.0.9179). Kept only because
-# config-01-claude's MCP refresh scripts (mcp-servers/db-schema/get_db_schema.R,
-# mcp-servers/flowforce-jobs/get_flowforce_jobs.R) call it via `:::`. Its
-# command carries the decrypt key, so remove it once they use remote_psql().
-get_postgres_keys_via_ssh <- function(ssh_session, decrypt_key) {
-  if (length(ssh_session) < 1) {
-    stop("SSH-Session ist leer oder ungültig.")
-  }
-
-  # Escape Anführungszeichen im Schlüssel
-  safe_key <- gsub("\"", "\\\"", decrypt_key)
-
-  # Dynamisches Bash-Skript bauen
-  cmd <- sprintf("
-    R_TEMP_SCRIPT=$(mktemp)
-    cat > \"${R_TEMP_SCRIPT}\" << 'EORSCRIPT'
-    library(safer)
-    key <- \"%s\"
-    cred <- safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_key.txt\"), key)
-    srv <- strsplit(safer::decrypt_string(readLines(\"keys/PostgreSQL_DB/postgresql_server.txt\"), key), \", \")[[1]]
-    cat(paste(c(cred, srv), collapse=\",\"))
-EORSCRIPT
-    Rscript --vanilla \"${R_TEMP_SCRIPT}\"
-    rm \"${R_TEMP_SCRIPT}\"
-  ", safe_key)
-
-  # Remote-Befehl ausführen
-  result <- ssh::ssh_exec_internal(ssh_session[[1]], cmd)
-
-  # Ergebnis in einzelne Komponenten aufsplitten
-  raw_output <- rawToChar(result$stdout)
-  split_output <- strsplit(raw_output, ",")[[1]]
-
-  if (length(split_output) < 3) {
-    stop("Fehler beim Parsen der PostgreSQL-Schlüssel – unvollständiger oder leerer Output.")
-  }
-
-  return(split_output)
-}
-
 load_postgres_table_via_ssh <- function(table, ssh_session, ssh_key_path = ssh_key_path, preset_ssh_key = preset_ssh_key, chunk_size = 10000, verbose = FALSE) {
   if (!verbose) {
     # Im non-verbose Modus: nur Tabellenname anzeigen
