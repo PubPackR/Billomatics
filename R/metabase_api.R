@@ -98,7 +98,11 @@ metabase_request <- function(method, path, api_key, base_url,
     }
     # file.exists() expands "~", curl does not: both get the same path.
     unix_socket_path <- path.expand(unix_socket_path)
-    if (!file.exists(unix_socket_path) || dir.exists(unix_socket_path)) {
+    # No dir.exists() here: on Unix R tests (st_mode & S_IFDIR) > 0 instead of
+    # S_ISDIR (src/main/platform.c), and S_IFSOCK carries the S_IFDIR bit, so R
+    # reports every socket as a directory. A directory at the path now reaches
+    # curl, which answers "Couldn't connect".
+    if (!file.exists(unix_socket_path)) {
       stop("Metabase-API: there is no socket at ", unix_socket_path,
            ". Was the job started with run-image --metabase?", call. = FALSE)
     }

@@ -477,16 +477,23 @@ test_that("metabase_request refuses a socket path that does not exist", {
   )
 })
 
-test_that("metabase_request refuses a directory at the socket path", {
-  mockery::stub(metabase_request, "httr2::req_perform",
-                function(req, ...) stop("no request may be sent"))
-  socket_dir <- withr::local_tempdir()
+test_that("metabase_request accepts a real Unix socket", {
+  # The stand-in file above hid that R's dir.exists() reads a socket as a
+  # directory, which stopped every run under run-image --metabase.
+  skip_on_os("windows")
+  python <- Sys.which("python3")
+  skip_if(!nzchar(python), "python3 is needed to create a Unix socket")
+  socket <- file.path(withr::local_tempdir(tmpdir = "/tmp"), "metabase.sock")
+  status <- system2(python, c("-c", shQuote(paste(
+    "import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1])"
+  )), shQuote(socket)))
+  skip_if(status != 0 || !file.exists(socket), "could not create a Unix socket")
+  captured <- stub_metabase_perform()
 
-  expect_error(
-    metabase_request("GET", c("api", "card"), api_key = "k",
-                     base_url = "http://localhost", unix_socket_path = socket_dir),
-    "no socket at"
-  )
+  metabase_request("GET", c("api", "card"), api_key = "k",
+                   base_url = "http://localhost", unix_socket_path = socket)
+
+  expect_equal(captured$req$options$unix_socket_path, socket)
 })
 
 test_that("metabase_request refuses an NA base_url through a Unix socket", {
