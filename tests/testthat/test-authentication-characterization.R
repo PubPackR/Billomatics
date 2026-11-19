@@ -322,6 +322,54 @@ test_that("the JSON actually reaches the Google client", {
   expect_identical(out, "OK")
 })
 
+test_that("google drive asks for the drive scope and hands its token to googlesheets4", {
+  # Permissions live in the Drive API; the Sheets scope cannot read them. The
+  # test captures the scope and the token, so dropping either call, or the
+  # scope, turns it red.
+  seen <- list()
+  local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") {
+      seen$secret <<- name
+      '{"type":"service_account"}'
+    }
+  )
+  local_mocked_bindings(
+    drive_auth = function(path, scopes) {
+      seen$path <<- path
+      seen$scopes <<- scopes
+      invisible(NULL)
+    },
+    drive_token = function() "drive-token",
+    .package = "googledrive"
+  )
+  local_mocked_bindings(
+    gs4_auth = function(token) { seen$gs4_token <<- token; invisible(NULL) },
+    .package = "googlesheets4"
+  )
+  out <- authentication_GDrive("pw")
+  expect_identical(seen$secret, "studyflix-gsheets-service-account")
+  expect_identical(seen$path, '{"type":"service_account"}')
+  expect_identical(seen$scopes, "https://www.googleapis.com/auth/drive")
+  expect_identical(seen$gs4_token, "drive-token")
+  expect_identical(out, "OK")
+})
+
+test_that("google drive signals failure instead of reporting success", {
+  local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") stop("decryption failed")
+  )
+  expect_error(authentication_GDrive("pw"), "decryption failed")
+})
+
+test_that("google drive refuses actionably when googledrive is absent", {
+  skip_if(requireNamespace("googledrive", quietly = TRUE),
+          "googledrive is installed here, so absence cannot be exercised")
+  expect_error(authentication_GDrive("pw"),
+               "is required for this authentication service")
+})
+
 test_that("each service asks for its own secret", {
   asked <- character(0)
   local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))

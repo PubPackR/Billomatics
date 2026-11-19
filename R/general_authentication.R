@@ -35,7 +35,7 @@
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "msgraph_sharepoint", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "msgraph_sharepoint", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase", "google drive"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -59,7 +59,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     openai_admin = authentication_openai_admin,
     personio = authentication_personio,
     github = authentication_github,
-    metabase = authentication_metabase
+    metabase = authentication_metabase,
+    `google drive` = authentication_GDrive
   )
 
   keys <- list()
@@ -154,6 +155,35 @@ authentication_GSheet <- function(args) {
   json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
                               "Enter the password for Google Sheets: ")
   googlesheets4::gs4_auth(path = json)
+  "OK"
+}
+#' authentication_GDrive
+#'
+#' Authenticates googledrive with the Google Sheets service account and the
+#' full Drive scope, then hands the same token to googlesheets4.
+#'
+#' File permissions (who an object is shared with) live in the Drive API, not
+#' in the Sheets API, and the Sheets scope that authentication_GSheet requests
+#' cannot read or change them. This service uses the same secret as
+#' "google sheet" with the scope https://www.googleapis.com/auth/drive, so a
+#' job can list and remove permissions and still read and write sheets with
+#' googlesheets4. Request it instead of "google sheet", not in addition: the
+#' second call would replace the googlesheets4 token.
+#'
+#' Returns the sentinel "OK" for the same reason as authentication_GSheet.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_GDrive <- function(args) {
+  # ---- start ---- #
+  # Checked before the decrypt, so a credential is not decrypted just to be
+  # discarded when the package turns out to be absent.
+  billomatics_require("googledrive")
+  json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
+                              "Enter the password for Google Sheets: ")
+  googledrive::drive_auth(path = json,
+                          scopes = "https://www.googleapis.com/auth/drive")
+  googlesheets4::gs4_auth(token = googledrive::drive_token())
   "OK"
 }
 #' authentication_asana
