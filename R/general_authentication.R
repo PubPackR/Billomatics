@@ -59,7 +59,8 @@ authentication_process <- function(needed_services = c("billomat", "crm", "crm_l
     openai_admin = authentication_openai_admin,
     personio = authentication_personio,
     github = authentication_github,
-    metabase = authentication_metabase
+    metabase = authentication_metabase,
+    `google drive` = authentication_GDrive
   )
 
   keys <- list()
@@ -154,6 +155,40 @@ authentication_GSheet <- function(args) {
   json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
                               "Enter the password for Google Sheets: ")
   googlesheets4::gs4_auth(path = json)
+  "OK"
+}
+#' authentication_GDrive
+#'
+#' Authenticates googledrive with the Google Sheets service account and the
+#' full Drive scope, then hands the same token to googlesheets4.
+#'
+#' File permissions (who an object is shared with) live in the Drive API, not
+#' in the Sheets API, and the Sheets scope that authentication_GSheet requests
+#' cannot read or change them. This service uses the same secret as
+#' "google sheet" with the scope https://www.googleapis.com/auth/drive, so a
+#' job can list and remove permissions and still read and write sheets with
+#' googlesheets4. Request it instead of "google sheet": the Drive token already
+#' covers the sheets. Requesting both fetches the same secret twice, and a
+#' "google sheet" call after this one gives googlesheets4 a token with only the
+#' Sheets scope.
+#'
+#' Not part of the default `needed_services` of authentication_process(): a
+#' caller relying on the default list passes no argument for it, so it would
+#' run with an NA argument and fail without a password. Request it by name.
+#'
+#' Returns the sentinel "OK" for the same reason as authentication_GSheet.
+#'
+#' @param args Additional Input Parameter, only needed through FlowForce Job
+#' @return The string "OK". Signals an error if authentication fails.
+authentication_GDrive <- function(args) {
+  # ---- start ---- #
+  json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
+                              "Enter the password for Google Sheets: ")
+  # The scope repeats googledrive's default on purpose: removing permissions
+  # needs the full Drive scope, and a changed default must not narrow it.
+  googledrive::drive_auth(path = json,
+                          scopes = "https://www.googleapis.com/auth/drive")
+  googlesheets4::gs4_auth(token = googledrive::drive_token())
   "OK"
 }
 #' authentication_asana
