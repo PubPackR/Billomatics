@@ -22,8 +22,13 @@ in the Sheets API, and the Sheets scope that authentication_GSheet requests
 cannot read or change them. This service uses the same secret as
 "google sheet" with the scope https://www.googleapis.com/auth/drive, so a
 job can list and remove permissions and still read and write sheets with
-googlesheets4. Request it instead of "google sheet", not in addition: the
-second call would replace the googlesheets4 token.
+googlesheets4. Request it instead of "google sheet": the Drive token already
+covers the sheets, and requesting both only fetches the same secret twice
+and takes one more positional argument.
+
+Not part of the default \code{needed_services} of authentication_process(), so
+callers relying on the default list keep their argument positions; request
+it by name.
 
 Returns the sentinel "OK" for the same reason as authentication_GSheet.
 }

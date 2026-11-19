@@ -1,4 +1,4 @@
-# Characterization tests for the 22 authentication_*() functions.
+# Characterization tests for the 23 authentication_*() service functions.
 #
 # These assert the CONTRACT each function exposes to authentication_process(),
 # not its internals: which secret it asks for, and what shape it returns. The
@@ -288,7 +288,9 @@ test_that("each multi-secret service prompts once, not per secret", {
   }
 })
 
-# ---- the four service-account JSON services --------------------------------
+# ---- the service-account JSON services --------------------------------------
+# GSheet, Google_Analytics, Google_BigQuery, Google_BigQuery_GA4 below; GDrive
+# shares GSheet's secret and has its own tests further down.
 
 test_that("the service-account services signal failure instead of reporting success", {
   # Today all four report success whatever happens, in THREE different ways:
@@ -327,7 +329,6 @@ test_that("google drive asks for the drive scope and hands its token to googlesh
   # test captures the scope and the token, so dropping either call, or the
   # scope, turns it red.
   seen <- list()
-  local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))
   local_mocked_bindings(
     billomatics_sa_json = function(name, args, prompt = "") {
       seen$secret <<- name
@@ -356,18 +357,10 @@ test_that("google drive asks for the drive scope and hands its token to googlesh
 })
 
 test_that("google drive signals failure instead of reporting success", {
-  local_mocked_bindings(billomatics_require = function(pkg) invisible(NULL))
   local_mocked_bindings(
     billomatics_sa_json = function(name, args, prompt = "") stop("decryption failed")
   )
   expect_error(authentication_GDrive("pw"), "decryption failed")
-})
-
-test_that("google drive refuses actionably when googledrive is absent", {
-  skip_if(requireNamespace("googledrive", quietly = TRUE),
-          "googledrive is installed here, so absence cannot be exercised")
-  expect_error(authentication_GDrive("pw"),
-               "is required for this authentication service")
 })
 
 test_that("each service asks for its own secret", {

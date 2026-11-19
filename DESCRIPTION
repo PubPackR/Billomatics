@@ -8,6 +8,7 @@ Description: The package allows to download and wrangle billomat data and crm da
 Imports:
     secretsR (>= 0.2.0),
     googlesheets4,
+    googledrive,
     magrittr,
     dplyr,
     lubridate,
@@ -47,7 +48,6 @@ Roxygen: list(markdown = TRUE)
 Suggests:
     testthat (>= 3.2.0),
     bigrquery,
-    googledrive,
     mockery,
     DT,
     msoc,

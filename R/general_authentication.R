@@ -35,7 +35,7 @@
 #' authentication_process(needed_services = c("postgresql"), args = args)
 #' }
 #' @export
-authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "msgraph_sharepoint", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase", "google drive"), args) {
+authentication_process <- function(needed_services = c("billomat", "crm", "crm_lm", "google sheet","asana", "msgraph", "msgraph_scoped_app", "msgraph_delegated", "msgraph_sharepoint", "brevo", "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach", "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github", "metabase"), args) {
 
   auth_functions <- list(
     billomat = authentication_billomat,
@@ -167,8 +167,13 @@ authentication_GSheet <- function(args) {
 #' cannot read or change them. This service uses the same secret as
 #' "google sheet" with the scope https://www.googleapis.com/auth/drive, so a
 #' job can list and remove permissions and still read and write sheets with
-#' googlesheets4. Request it instead of "google sheet", not in addition: the
-#' second call would replace the googlesheets4 token.
+#' googlesheets4. Request it instead of "google sheet": the Drive token already
+#' covers the sheets, and requesting both only fetches the same secret twice
+#' and takes one more positional argument.
+#'
+#' Not part of the default `needed_services` of authentication_process(), so
+#' callers relying on the default list keep their argument positions; request
+#' it by name.
 #'
 #' Returns the sentinel "OK" for the same reason as authentication_GSheet.
 #'
@@ -176,11 +181,10 @@ authentication_GSheet <- function(args) {
 #' @return The string "OK". Signals an error if authentication fails.
 authentication_GDrive <- function(args) {
   # ---- start ---- #
-  # Checked before the decrypt, so a credential is not decrypted just to be
-  # discarded when the package turns out to be absent.
-  billomatics_require("googledrive")
   json <- billomatics_sa_json("studyflix-gsheets-service-account", args,
                               "Enter the password for Google Sheets: ")
+  # The scope repeats googledrive's default on purpose: removing permissions
+  # needs the full Drive scope, and a changed default must not narrow it.
   googledrive::drive_auth(path = json,
                           scopes = "https://www.googleapis.com/auth/drive")
   googlesheets4::gs4_auth(token = googledrive::drive_token())

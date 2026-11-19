@@ -9,7 +9,7 @@ authentication_process(
     "msgraph_scoped_app", "msgraph_delegated", "msgraph_sharepoint", "brevo",
     "google analytics", "bonusDB", "BigQuery", "BigQuery GA4", "cleverreach",
     "postgresql", "gemini", "openrouter", "openai_admin", "personio", "github",
-    "metabase", "google drive"),
+    "metabase"),
   args
 )
 }
