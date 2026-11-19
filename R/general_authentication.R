@@ -168,12 +168,13 @@ authentication_GSheet <- function(args) {
 #' "google sheet" with the scope https://www.googleapis.com/auth/drive, so a
 #' job can list and remove permissions and still read and write sheets with
 #' googlesheets4. Request it instead of "google sheet": the Drive token already
-#' covers the sheets, and requesting both only fetches the same secret twice
-#' and takes one more positional argument.
+#' covers the sheets. Requesting both fetches the same secret twice, and a
+#' "google sheet" call after this one gives googlesheets4 a token with only the
+#' Sheets scope.
 #'
-#' Not part of the default `needed_services` of authentication_process(), so
-#' callers relying on the default list keep their argument positions; request
-#' it by name.
+#' Not part of the default `needed_services` of authentication_process(): a
+#' caller relying on the default list passes no argument for it, so it would
+#' run with an NA argument and fail without a password. Request it by name.
 #'
 #' Returns the sentinel "OK" for the same reason as authentication_GSheet.
 #'

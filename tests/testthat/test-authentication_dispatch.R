@@ -6,9 +6,11 @@ test_that("authentication_process dispatch enthaelt die scoped-msgraph services"
 })
 
 test_that("authentication_process haelt die Default-Liste in fester Reihenfolge", {
-  # authentication_process() liest args nach Position. Ein neuer oder
-  # verschobener Service in der Default-Liste wuerde die Positionen aller
-  # folgenden verschieben, deshalb ist die ganze Liste festgeschrieben.
+  # authentication_process() liest args nach Position. Ein Service, der in
+  # der Mitte eingefuegt oder verschoben wird, verschiebt die Positionen aller
+  # folgenden. Ein am Ende angehaengter Service laeuft bei jedem Aufrufer der
+  # Default-Liste mit einem NA-Argument und bricht ohne Passwort ab. Deshalb
+  # ist die ganze Liste festgeschrieben: Sie zu aendern, muss bewusst passieren.
   default_services <- eval(formals(Billomatics::authentication_process)$needed_services)
   expect_identical(default_services, c(
     "billomat", "crm", "crm_lm", "google sheet", "asana", "msgraph",
