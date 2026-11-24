@@ -1,6 +1,6 @@
 Package: Billomatics
 Title: Download and Wrangle Billomat Data
-Version: 0.0.0.9184
+Version: 0.0.0.9185
 Authors@R: 
     person("Johannes", "Leder", , "johannes.leder@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6413-4513"))
@@ -8,6 +8,7 @@ Description: The package allows to download and wrangle billomat data and crm da
 Imports:
     secretsR (>= 0.2.0),
     googlesheets4,
+    googledrive,
     magrittr,
     dplyr,
     lubridate,

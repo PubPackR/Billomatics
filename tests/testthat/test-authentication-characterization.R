@@ -1,4 +1,4 @@
-# Characterization tests for the 22 authentication_*() functions.
+# Characterization tests for the 23 authentication_*() service functions.
 #
 # These assert the CONTRACT each function exposes to authentication_process(),
 # not its internals: which secret it asks for, and what shape it returns. The
@@ -288,7 +288,9 @@ test_that("each multi-secret service prompts once, not per secret", {
   }
 })
 
-# ---- the four service-account JSON services --------------------------------
+# ---- the service-account JSON services --------------------------------------
+# GSheet, Google_Analytics, Google_BigQuery, Google_BigQuery_GA4 below; GDrive
+# shares GSheet's secret and has its own tests further down.
 
 test_that("the service-account services signal failure instead of reporting success", {
   # Today all four report success whatever happens, in THREE different ways:
@@ -320,6 +322,45 @@ test_that("the JSON actually reaches the Google client", {
   out <- authentication_GSheet("pw")
   expect_identical(seen, '{"type":"service_account"}')
   expect_identical(out, "OK")
+})
+
+test_that("google drive asks for the drive scope and hands its token to googlesheets4", {
+  # Permissions live in the Drive API; the Sheets scope cannot read them. The
+  # test captures the scope and the token, so dropping either call, or the
+  # scope, turns it red.
+  seen <- list()
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") {
+      seen$secret <<- name
+      '{"type":"service_account"}'
+    }
+  )
+  local_mocked_bindings(
+    drive_auth = function(path, scopes) {
+      seen$path <<- path
+      seen$scopes <<- scopes
+      invisible(NULL)
+    },
+    drive_token = function() "drive-token",
+    .package = "googledrive"
+  )
+  local_mocked_bindings(
+    gs4_auth = function(token) { seen$gs4_token <<- token; invisible(NULL) },
+    .package = "googlesheets4"
+  )
+  out <- authentication_GDrive("pw")
+  expect_identical(seen$secret, "studyflix-gsheets-service-account")
+  expect_identical(seen$path, '{"type":"service_account"}')
+  expect_identical(seen$scopes, "https://www.googleapis.com/auth/drive")
+  expect_identical(seen$gs4_token, "drive-token")
+  expect_identical(out, "OK")
+})
+
+test_that("google drive signals failure instead of reporting success", {
+  local_mocked_bindings(
+    billomatics_sa_json = function(name, args, prompt = "") stop("decryption failed")
+  )
+  expect_error(authentication_GDrive("pw"), "decryption failed")
 })
 
 test_that("each service asks for its own secret", {
