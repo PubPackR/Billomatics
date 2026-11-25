@@ -1,5 +1,75 @@
 
 
+#' billomat_wait
+#'
+#' Pauses between two attempts of a Billomat request. A function of its own so tests can
+#' replace it.
+#' @param seconds how long to wait
+#' @return NULL, invisibly
+#' @keywords internal
+billomat_wait <- function(seconds) {
+  # ---- start ---- #
+  Sys.sleep(seconds)
+  invisible(NULL)
+}
+
+#' billomat_get_xml
+#'
+#' GETs a Billomat API url and parses the body as XML. A transport error, a response with an
+#' HTTP error or a body that is not XML (error page, rate limit, empty body) is requested
+#' again after a pause; after a 429 the pause lasts until `x-rate-limit-reset`. Only when every attempt fails does it stop, with the HTTP status and the start of
+#' the body, never the url (it carries the API key).
+#' @param call the full request url
+#' @param wait_seconds pauses before the second, third, ... attempt; its length plus one is
+#'   the number of attempts
+#' @param max_reset_wait upper bound in seconds for waiting on `x-rate-limit-reset` after a 429
+#' @return a list with `response` (the httr response) and `body` (the parsed XML document)
+#' @keywords internal
+billomat_get_xml <- function(call, wait_seconds = c(5, 30, 120), max_reset_wait = 900) {
+  # ---- start ---- #
+  max_tries <- length(wait_seconds) + 1
+  for (attempt in seq_len(max_tries)) {
+    # A transport error (timeout, reset connection) counts as a failed attempt too
+    response <- tryCatch(httr::GET(call), error = function(e) e)
+
+    if (inherits(response, "error")) {
+      problem <- paste0("request error: ",
+                        gsub("api_key=[^&[:space:]]*", "api_key=***", conditionMessage(response)))
+      wait <- wait_seconds[attempt]
+    } else {
+      status <- httr::status_code(response)
+      body <- if (status < 400) {
+        tryCatch(xml2::read_xml(response$content), error = function(e) NULL)
+      } else {
+        NULL
+      }
+      if (!is.null(body)) {
+        return(list(response = response, body = body))
+      }
+      snippet <- tryCatch(rawToChar(utils::head(response$content, 200)),
+                          error = function(e) "<not text>")
+      problem <- paste0("HTTP ", status, ", body starts with: ", snippet)
+
+      # Rate limit: wait until Billomat resets the quota (epoch seconds), capped
+      wait <- wait_seconds[attempt]
+      if (status == 429) {
+        reset <- suppressWarnings(as.numeric(httr::headers(response)$`x-rate-limit-reset`))
+        if (length(reset) == 1 && !is.na(reset)) {
+          until_reset <- ceiling(reset - as.numeric(Sys.time())) + 1
+          wait <- min(max(wait, until_reset), max_reset_wait)
+        }
+      }
+    }
+
+    if (attempt == max_tries) {
+      stop("Billomat request failed after ", max_tries, " attempts: ", problem, call. = FALSE)
+    }
+    message("Billomat request failed (attempt ", attempt, " of ", max_tries, "), retrying in ",
+            wait, "s: ", problem)
+    billomat_wait(wait)
+  }
+}
+
 #' curl_fetch_header
 #'
 #' this function carries out the call to get the header
@@ -33,11 +103,13 @@ curl_fetch_header <- function(content=c("articles",
                 page) # my page number
   # so for this to work, i have to cycle through all pages, as the number increases
   # i need to stop when reaching the last page -> how do I know how many pages there are?
-  response <- httr::GET(call) # here I use the method a GET, this means I retrieve data
+  # GET with retry: an HTTP error or a body without XML is requested again (billomat_get_xml)
+  fetched <- billomat_get_xml(call)
+  response <- fetched$response
   # the response contains the header, the method and content as well as additional information
   remaining_limit = as.numeric(httr::headers(response)$`x-rate-limit-remaining`)
   # this tells me how many more calls are possible -- not important at this point
-  body <- xml2::read_xml(response$content)
+  body <- fetched$body
   # this is the content of this call for the results of page 1
   num_results <- httr::headers(response)$`x-total-count`
   # this tells me how many results are on each page, i can keep calling pages forever,
@@ -114,11 +186,13 @@ curl_fetch_billomat <- function(content=c("articles",
                 page) # my page number
   # so for this to work, i have to cycle through all pages, as the number increases
   # i need to stop when reaching the last page -> how do I know how many pages there are?
-  response <- httr::GET(call) # here I use the method a GET, this means I retrieve data
+  # GET with retry: an HTTP error or a body without XML is requested again (billomat_get_xml)
+  fetched <- billomat_get_xml(call)
+  response <- fetched$response
   # the response contains the header, the method and content as well as additional information
   remaining_limit = as.numeric(httr::headers(response)$`x-rate-limit-remaining`)
   # this tells me how many more calls are possible -- not important at this point
-  body <- xml2::read_xml(response$content)
+  body <- fetched$body
   # this is the content of this call for the results of page 1
   num_results <-  xml2::xml_length(body)
   # this tells me how many results are on each page, i can keep calling pages forever,
