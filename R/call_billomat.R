@@ -15,39 +15,58 @@ billomat_wait <- function(seconds) {
 
 #' billomat_get_xml
 #'
-#' GETs a Billomat API url and parses the body as XML. A response with an HTTP error or a
-#' body that is not XML (error page, rate limit, empty body) is requested again after a
-#' pause. Only when every attempt fails does it stop, with the HTTP status and the start of
+#' GETs a Billomat API url and parses the body as XML. A transport error, a response with an
+#' HTTP error or a body that is not XML (error page, rate limit, empty body) is requested
+#' again after a pause; after a 429 the pause lasts until `x-rate-limit-reset`. Only when every attempt fails does it stop, with the HTTP status and the start of
 #' the body, never the url (it carries the API key).
 #' @param call the full request url
 #' @param wait_seconds pauses before the second, third, ... attempt; its length plus one is
 #'   the number of attempts
+#' @param max_reset_wait upper bound in seconds for waiting on `x-rate-limit-reset` after a 429
 #' @return a list with `response` (the httr response) and `body` (the parsed XML document)
 #' @keywords internal
-billomat_get_xml <- function(call, wait_seconds = c(5, 30, 120)) {
+billomat_get_xml <- function(call, wait_seconds = c(5, 30, 120), max_reset_wait = 900) {
   # ---- start ---- #
   max_tries <- length(wait_seconds) + 1
   for (attempt in seq_len(max_tries)) {
-    response <- httr::GET(call)
-    status <- httr::status_code(response)
-    body <- if (status < 400) {
-      tryCatch(xml2::read_xml(response$content), error = function(e) NULL)
+    # A transport error (timeout, reset connection) counts as a failed attempt too
+    response <- tryCatch(httr::GET(call), error = function(e) e)
+
+    if (inherits(response, "error")) {
+      problem <- paste0("request error: ",
+                        gsub("api_key=[^&[:space:]]*", "api_key=***", conditionMessage(response)))
+      wait <- wait_seconds[attempt]
     } else {
-      NULL
-    }
-    if (!is.null(body)) {
-      return(list(response = response, body = body))
+      status <- httr::status_code(response)
+      body <- if (status < 400) {
+        tryCatch(xml2::read_xml(response$content), error = function(e) NULL)
+      } else {
+        NULL
+      }
+      if (!is.null(body)) {
+        return(list(response = response, body = body))
+      }
+      snippet <- tryCatch(rawToChar(utils::head(response$content, 200)),
+                          error = function(e) "<not text>")
+      problem <- paste0("HTTP ", status, ", body starts with: ", snippet)
+
+      # Rate limit: wait until Billomat resets the quota (epoch seconds), capped
+      wait <- wait_seconds[attempt]
+      if (status == 429) {
+        reset <- suppressWarnings(as.numeric(httr::headers(response)$`x-rate-limit-reset`))
+        if (length(reset) == 1 && !is.na(reset)) {
+          until_reset <- ceiling(reset - as.numeric(Sys.time())) + 1
+          wait <- min(max(wait, until_reset), max_reset_wait)
+        }
+      }
     }
 
-    snippet <- tryCatch(rawToChar(utils::head(response$content, 200)),
-                        error = function(e) "<not text>")
     if (attempt == max_tries) {
-      stop("Billomat request failed after ", max_tries, " attempts: HTTP ", status,
-           ", body starts with: ", snippet, call. = FALSE)
+      stop("Billomat request failed after ", max_tries, " attempts: ", problem, call. = FALSE)
     }
-    message("Billomat request: HTTP ", status, " without XML body (attempt ", attempt, " of ",
-            max_tries, "), retrying in ", wait_seconds[attempt], "s. Body starts with: ", snippet)
-    billomat_wait(wait_seconds[attempt])
+    message("Billomat request failed (attempt ", attempt, " of ", max_tries, "), retrying in ",
+            wait, "s: ", problem)
+    billomat_wait(wait)
   }
 }
 
